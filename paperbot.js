@@ -307,7 +307,7 @@ async function paperTick() {
  if(activeEvaluation)return;activeEvaluation=true;
  try {
   const m=lastKalshi;
-  if(state.window && (!m || state.window.ticker!==m.ticker || Date.now()>state.window.end)){
+  if(state.window && ((m && state.window.ticker!==m.ticker) || Date.now()>state.window.end)){
     decisionComplete(state.window);state.window=null;
   }
   if(state.open && Date.now()>=new Date(state.open.closeTime).getTime())
