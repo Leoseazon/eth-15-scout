@@ -32,7 +32,9 @@
 <label class="paper-control">Starting paper balance ($)<input id="paperStart" type="number" value="100" min="10" max="10000" step="10" inputmode="decimal"></label>
 <label class="paper-control">Risk per purchase (%)<input id="paperRisk" type="number" value="2" min="1" max="2" step="1" inputmode="numeric"></label>
 <button id="paperReset">Reset paper account</button>
-<button id="paperExport">Export trade history</button>
+<button id="paperExport">Export history backup</button>
+<button id="paperImport" type="button">Restore history backup</button>
+<input id="paperImportFile" type="file" accept="application/json,.json" style="display:none" aria-label="Select ETH-15 Scout JSON history backup">
 </div>
 <div class="paper-stats">
 <div><span>Paper cash</span><strong id="paperCash">$100.00</strong></div>
@@ -40,12 +42,16 @@
 <div><span>Wins / losses</span><strong id="paperWinLoss">0 / 0</strong></div>
 <div><span>Passed markets</span><strong id="paperPasses">0</strong></div>
 </div>
-<div id="paperSetup" class="paper-banner">Not armed. Start monitoring, then arm the paper bot.</div>
+<div id="paperSetup" class="paper-banner">Not armed. Saved history restores automatically; new entries require arming.</div>
+<div id="paperStorage" class="setup-help" role="status" aria-live="polite">Checking saved trade history…</div>
 <h3 style="margin-top:16px">Active simulated purchase</h3><div id="paperPosition" class="paper-log">None</div>
 <h3 style="margin-top:16px">Awaiting official settlement</h3><div id="paperPending" class="paper-log">None</div>
 <h3 style="margin-top:16px">What the bot is learning</h3><div id="paperLearning" class="paper-log">No completed trades yet.</div>
-<h3 style="margin-top:16px">Wins, losses, purchases, early sales &amp; passes</h3><div id="paperHistory" class="paper-log">No records yet.</div>
-<p class="setup-help">Limits: 2% maximum virtual cash per trade, 4% daily loss stop, one open position and one entry per market. Paper trades and market PASS decisions are saved in <strong>this browser only</strong>. A contract held until settlement stays PENDING until you confirm the official Kalshi result; unverified outcomes do not count as wins. The bot tightens entry requirements after 8 unprofitable completed simulated trades within a contract-price bracket. Background monitoring stops when this page is closed.</p>
+<h3 style="margin-top:16px">Wins, losses, purchases, early sales &amp; passes</h3>
+<div class="setup-help">Full paper journal is retained locally; older records are hidden from view until you select Show older activity.</div>
+<div id="paperHistory" class="paper-log">Loading saved records…</div>
+<button id="paperMore" type="button">Show older activity</button>
+<p class="setup-help">Limits: 2% maximum virtual cash per trade, 4% daily loss stop, one open position and one entry per market. Paper trades and market PASS decisions are auto-saved in <strong>this browser</strong>, with a secondary browser archive where supported. They are not uploaded to GitHub or Cloudflare. Download <strong>Export history backup</strong> periodically; browser storage can be cleared, especially in private browsing. Use <strong>Restore history backup</strong> to recover exported JSON. A contract held until settlement stays PENDING until you confirm the official Kalshi result; unverified outcomes do not count as wins. The bot tightens entry requirements after 8 unprofitable completed simulated trades within a contract-price bracket. Background monitoring stops when this page is closed.</p>
 </section>
 <section class="card col12"><div class="row"><h2>Paper-trade journal</h2><div class="btns"><button id="record" disabled>Record snapshot</button><button id="export">Export journal</button><button id="clear">Clear</button></div></div><div id="journal" class="log"><div class="small muted">No records yet.</div></div></section>
 </div>
