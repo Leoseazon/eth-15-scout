@@ -14,11 +14,42 @@ try {
    state = {...stateDefault(),...saved,armed:false};
 } catch(e) {}
 let notice = 'Not armed. Start monitoring, then arm the paper bot.';
+const SOUND_KEY='eth15scout_sound_alerts_v1';
+let soundEnabled=true;
+try {soundEnabled=localStorage.getItem(SOUND_KEY)!=='off'} catch(e){}
+let audioContext=null;
+function enableSoundContext(){
+ if(!soundEnabled)return;
+ try{
+  const Context=window.AudioContext||window.webkitAudioContext;
+  if(!Context)return;
+  if(!audioContext)audioContext=new Context();
+  if(audioContext.state==='suspended')audioContext.resume().catch(()=>{});
+ }catch(e){}
+}
+function tradeSound(type){
+ if(!soundEnabled||!audioContext||audioContext.state!=='running')return;
+ try{
+  const buy=type==='PAPER BUY';
+  const frequencies=buy?[740,988]:[988,587];
+  const start=audioContext.currentTime+0.01;
+  frequencies.forEach((hz,i)=>{
+   const osc=audioContext.createOscillator(),gain=audioContext.createGain(),t=start+i*0.16;
+   osc.type='sine';osc.frequency.setValueAtTime(hz,t);
+   gain.gain.setValueAtTime(0.0001,t);
+   gain.gain.exponentialRampToValueAtTime(0.085,t+0.015);
+   gain.gain.exponentialRampToValueAtTime(0.0001,t+0.13);
+   osc.connect(gain);gain.connect(audioContext.destination);
+   osc.start(t);osc.stop(t+0.15);
+  });
+ }catch(e){/* Audio errors must never affect trading simulation. */}
+}
 let evaluating = false;
 const persist = () => { try { localStorage.setItem(KEY,JSON.stringify({...state,armed:false})); } catch(e) {notice='Storage unavailable — export your paper journal.';} };
 const note = (type,msg,ticker='') => {
  state.events.unshift({time:Date.now(),type,msg,ticker});
  state.events=state.events.slice(0,250);
+ if(type==='PAPER BUY'||type==='PAPER SELL')tradeSound(type);
 };
 function quote(m,side,bidask) {
  const key=(side==='UP'?'yes_':'no_')+(bidask==='ask'?'ask_dollars':'bid_dollars');
@@ -110,8 +141,8 @@ function chooseCandidate(m,one,m5,remaining){
  ranked.sort((a,b)=>b.score-a.score);
  return ranked[0]||null;
 }
-function decisionComplete(window,reason='No qualifying discounted reversal setup') {
- if (!window || window.entered || window.finished) return;
+function decisionComplete(window,reason='No qualifying setup') {
+ if (!window || window.entered || window.finished || !window.seenArmed) return;
  window.finished=true;
  state.decisions.unshift({ticker:window.ticker,time:Date.now(),status:'PASS',reason:window.reason||reason});
  state.decisions=state.decisions.slice(0,250);
@@ -214,6 +245,7 @@ function paint() {
  el('paperState').textContent=state.armed?'ARMED':'PAUSED';
  el('paperState').className='pill '+(state.armed?'good':'warn');
  el('paperToggle').textContent=state.armed?'■ Pause new entries':'▶ Arm paper trading';
+ el('paperSound').textContent=soundEnabled?'🔔 Trade sounds ON':'🔕 Trade sounds OFF';
  el('paperCash').textContent=money(state.cash);
  el('paperRealized').textContent=money(net);
  el('paperWinLoss').textContent=wins+' / '+losses;
@@ -245,11 +277,13 @@ el('paperPending').addEventListener('click',e=>{
  const b=e.target.closest('button[data-ticker][data-result]');if(b)settlePending(b.dataset.ticker,b.dataset.result);
 });
 el('paperToggle').onclick=()=>{
+ enableSoundContext();
  state.armed=!state.armed;
  notice=state.armed?'Paper bot armed. Only simulated trades; searching for discounted reversal entries.':'New paper entries paused; existing simulated positions may still be managed.';
  persist();paint();
  if(state.armed&&!timer)el('start').click();
 };
+el('paperSound').onclick=()=>{soundEnabled=!soundEnabled;try{localStorage.setItem(SOUND_KEY,soundEnabled?'on':'off')}catch(e){};if(soundEnabled)enableSoundContext();paint();};
 el('paperStart').onchange=()=>{
  if(state.trades.length||state.open||state.pending.length||state.decisions.length||state.events.length){paint();return;}
  const n=Number(el('paperStart').value);
@@ -276,11 +310,12 @@ async function paperTick() {
   if(state.window && (!m || state.window.ticker!==m.ticker || Date.now()>state.window.end)){
     decisionComplete(state.window);state.window=null;
   }
-  if(state.open && (Date.now()>=new Date(state.open.closeTime).getTime() || !m || m.ticker!==state.open.ticker))
+  if(state.open && Date.now()>=new Date(state.open.closeTime).getTime())
     toPending(state.open);
   if(!m||!lastKraken||Date.now()-lastCheckedAt>90000){notice='Waiting for fresh Kalshi and Kraken data; no simulated entry.';persist();paint();return;}
   if((state.armed||state.open) && (!state.window || state.window.ticker!==m.ticker))
-    state.window={ticker:m.ticker,end:new Date(m.close_time).getTime(),entered:state.blocked.includes(m.ticker),reason:'No qualifying discounted reversal entry'};
+    state.window={ticker:m.ticker,end:new Date(m.close_time).getTime(),entered:state.blocked.includes(m.ticker),reason:'No qualifying paper trade setup',seenArmed:false};
+  if(state.armed&&state.window)state.window.seenArmed=true;
   const remaining=(new Date(m.close_time).getTime()-Date.now())/60000;
   let one=null;
   try{
@@ -289,7 +324,7 @@ async function paperTick() {
     const rows=Object.values(result.result).find(Array.isArray);
     one=fastScan(rows?.slice(0,-1)||[]);
   }catch(e){notice='1-minute feed unavailable; no new simulated entry.';}
-  if(state.open && m.ticker===state.open.ticker){
+  if(state.open && m.ticker===state.open.ticker && Date.now()-lastCheckedAt<90000){
     const pos=state.open,bid=quote(m,pos.side,'bid'),bidDepth=depth(m,pos.side,'bid');
     pos.bestBid=bid;
     const proceeds=Number.isFinite(bid)&&Number.isFinite(bidDepth)&&bidDepth>=pos.qty?pos.qty*bid-fee(bid,pos.qty):NaN;
@@ -307,13 +342,14 @@ async function paperTick() {
       if(why)closeEarly(pos,bid,why,m);
     }else if(remaining<=0)toPending(pos);
   }
-  if(state.armed && !state.open && remaining>=2.5&&remaining<=12.5 && one){
+  const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
+  if(state.armed && !state.open && m===lastKalshi && Date.now()-lastCheckedAt<90000 && freshRemaining>=2.5&&freshRemaining<=12.5 && one){
     const today=new Date().toDateString();
     const daily=state.trades.filter(t=>new Date(t.exitAt).toDateString()===today).reduce((a,t)=>a+t.pnl,0);
     if(daily<=-state.initial*0.04){notice='Daily 4% paper loss cap reached. No new entries.';}
     else if(state.blocked.includes(m.ticker)){notice='No repeat entry for this 15-minute contract.';}
     else {
-      const c=chooseCandidate(m,one,lastKraken.ind,remaining);
+      const c=chooseCandidate(m,one,lastKraken.ind,freshRemaining);
       if(c){
         if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
         else {
