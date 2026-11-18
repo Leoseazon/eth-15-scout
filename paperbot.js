@@ -8,12 +8,73 @@ const cents = x => Number.isFinite(x) ? (x * 100).toFixed(1) + '¢' : '—';
 const fee = (price, qty) => Math.ceil(Math.max(0, 0.07 * qty * price * (1 - price)) * 100 - 1e-8) / 100;
 const stateDefault = () => ({initial:100,cash:100,realized:0,armed:false,risk:2,open:null,pending:[],trades:[],decisions:[],events:[],window:null,blocked:[]});
 let state = stateDefault();
-try {
- const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
- if (saved && Array.isArray(saved.trades) && Array.isArray(saved.decisions) && Number.isFinite(saved.cash))
-   state = {...stateDefault(),...saved,armed:false};
-} catch(e) {}
-let notice = 'Not armed. Start monitoring, then arm the paper bot.';
+const validState = a => !!a && typeof a==='object' && !Array.isArray(a) &&
+   Number.isFinite(a.initial) && a.initial>=10 && a.initial<=10000 &&
+   Number.isFinite(a.cash) && a.cash>=0 &&
+   Array.isArray(a.trades) && Array.isArray(a.decisions) && Array.isArray(a.events) &&
+   Array.isArray(a.pending) && Array.isArray(a.blocked) &&
+   a.trades.length<=100000 && a.decisions.length<=100000 && a.events.length<=200000;
+function normalizedState(a){
+ return {...stateDefault(),...a,armed:false,
+   trades:a.trades,decisions:a.decisions,events:a.events,pending:a.pending,blocked:a.blocked};
+}
+let localSnapshot=null;
+try{
+ const raw=JSON.parse(localStorage.getItem(KEY)||'null');
+ if(validState(raw)){localSnapshot=normalizedState(raw);state=localSnapshot;}
+}catch(e){}
+let storageReady=false,storageStatus='Checking saved records…',historyVisible=40;
+const DB_NAME='eth15scout_history_backup_v1',DB_STORE='records';
+const openArchive=()=>{
+ if(typeof indexedDB==='undefined')return Promise.resolve(null);
+ return new Promise(resolve=>{
+   try{
+     const request=indexedDB.open(DB_NAME,1);
+     request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains(DB_STORE))request.result.createObjectStore(DB_STORE)};
+     request.onsuccess=()=>resolve(request.result);
+     request.onerror=()=>resolve(null);
+     request.onblocked=()=>resolve(null);
+   }catch(e){resolve(null)}
+ });
+};
+const dbReady=openArchive();
+async function archiveRead(){
+ const db=await dbReady;if(!db)return null;
+ return new Promise(resolve=>{
+  try{
+   const tx=db.transaction(DB_STORE,'readonly'),request=tx.objectStore(DB_STORE).get('latest');
+   request.onsuccess=()=>resolve(validState(request.result)?normalizedState(request.result):null);
+   request.onerror=()=>resolve(null);
+  }catch(e){resolve(null)}
+ });
+}
+async function archiveWrite(snapshot){
+ const db=await dbReady;if(!db)return false;
+ return new Promise(resolve=>{
+  try{
+   const tx=db.transaction(DB_STORE,'readwrite');
+   tx.objectStore(DB_STORE).put(snapshot,'latest');
+   tx.oncomplete=()=>resolve(true);
+   tx.onerror=()=>resolve(false);
+   tx.onabort=()=>resolve(false);
+  }catch(e){resolve(false)}
+ });
+}
+let archiveQueue=Promise.resolve();
+async function startupRestore(){
+ const backup=await archiveRead();
+ const newest=(backup&&(!localSnapshot||Number(backup.savedAt||0)>Number(localSnapshot.savedAt||0)))?backup:localSnapshot;
+ if(newest)state=normalizedState(newest);
+ state.armed=false;
+ storageReady=true;
+ storageStatus=(newest?'Restored '+newest.trades.length+' completed trades, '+newest.decisions.length+
+      ' passes, '+newest.events.length+' activity records':'New paper journal — no previous records found')+
+      (await dbReady?' · dual browser storage enabled':' · local browser storage only');
+ // Synchronize secondary storage without resetting or clearing the legacy record.
+ persist();
+ paint();
+}
+let notice = 'Not armed. Saved history loads automatically; new entries require arming.';
 const SOUND_KEY='eth15scout_sound_alerts_v1';
 let soundEnabled=true;
 try {soundEnabled=localStorage.getItem(SOUND_KEY)!=='off'} catch(e){}
@@ -45,10 +106,22 @@ function tradeSound(type){
  }catch(e){/* Audio errors must never affect trading simulation. */}
 }
 let evaluating = false;
-const persist = () => { try { localStorage.setItem(KEY,JSON.stringify({...state,armed:false})); } catch(e) {notice='Storage unavailable — export your paper journal.';} };
+function persist(){
+ if(!storageReady)return;
+ state.savedAt=Date.now();
+ const snapshot=JSON.parse(JSON.stringify({...state,armed:false}));
+ let localGood=false;
+ try{localStorage.setItem(KEY,JSON.stringify(snapshot));localGood=true;}
+ catch(e){storageStatus='Local browser storage unavailable — use Export history';}
+ archiveQueue=archiveQueue.then(async()=>{
+   const secondary=await archiveWrite(snapshot);
+   if(!localGood&&!secondary)storageStatus='Auto-save failed — export a backup immediately';
+   else if(!localGood&&secondary)storageStatus='Saved to secondary browser storage · export a backup for safety';
+ }).catch(()=>{});
+}
 const note = (type,msg,ticker='') => {
  state.events.unshift({time:Date.now(),type,msg,ticker});
- state.events=state.events.slice(0,250);
+ // Keep the complete local event ledger; use Export history for a portable backup.
  if(type==='PAPER BUY'||type==='PAPER SELL')tradeSound(type);
 };
 function quote(m,side,bidask) {
@@ -145,7 +218,7 @@ function decisionComplete(window,reason='No qualifying setup') {
  if (!window || window.entered || window.finished || !window.seenArmed) return;
  window.finished=true;
  state.decisions.unshift({ticker:window.ticker,time:Date.now(),status:'PASS',reason:window.reason||reason});
- state.decisions=state.decisions.slice(0,250);
+ // Keep every pass record for learning and audit.
  note('PASS',window.reason||reason,window.ticker);
 }
 function enter(m,side,signal,now,price,strategy='REVERSAL') {
@@ -164,7 +237,7 @@ function enter(m,side,signal,now,price,strategy='REVERSAL') {
    status:'OPEN',bestBid:NaN,highestProfit:0};
  state.open=position;
  state.blocked.push(m.ticker);
- state.blocked=state.blocked.slice(-100);
+ // Retain one-entry-per-contract history for the whole paper journal.
  if(state.window?.ticker===m.ticker)state.window.entered=true;
  note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
  notice='SIMULATED BUY ('+strategy+'): '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
@@ -181,7 +254,7 @@ function closeEarly(pos,bid,why,m) {
  state.realized=Number((state.realized+pnl).toFixed(2));
  const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt:Date.now(),
    confirmed:true,exitType:'EARLY SALE',reason:why};
- state.trades.unshift(tr);state.trades=state.trades.slice(0,300);
+ state.trades.unshift(tr);
  state.open=null;
  note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
  notice='PAPER SELL '+pos.side+' '+money(pnl)+' ('+why+')';
@@ -189,7 +262,7 @@ function closeEarly(pos,bid,why,m) {
 }
 function toPending(pos) {
  state.pending.unshift({...pos,status:'PENDING'});
- state.pending=state.pending.slice(0,50);
+ // Retain pending settlements until resolved.
  state.open=null;
  note('PENDING','Contract closed; official outcome not verified. No profit/loss assumed.',pos.ticker);
  notice='Pending official result for '+pos.ticker+'. Confirm UP or DOWN after settlement.';
@@ -205,7 +278,7 @@ function settlePending(ticker,result) {
  state.realized=Number((state.realized+pnl).toFixed(2));
  const tr={...pos,status:won?'WIN':'LOSS',exitPrice:null,sellFee:0,proceeds,pnl,exitAt:Date.now(),confirmed:true,
    exitType:'MANUALLY ENTERED OFFICIAL SETTLEMENT',result};
- state.trades.unshift(tr);state.trades=state.trades.slice(0,300);
+ state.trades.unshift(tr);
  state.pending.splice(index,1);
  note(tr.status,'Settlement '+result+'; '+pos.side+' '+pos.qty+' @ '+cents(pos.entry)+'; P/L '+money(pnl),ticker);
  notice='Settlement recorded ('+result+'). Learning statistics updated.';
@@ -270,13 +343,20 @@ function paint() {
    ' · Win rate '+(n?(wins/n*100).toFixed(1)+'%':'not established')+
    ' · Under 35¢: '+recentLearning('Under 35¢').n+' resolved · 35–69¢: '+recentLearning('35–69¢').n+' · 70¢+: '+recentLearning('70¢ and up').n+
    ' resolved. After 8 completed trades in a price bracket, losing brackets require an extra confirmation. These are simulated outcomes, not confirmed fills or statistical win probabilities.';
- el('paperHistory').innerHTML=state.events.length?state.events.slice(0,25).map(showEvent).join(''):'No recorded signals yet. Each unused observed 15-minute market is logged as PASS when the window ends.';
+ el('paperHistory').innerHTML=state.events.length?state.events.slice(0,historyVisible).map(showEvent).join(''):'No recorded signals yet. Each unused observed 15-minute market is logged as PASS when the window ends.';
+ el('paperMore').disabled=state.events.length<=historyVisible;
+ el('paperMore').textContent=state.events.length>historyVisible?'Show older activity ('+(state.events.length-historyVisible)+' more)':'All '+state.events.length+' activity records displayed';
+ const when=state.savedAt?new Date(state.savedAt).toLocaleString():'not saved yet';
+ el('paperStorage').textContent=storageStatus+' · Last save: '+when+
+    ' · '+state.trades.length+' closed / '+state.decisions.length+' passes / '+state.pending.length+' pending'+
+    ' · History stays on this device. Export a JSON backup for long-term safekeeping.';
  headline();
 }
 el('paperPending').addEventListener('click',e=>{
  const b=e.target.closest('button[data-ticker][data-result]');if(b)settlePending(b.dataset.ticker,b.dataset.result);
 });
 el('paperToggle').onclick=()=>{
+ if(!storageReady){notice='Restoring saved trades. Try again once the history status is ready.';paint();return}
  enableSoundContext();
  state.armed=!state.armed;
  notice=state.armed?'Paper bot armed. Only simulated trades; searching for discounted reversal entries.':'New paper entries paused; existing simulated positions may still be managed.';
@@ -295,16 +375,34 @@ el('paperRisk').onchange=()=>{
  paint();
 };
 el('paperReset').onclick=()=>{
+ if(!storageReady)return;
  if(!confirm('Reset the entire local auto-paper account, trades, learning history and passes? Your separate MANUAL positions are not affected.'))return;
  state=stateDefault();notice='Reset complete. Start monitoring and arm when ready.';persist();paint();
 };
+el('paperMore').onclick=()=>{historyVisible+=100;paint();};
+el('paperImport').onclick=()=>el('paperImportFile').click();
+el('paperImportFile').addEventListener('change',async e=>{
+ if(!storageReady)return;
+ const file=e.target.files?.[0];if(!file)return;
+ try{
+   if(file.size>8000000)throw Error('File is too large');
+   const raw=JSON.parse(await file.text());
+   if(!validState(raw))throw Error('Not a valid ETH-15 Scout paper history backup');
+   if(!confirm('Restore this backup? This REPLACES your current paper journal on this device. Export the current journal first if you need it.'))return;
+   state=normalizedState(raw);state.armed=false;
+   notice='Imported '+state.trades.length+' completed simulated trades, '+state.decisions.length+' passes and '+state.events.length+' activity records.';
+   storageStatus='Restored from user-selected JSON backup';historyVisible=40;
+   persist();paint();
+ }catch(err){alert('Cannot import: '+String(err?.message||err))}
+ finally{e.target.value=''}
+});
 el('paperExport').onclick=()=>{
  const blob=new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});
  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='eth15-scout-auto-paper-history.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 };
 let activeEvaluation=false;
 async function paperTick() {
- if(activeEvaluation)return;activeEvaluation=true;
+ if(!storageReady||activeEvaluation)return;activeEvaluation=true;
  try {
   const m=lastKalshi;
   if(state.window && ((m && state.window.ticker!==m.ticker) || Date.now()>state.window.end)){
@@ -367,7 +465,8 @@ async function paperTick() {
  finally{activeEvaluation=false;}
 }
 const oldRefresh=refresh;
-refresh=async function(){await oldRefresh();await paperTick();};
+let restorePromise=startupRestore();
+refresh=async function(){await restorePromise;await oldRefresh();await paperTick();};
 el('refresh').onclick=refresh;
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.open)paperTick()});
 paint();
