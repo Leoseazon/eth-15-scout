@@ -25,9 +25,10 @@
 
 <section class="card col12" id="paperBot">
 <div class="row"><h2>Auto paper trader · Discount Reversal Hunter V2</h2><span id="paperState" class="pill">PAUSED</span></div>
-<p class="setup-help">An experimental automated paper trader: seeks 12–48¢ UP/DOWN contracts when 1-minute momentum supports a possible flip. Simulated entry at the actual published ask; simulated early sale at the published bid, estimated fees included. These quotes are <strong>not guaranteed fills</strong>. It never trades your Kalshi account.</p>
+<p class="setup-help">An experimental automated paper trader: searches for both discounted reversals and momentum opportunities at any contract price when the market data and strategy rules qualify. Simulated entry at the displayed ask; simulated early sale at the displayed bid, estimated general fees included. A chime plays on each simulated buy or early sell when browser sound is enabled. These quotes are <strong>not guaranteed fills</strong>. It never trades your Kalshi account.</p>
 <div class="setup-row">
 <button class="primary" id="paperToggle">▶ Arm paper trading</button>
+<button id="paperSound" type="button" title="Toggle paper buy/sell audio alerts">🔔 Trade sounds ON</button>
 <label class="paper-control">Starting paper balance ($)<input id="paperStart" type="number" value="100" min="10" max="10000" step="10" inputmode="decimal"></label>
 <label class="paper-control">Risk per purchase (%)<input id="paperRisk" type="number" value="2" min="1" max="2" step="1" inputmode="numeric"></label>
 <button id="paperReset">Reset paper account</button>
@@ -44,7 +45,7 @@
 <h3 style="margin-top:16px">Awaiting official settlement</h3><div id="paperPending" class="paper-log">None</div>
 <h3 style="margin-top:16px">What the bot is learning</h3><div id="paperLearning" class="paper-log">No completed trades yet.</div>
 <h3 style="margin-top:16px">Wins, losses, purchases, early sales &amp; passes</h3><div id="paperHistory" class="paper-log">No records yet.</div>
-<p class="setup-help">Limits: 2% maximum virtual cash per trade, 4% daily loss stop, one open position and one entry per market. Paper trades and market PASS decisions are saved in <strong>this browser only</strong>. A contract held until settlement stays PENDING until you confirm the official Kalshi result; unverified outcomes do not count as wins. The bot tightens reversal requirements after 8 losing paper outcomes within a contract-price bracket. Background monitoring stops when this page is closed.</p>
+<p class="setup-help">Limits: 2% maximum virtual cash per trade, 4% daily loss stop, one open position and one entry per market. Paper trades and market PASS decisions are saved in <strong>this browser only</strong>. A contract held until settlement stays PENDING until you confirm the official Kalshi result; unverified outcomes do not count as wins. The bot tightens entry requirements after 8 unprofitable completed simulated trades within a contract-price bracket. Background monitoring stops when this page is closed.</p>
 </section>
 <section class="card col12"><div class="row"><h2>Paper-trade journal</h2><div class="btns"><button id="record" disabled>Record snapshot</button><button id="export">Export journal</button><button id="clear">Clear</button></div></div><div id="journal" class="log"><div class="small muted">No records yet.</div></div></section>
 </div>
