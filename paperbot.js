@@ -26,8 +26,9 @@ function quote(m,side,bidask) {
  return m?.[key] != null && n>0 && n<1 ? n : NaN;
 }
 function depth(m,side,bidask) {
- const key=(side==='UP'?'yes_':'no_')+(bidask==='ask'?'ask_size_fp':'bid_size_fp');
- return m?.[key]==null?NaN:Number(m[key]);
+ // Kalshi's market schema publishes YES-side sizes. NO ask = YES bid; NO bid = YES ask.
+ const key=side==='UP'?(bidask==='ask'?'yes_ask_size_fp':'yes_bid_size_fp'):(bidask==='ask'?'yes_bid_size_fp':'yes_ask_size_fp');
+ const v=m?.[key];const n=v==null?NaN:Number(v);return Number.isFinite(n)&&n>=0?n:NaN;
 }
 function cleanArray(a) { return a.filter(Number.isFinite); }
 function fastScan(rows) {
@@ -71,11 +72,43 @@ function judge(side,m1,m5,market,remaining) {
  return {side,passed,checks,turn,plausible,alignment,
    detail:checks.filter(c=>c.ok).map(x=>x.name).join(', ')};
 }
+function priceBucketOf(p){return p<.35?'Under 35¢':p<.70?'35–69¢':'70¢ and up'}
 function recentLearning(priceBucket) {
  const a=state.trades.filter(x=>x.confirmed&&x.bucket===priceBucket).slice(0,16);
  const n=a.length,net=a.reduce((sum,x)=>sum+x.pnl,0);
- const negative=n>=8&&net<0;
- return {n,net,required:negative?5:4};
+ return {n,net,extra:(n>=8&&net<0)?1:0};
+}
+function chooseCandidate(m,one,m5,remaining){
+ const target=Number(m.floor_strike);
+ if(!Number.isFinite(target)||!one||!m5)return null;
+ const ranked=[];
+ for(const side of ['UP','DOWN']){
+   const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
+   const askSize=depth(m,side,'ask'),bidSize=depth(m,side,'bid');
+   if(!Number.isFinite(price)||!Number.isFinite(bid)||!Number.isFinite(askSize)||!Number.isFinite(bidSize))continue;
+   const spread=price-bid;
+   // No fixed contract-price floor or ceiling; the real filter is quote quality, fees and setup.
+   if(!(price>0&&price<1&&bid>=0&&bid<=price&&spread<=Math.min(.065,Math.max(.035,price*.10))))continue;
+   const signal=judge(side,one,m5,m,remaining);
+   const d=side==='UP'?1:-1;
+   const slowTrend=d===1?(m5.e21>m5.e50&&m5.macd>m5.signal&&m5.rsi>=52&&m5.rsi<=78)
+                       :(m5.e21<m5.e50&&m5.macd<m5.signal&&m5.rsi<=48&&m5.rsi>=22);
+   const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
+   const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
+   const learn=recentLearning(priceBucketOf(price));
+   const reversal=signal.turn&&signal.plausible&&signal.alignment&&signal.passed>=4+learn.extra;
+   const momentum=slowTrend&&directionOk&&reachDist&&signal.passed>=5+learn.extra;
+   if(!reversal&&!momentum)continue;
+   const strategy=reversal?'REVERSAL':'MOMENTUM';
+   // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
+   const grossWinningUpside=1-price-fee(price,1);
+   if(!(grossWinningUpside>0))continue;
+   const edgeQuality=(signal.passed*10)+(strategy==='REVERSAL'?3:0)-spread*130
+       +(d*(one.last-target)>=0?3:0)+Math.min(10,grossWinningUpside*10);
+   ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,breakEven:price+fee(price,1)});
+ }
+ ranked.sort((a,b)=>b.score-a.score);
+ return ranked[0]||null;
 }
 function decisionComplete(window,reason='No qualifying discounted reversal setup') {
  if (!window || window.entered || window.finished) return;
@@ -84,7 +117,7 @@ function decisionComplete(window,reason='No qualifying discounted reversal setup
  state.decisions=state.decisions.slice(0,250);
  note('PASS',window.reason||reason,window.ticker);
 }
-function enter(m,side,signal,now,price) {
+function enter(m,side,signal,now,price,strategy='REVERSAL') {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
  const budget=Math.min(state.cash*state.risk/100,state.initial*0.02);
  let qty=Math.floor(budget/price);
@@ -93,17 +126,17 @@ function enter(m,side,signal,now,price) {
  const entryFee=fee(price,qty),cost=Number((qty*price+entryFee).toFixed(2));
  if(cost>state.cash)return false;
  state.cash=Number((state.cash-cost).toFixed(2));
- const bucket=price<.30?'12–29¢':'30–48¢';
+ const bucket=priceBucketOf(price);
  const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
    target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
-   checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,
+   checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
    status:'OPEN',bestBid:NaN,highestProfit:0};
  state.open=position;
  state.blocked.push(m.ticker);
  state.blocked=state.blocked.slice(-100);
  if(state.window?.ticker===m.ticker)state.window.entered=true;
- note('PAPER BUY',side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
- notice='SIMULATED BUY: '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
+ note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
+ notice='SIMULATED BUY ('+strategy+'): '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
  persist();return true;
 }
 function closeEarly(pos,bid,why,m) {
@@ -119,7 +152,7 @@ function closeEarly(pos,bid,why,m) {
    confirmed:true,exitType:'EARLY SALE',reason:why};
  state.trades.unshift(tr);state.trades=state.trades.slice(0,300);
  state.open=null;
- note(tr.status,'PAPER SELL: '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
+ note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
  notice='PAPER SELL '+pos.side+' '+money(pnl)+' ('+why+')';
  persist();return true;
 }
@@ -140,7 +173,7 @@ function settlePending(ticker,result) {
  state.cash=Number((state.cash+proceeds).toFixed(2));
  state.realized=Number((state.realized+pnl).toFixed(2));
  const tr={...pos,status:won?'WIN':'LOSS',exitPrice:null,sellFee:0,proceeds,pnl,exitAt:Date.now(),confirmed:true,
-   exitType:'MANUALLY VERIFIED SETTLEMENT',result};
+   exitType:'MANUALLY ENTERED OFFICIAL SETTLEMENT',result};
  state.trades.unshift(tr);state.trades=state.trades.slice(0,300);
  state.pending.splice(index,1);
  note(tr.status,'Settlement '+result+'; '+pos.side+' '+pos.qty+' @ '+cents(pos.entry)+'; P/L '+money(pnl),ticker);
@@ -152,6 +185,29 @@ function showEvent(x) {
  return '<div class="item"><strong>'+escapeText(x.type)+'</strong> · '+escapeText(time)+'<br>'+escapeText(x.msg)+'<br><small>'+escapeText(x.ticker||'')+'</small></div>';
 }
 function escapeText(v){return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function headline(){
+ const title=el('call'),detail=el('reason');if(!title||!detail)return;
+ const now=Date.now(),recent=state.events[0];
+ if(state.open){
+   const p=state.open; title.textContent='PAPER BUY '+p.side;
+   title.className='val large '+(p.side==='UP'?'green':'red');
+   detail.textContent='SIMULATED '+p.strategy+' PURCHASE: '+p.qty+' '+p.side+' contracts at '+cents(p.entry)+
+    ' each. Entry fee '+money(p.entryFee)+', total spent '+money(p.cost)+'. '+p.ticker+
+    '. Watching for a simulated early sale at the published bid. No real order placed.';
+   return;
+ }
+ if(recent&&now-recent.time<5*60000&&recent.type==='PAPER SELL'){
+   title.textContent='PAPER SOLD';title.className='val large blue';
+   detail.textContent=recent.msg+'. '+recent.ticker+'. Simulated at published bid, not a guaranteed fill.';
+   return;
+ }
+ if(recent&&now-recent.time<2*60000&&recent.type==='PAPER BUY'){
+   title.textContent='PAPER BOUGHT';title.className='val large blue';detail.textContent=recent.msg;
+   return;
+ }
+ // The original market dashboard still displays PASS or WATCH for setups.
+}
+window.refreshBotHeadline=headline;
 function paint() {
  const n=state.trades.length, wins=state.trades.filter(x=>x.pnl>0).length,losses=state.trades.filter(x=>x.pnl<0).length;
  const passes=state.decisions.length;const net=state.trades.reduce((a,x)=>a+x.pnl,0);
@@ -180,9 +236,10 @@ function paint() {
  ).join(''):'None';
  el('paperLearning').innerHTML='Completed simulated trades: '+n+' · Net '+money(net)+
    ' · Win rate '+(n?(wins/n*100).toFixed(1)+'%':'not established')+
-   ' · Cheap 12–29¢: '+recentLearning('12–29¢').n+' resolved · 30–48¢: '+recentLearning('30–48¢').n+
+   ' · Under 35¢: '+recentLearning('Under 35¢').n+' resolved · 35–69¢: '+recentLearning('35–69¢').n+' · 70¢+: '+recentLearning('70¢ and up').n+
    ' resolved. After 8 completed trades in a price bracket, losing brackets require an extra confirmation. These are simulated outcomes, not confirmed fills or statistical win probabilities.';
  el('paperHistory').innerHTML=state.events.length?state.events.slice(0,25).map(showEvent).join(''):'No recorded signals yet. Each unused observed 15-minute market is logged as PASS when the window ends.';
+ headline();
 }
 el('paperPending').addEventListener('click',e=>{
  const b=e.target.closest('button[data-ticker][data-result]');if(b)settlePending(b.dataset.ticker,b.dataset.result);
@@ -256,18 +313,15 @@ async function paperTick() {
     if(daily<=-state.initial*0.04){notice='Daily 4% paper loss cap reached. No new entries.';}
     else if(state.blocked.includes(m.ticker)){notice='No repeat entry for this 15-minute contract.';}
     else {
-      const candidates=['UP','DOWN'].map(side=>{
-        const price=quote(m,side,'ask'),signal=judge(side,one,lastKraken.ind,m,remaining);
-        const learning=recentLearning(price<.30?'12–29¢':'30–48¢');
-        return {side,price,signal,required:learning.required};
-      }).filter(x=>x.price>=.12&&x.price<=.48 && x.signal.turn&&x.signal.plausible&&x.signal.alignment&&x.signal.passed>=x.required);
-      candidates.sort((a,b)=>b.signal.passed-a.signal.passed||a.price-b.price);
-      if(candidates.length){
-        const c=candidates[0];if(enter(m,c.side,c.signal,Date.now(),c.price))
-          state.window.entered=true;
-        else {notice='Reversal found but available quantity, fee-adjusted bankroll or depth prevented a simulated fill.';state.window.reason=notice;}
+      const c=chooseCandidate(m,one,lastKraken.ind,remaining);
+      if(c){
+        if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
+        else {
+          notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
+          state.window.reason=notice;
+        }
       }else {
-        notice='PASS / WATCH: no discounted contract meets the reversal, momentum, target-reachability and quote requirements.';
+        notice='PASS / WATCH: no contract at any price meets reversal/trend, target-reachability, liquidity and quote-quality requirements.';
         state.window.reason=notice;
       }
     }
