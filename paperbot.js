@@ -72,10 +72,10 @@ function judge(side,m1,m5,market,remaining) {
    detail:checks.filter(c=>c.ok).map(x=>x.name).join(', ')};
 }
 function recentLearning(priceBucket) {
- const a=state.trades.filter(x=>x.confirmed&&x.bucket===priceBucket).slice(-16);
+ const a=state.trades.filter(x=>x.confirmed&&x.bucket===priceBucket).slice(0,16);
  const n=a.length,net=a.reduce((sum,x)=>sum+x.pnl,0);
  const negative=n>=8&&net<0;
- return {n,net,required:negative?6:5};
+ return {n,net,required:negative?5:4};
 }
 function decisionComplete(window,reason='No qualifying discounted reversal setup') {
  if (!window || window.entered || window.finished) return;
@@ -178,10 +178,10 @@ function paint() {
    '<div class="btns"><button class="paper-confirm" data-ticker="'+escapeText(p.ticker)+'" data-result="UP">Official result UP</button>'+
    '<button class="paper-confirm" data-ticker="'+escapeText(p.ticker)+'" data-result="DOWN">Official result DOWN</button></div></div>'
  ).join(''):'None';
- el('paperLearning').innerHTML='Verified trades: '+n+' · Net '+money(net)+
+ el('paperLearning').innerHTML='Completed simulated trades: '+n+' · Net '+money(net)+
    ' · Win rate '+(n?(wins/n*100).toFixed(1)+'%':'not established')+
    ' · Cheap 12–29¢: '+recentLearning('12–29¢').n+' resolved · 30–48¢: '+recentLearning('30–48¢').n+
-   ' resolved. After 8 completed trades in a price bracket, losing brackets require an extra confirmation. No statistical probability claims.';
+   ' resolved. After 8 completed trades in a price bracket, losing brackets require an extra confirmation. These are simulated outcomes, not confirmed fills or statistical win probabilities.';
  el('paperHistory').innerHTML=state.events.length?state.events.slice(0,25).map(showEvent).join(''):'No recorded signals yet. Each unused observed 15-minute market is logged as PASS when the window ends.';
 }
 el('paperPending').addEventListener('click',e=>{
@@ -222,7 +222,7 @@ async function paperTick() {
   if(state.open && (Date.now()>=new Date(state.open.closeTime).getTime() || !m || m.ticker!==state.open.ticker))
     toPending(state.open);
   if(!m||!lastKraken||Date.now()-lastCheckedAt>90000){notice='Waiting for fresh Kalshi and Kraken data; no simulated entry.';persist();paint();return;}
-  if(!state.window || state.window.ticker!==m.ticker)
+  if((state.armed||state.open) && (!state.window || state.window.ticker!==m.ticker))
     state.window={ticker:m.ticker,end:new Date(m.close_time).getTime(),entered:state.blocked.includes(m.ticker),reason:'No qualifying discounted reversal entry'};
   const remaining=(new Date(m.close_time).getTime()-Date.now())/60000;
   let one=null;
