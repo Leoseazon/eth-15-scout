@@ -220,6 +220,7 @@ function decisionComplete(window,reason='No qualifying setup') {
  state.decisions.unshift({ticker:window.ticker,time:Date.now(),status:'PASS',reason:window.reason||reason});
  // Keep every pass record for learning and audit.
  note('PASS',window.reason||reason,window.ticker);
+ persist(); // Save PASS immediately, even if the market feed fails next.
 }
 function enter(m,side,signal,now,price,strategy='REVERSAL') {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
