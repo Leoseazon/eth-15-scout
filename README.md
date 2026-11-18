@@ -10,9 +10,11 @@ Free, responsive, **paper-only** signal and simulated trading dashboard for Kals
 - **Auto paper trader**: when the user arms it, it may simulate UP or DOWN purchases on reversal or momentum setups. **There is no hard contract-price ceiling**; inexpensive and higher-priced contracts may qualify.
 - Estimates simulated purchase at the quoted ask and a simulated early sale at the quoted bid, with estimated general taker fees. Displays **PAPER BUY UP/DOWN** only after an entry has been saved, and **PAPER SOLD** after an early simulated exit.
 - Two distinct, synthesized, non-copyrighted sound cues for simulated entry and early sale. Use the **Trade sounds ON/OFF** control. Arm the bot with a click to unlock browser audio, and allow browser/tab sound. Audio cannot be guaranteed when the tab is throttled, muted, closed, or the device sleeps.
-- Logs completed wins/losses, pass decisions, entry and exit amounts, fees, and net results locally in the current browser. Completed paper outcomes can increase required technical confirmations when recent results are unfavorable. This is **basic adaptive filtering, not a calibrated predictive model**.
+- Auto-saves **every paper BUY, SELL, win/loss, PASS, pending settlement, and simulated cash balance** on the current device. Reloading the page is designed to restore the journal and keep trading PAUSED until the user re-arms it. Uses existing localStorage history (no migration loss) plus a secondary IndexedDB browser copy where supported.
+- **Export history backup** creates a portable JSON file. **Restore history backup** imports a valid saved JSON file, after confirming replacement of current records. **Show older activity** displays earlier entries without erasing them. Keep periodic exports: browser storage can be cleared or evicted, particularly in private/in-app browsers, and there is no server-side account backup.
+- Completed paper outcomes can increase required technical confirmations when recent results are unfavorable. This is **basic adaptive filtering, not a calibrated predictive model**.
 - A separate manual-position tracker lets you input your own actual purchases without account access. The bot does not know your real positions.
-- Save and export paper-trading history as JSON. Browser storage may be deleted by the user, device, or browser privacy settings.
+- Save and export paper-trading history as JSON. Browser storage may be deleted by the user, device, or browser privacy settings; export JSON periodically.
 
 ## Running the app
 
