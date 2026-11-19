@@ -1,0 +1,244 @@
+/* Original V2 strategy functions ported from main/paperbot.js and index.html.
+ * Deliberately unchanged trading logic; no live Kalshi account or orders.
+ * The surrounding cloud scheduler and storage are new. See README.
+ */
+export const freshPaperState = () => ({
+  initial:100,cash:100,realized:0,armed:false,risk:2,open:null,pending:[],
+  trades:[],decisions:[],events:[],window:null,blocked:[]
+});
+const fee = (price, qty) => Math.ceil(Math.max(0, 0.07 * qty * price * (1 - price)) * 100 - 1e-8) / 100;
+const money = x => Number.isFinite(x) ? (x < 0 ? '-$' : '$') + Math.abs(x).toFixed(2) : '—';
+const cents = x => Number.isFinite(x) ? (x * 100).toFixed(1) + '¢' : '—';
+function ema(a,n){if(a.length<n) return NaN;let e=a.slice(0,n).reduce((x,y)=>x+y,0)/n,k=2/(n+1);for(let i=n;i<a.length;i++)e+=k*(a[i]-e);return e}
+
+function emaSeries(a,n){const out=Array(a.length).fill(NaN);if(a.length<n)return out;let e=a.slice(0,n).reduce((x,y)=>x+y,0)/n;out[n-1]=e;let k=2/(n+1);for(let i=n;i<a.length;i++){e+=k*(a[i]-e);out[i]=e}return out}
+
+function rsi(a,n=14){if(a.length<n+2)return NaN;let up=0,dn=0;for(let i=1;i<=n;i++){const d=a[i]-a[i-1];up+=Math.max(0,d);dn+=Math.max(0,-d)}up/=n;dn/=n;for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];up=(up*(n-1)+Math.max(0,d))/n;dn=(dn*(n-1)+Math.max(0,-d))/n}return dn===0?100:100-100/(1+up/dn)}
+
+function indicators(rows){const c=rows.map(r=>+r[4]);const e21=ema(c,21),e50=ema(c,50);const es12=emaSeries(c,12),es26=emaSeries(c,26);const m=c.map((_,i)=>Number.isFinite(es12[i])&&Number.isFinite(es26[i])?es12[i]-es26[i]:NaN);const valid=m.filter(Number.isFinite);const sig=ema(valid,9);let pv=0,vol=0;for(const r of rows.slice(-96)){const v=+r[6],p=(+r[2]+ +r[3]+ +r[4])/3;pv+=p*v;vol+=v};const last=c[c.length-1], prev=c[c.length-2],mVal=valid[valid.length-1];const ranges=rows.slice(-20).map(r=>Number(r[2])-Number(r[3])).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);const medRange=ranges.length?ranges[Math.floor(ranges.length/2)]:NaN;const recent=rows.slice(-70),lows=[],highs=[];for(let i=3;i<recent.length-3;i++){const low=+recent[i][3],high=+recent[i][2];if(recent.slice(i-3,i+4).every((r,j)=>j===3||low<=+r[3]))lows.push(low);if(recent.slice(i-3,i+4).every((r,j)=>j===3||high>=+r[2]))highs.push(high)}const support=lows.filter(x=>x<last).sort((a,b)=>b-a)[0];const resistance=highs.filter(x=>x>last).sort((a,b)=>a-b)[0];const rv=rsi(c);return {range:medRange,last,prev,e21,e50,rsi:rv,macd:mVal,signal:sig,vwap:vol?pv/vol:NaN,support,resistance};}
+
+function bestMarket(j){const now=Date.now();const arr=(j.markets||[]).filter(m=>m.ticker?.startsWith('KXETH15M-')&&['open','active'].includes(m.status)&&new Date(m.close_time).getTime()>now-5000).sort((a,b)=>new Date(a.close_time)-new Date(b.close_time));return arr[0]||null}
+
+const chicagoDay = ts => new Intl.DateTimeFormat('en-CA',{
+  timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date(ts));
+
+export function makeV2Engine(state) {
+  let notice = '';
+  const persist = () => {}; // Committed atomically by the cloud object after each tick.
+  const note = (type,msg,ticker='') => {
+    state.events.unshift({time:Date.now(),type,msg,ticker});
+  };
+
+function quote(m,side,bidask) {
+ const key=(side==='UP'?'yes_':'no_')+(bidask==='ask'?'ask_dollars':'bid_dollars');
+ const n=Number(m?.[key]);
+ return m?.[key] != null && n>0 && n<1 ? n : NaN;
+}
+
+function depth(m,side,bidask) {
+ // Kalshi's market schema publishes YES-side sizes. NO ask = YES bid; NO bid = YES ask.
+ const key=side==='UP'?(bidask==='ask'?'yes_ask_size_fp':'yes_bid_size_fp'):(bidask==='ask'?'yes_bid_size_fp':'yes_ask_size_fp');
+ const v=m?.[key];const n=v==null?NaN:Number(v);return Number.isFinite(n)&&n>=0?n:NaN;
+}
+
+function cleanArray(a) { return a.filter(Number.isFinite); }
+
+function fastScan(rows) {
+ const c=rows.map(x=>Number(x[4])).filter(Number.isFinite);
+ if(c.length<50) return null;
+ const e8=emaSeries(c,8),e21=emaSeries(c,21),e6=emaSeries(c,6),e13=emaSeries(c,13);
+ const macd=c.map((_,i)=>Number.isFinite(e6[i])&&Number.isFinite(e13[i])?e6[i]-e13[i]:NaN);
+ const signal=emaSeries(cleanArray(macd),5);
+ const last=c.length-1;
+ const rNow=rsi(c,9),rPrev=rsi(c.slice(0,-3),9);
+ const mNow=macd[last],mPrev=macd[last-2],sNow=signal[signal.length-1],sPrev=signal[signal.length-3];
+ if(![rNow,rPrev,mNow,mPrev,sNow,sPrev,e8[last],e8[last-2],e21[last]].every(Number.isFinite))return null;
+ const returns=c.slice(-31).map((x,i,a)=>i>0?x-a[i-1]:0).slice(1);
+ const avg=returns.reduce((a,b)=>a+b,0)/returns.length;
+ const sd=Math.sqrt(returns.reduce((a,b)=>a+(b-avg)**2,0)/returns.length);
+ return {last:c[last],prev:c[last-2],e8:e8[last],e8prev:e8[last-2],e21:e21[last],rNow,rPrev,mNow,mPrev,sNow,sPrev,
+   three:c[last]-c[last-3],sd};
+}
+
+function judge(side,m1,m5,market,remaining) {
+ const d=side==='UP'?1:-1;
+ const yes = test => d===1?test:!test;
+ let checks=[];
+ checks.push({name:'1m price vs EMA8',ok:yes(m1.last>m1.e8)});
+ checks.push({name:'1m EMA8 vs EMA21',ok:yes(m1.e8>m1.e21)});
+ checks.push({name:'1m RSI9 direction',ok:d*(m1.rNow-m1.rPrev)>=2});
+ checks.push({name:'1m RSI9 side of 50',ok:yes(m1.rNow>50)});
+ checks.push({name:'1m MACD vs signal',ok:yes(m1.mNow>m1.sNow)});
+ checks.push({name:'1m 3-candle move',ok:d*m1.three>0});
+ checks.push({name:'1m MACD acceleration',ok:d*((m1.mNow-m1.sNow)-(m1.mPrev-m1.sPrev))>0});
+ // Reversal entry requires a turn, not just a pre-existing trend.
+ const cross=d===1?
+   (m1.last>m1.e8 && m1.prev<=m1.e8prev)||(m1.mNow>m1.sNow&&m1.mPrev<=m1.sPrev)||(m1.rNow>50&&m1.rPrev<=50):
+   (m1.last<m1.e8 && m1.prev>=m1.e8prev)||(m1.mNow<m1.sNow&&m1.mPrev>=m1.sPrev)||(m1.rNow<50&&m1.rPrev>=50);
+ const turn=Boolean(cross || (d*(m1.rNow-m1.rPrev)>=6 && d*m1.three>0 && d*(m1.mNow-m1.sNow)>0));
+ const passed=checks.filter(c=>c.ok).length;
+ // Spot is NOT the official CF Benchmarks ETH index. This checks plausibility only.
+ const target=Number(market.floor_strike);
+ const plausible=Number.isFinite(target)&&m1.sd>0 &&
+   Math.abs(m1.last-target)<=Math.max(3,2.75*m1.sd*Math.sqrt(Math.max(1,remaining)));
+ const alignment=m5 && (side==='UP'?m5.rsi>30:m5.rsi<70);
+ return {side,passed,checks,turn,plausible,alignment,
+   detail:checks.filter(c=>c.ok).map(x=>x.name).join(', ')};
+}
+
+function priceBucketOf(p){return p<.35?'Under 35¢':p<.70?'35–69¢':'70¢ and up'}
+
+function recentLearning(priceBucket) {
+ const a=state.trades.filter(x=>x.confirmed&&x.bucket===priceBucket).slice(0,16);
+ const n=a.length,net=a.reduce((sum,x)=>sum+x.pnl,0);
+ return {n,net,extra:(n>=8&&net<0)?1:0};
+}
+
+function chooseCandidate(m,one,m5,remaining){
+ const target=Number(m.floor_strike);
+ if(!Number.isFinite(target)||!one||!m5)return null;
+ const ranked=[];
+ for(const side of ['UP','DOWN']){
+   const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
+   const askSize=depth(m,side,'ask'),bidSize=depth(m,side,'bid');
+   if(!Number.isFinite(price)||!Number.isFinite(bid)||!Number.isFinite(askSize)||!Number.isFinite(bidSize))continue;
+   const spread=price-bid;
+   // No fixed contract-price floor or ceiling; the real filter is quote quality, fees and setup.
+   if(!(price>0&&price<1&&bid>=0&&bid<=price&&spread<=Math.min(.065,Math.max(.035,price*.10))))continue;
+   const signal=judge(side,one,m5,m,remaining);
+   const d=side==='UP'?1:-1;
+   const slowTrend=d===1?(m5.e21>m5.e50&&m5.macd>m5.signal&&m5.rsi>=52&&m5.rsi<=78)
+                       :(m5.e21<m5.e50&&m5.macd<m5.signal&&m5.rsi<=48&&m5.rsi>=22);
+   const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
+   const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
+   const learn=recentLearning(priceBucketOf(price));
+   const reversal=signal.turn&&signal.plausible&&signal.alignment&&signal.passed>=4+learn.extra;
+   const momentum=slowTrend&&directionOk&&reachDist&&signal.passed>=5+learn.extra;
+   if(!reversal&&!momentum)continue;
+   const strategy=reversal?'REVERSAL':'MOMENTUM';
+   // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
+   const grossWinningUpside=1-price-fee(price,1);
+   if(!(grossWinningUpside>0))continue;
+   const edgeQuality=(signal.passed*10)+(strategy==='REVERSAL'?3:0)-spread*130
+       +(d*(one.last-target)>=0?3:0)+Math.min(10,grossWinningUpside*10);
+   ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,breakEven:price+fee(price,1)});
+ }
+ ranked.sort((a,b)=>b.score-a.score);
+ return ranked[0]||null;
+}
+
+function decisionComplete(window,reason='No qualifying setup') {
+ if (!window || window.entered || window.finished || !window.seenArmed) return;
+ window.finished=true;
+ state.decisions.unshift({ticker:window.ticker,time:Date.now(),status:'PASS',reason:window.reason||reason});
+ // Keep every pass record for learning and audit.
+ note('PASS',window.reason||reason,window.ticker);
+ persist(); // Save PASS immediately, even if the market feed fails next.
+}
+
+function enter(m,side,signal,now,price,strategy='REVERSAL') {
+ if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
+ const budget=Math.min(state.cash*state.risk/100,state.initial*0.02);
+ let qty=Math.floor(budget/price);
+ while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
+ if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
+ const entryFee=fee(price,qty),cost=Number((qty*price+entryFee).toFixed(2));
+ if(cost>state.cash)return false;
+ state.cash=Number((state.cash-cost).toFixed(2));
+ const bucket=priceBucketOf(price);
+ const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
+   target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
+   checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
+   status:'OPEN',bestBid:NaN,highestProfit:0};
+ state.open=position;
+ state.blocked.push(m.ticker);
+ // Retain one-entry-per-contract history for the whole paper journal.
+ if(state.window?.ticker===m.ticker)state.window.entered=true;
+ note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
+ notice='SIMULATED BUY ('+strategy+'): '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
+ persist();return true;
+}
+
+function closeEarly(pos,bid,why,m) {
+ const capacity=depth(m,pos.side,'bid');
+ if(!Number.isFinite(capacity)||capacity<pos.qty || !Number.isFinite(bid))return false;
+ const sellFee=fee(bid,pos.qty);
+ const received=Number((pos.qty*bid-sellFee).toFixed(2));
+ if(received<0)return false;
+ const pnl=Number((received-pos.cost).toFixed(2));
+ state.cash=Number((state.cash+received).toFixed(2));
+ state.realized=Number((state.realized+pnl).toFixed(2));
+ const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt:Date.now(),
+   confirmed:true,exitType:'EARLY SALE',reason:why};
+ state.trades.unshift(tr);
+ state.open=null;
+ note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
+ notice='PAPER SELL '+pos.side+' '+money(pnl)+' ('+why+')';
+ persist();return true;
+}
+
+function toPending(pos) {
+ state.pending.unshift({...pos,status:'PENDING'});
+ // Retain pending settlements until resolved.
+ state.open=null;
+ note('PENDING','Contract closed; official outcome not verified. No profit/loss assumed.',pos.ticker);
+ notice='Pending official result for '+pos.ticker+'. Confirm UP or DOWN after settlement.';
+ persist();
+}
+
+  function step(m,one,m5,fresh=true) {
+    const now=Date.now();
+    if(state.window && ((m && state.window.ticker!==m.ticker) || now>state.window.end)){
+      decisionComplete(state.window); state.window=null;
+    }
+    if(state.open && now>=new Date(state.open.closeTime).getTime()) toPending(state.open);
+    if(!m || !m5 || !fresh){
+      return {notice:'Waiting for fresh Kalshi and Kraken data; no simulated entry.'};
+    }
+    if((state.armed||state.open) && (!state.window||state.window.ticker!==m.ticker))
+      state.window={ticker:m.ticker,end:new Date(m.close_time).getTime(),entered:state.blocked.includes(m.ticker),reason:'No qualifying paper trade setup',seenArmed:false};
+    if(state.armed&&state.window)state.window.seenArmed=true;
+    const remaining=(new Date(m.close_time).getTime()-now)/60000;
+    if(state.open&&m.ticker===state.open.ticker){
+      const pos=state.open,bid=quote(m,pos.side,'bid'),bidDepth=depth(m,pos.side,'bid');
+      pos.bestBid=bid;
+      const proceeds=Number.isFinite(bid)&&Number.isFinite(bidDepth)&&bidDepth>=pos.qty?pos.qty*bid-fee(bid,pos.qty):NaN;
+      pos.markPnl=Number.isFinite(proceeds)?Number((proceeds-pos.cost).toFixed(2)):NaN;
+      if(Number.isFinite(proceeds)){
+        const gain=(bid-pos.entry)/pos.entry;
+        let why=null;
+        if(gain>=0.55&&pos.markPnl>0)why='Profit target (+55% contract-price movement)';
+        else if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
+        else if(remaining<1.25)why='Market close approaching';
+        else if(one&&remaining<7){
+          const q=judge(pos.side,one,m5,m,remaining);
+          if(q.passed<=1)why='Reversal invalidated by current momentum';
+        }
+        if(why)closeEarly(pos,bid,why,m);
+      }else if(remaining<=0)toPending(pos);
+    }
+    const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
+    if(state.armed&&!state.open&&freshRemaining>=2.5&&freshRemaining<=12.5&&one){
+      const today=chicagoDay(Date.now());
+      const daily=state.trades.filter(t=>chicagoDay(t.exitAt)===today).reduce((a,t)=>a+t.pnl,0);
+      if(daily<=-state.initial*0.04)notice='Daily 4% paper loss cap reached. No new entries.';
+      else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
+      else {
+        const c=chooseCandidate(m,one,m5,freshRemaining);
+        if(c){
+          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
+          else {
+            notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
+            state.window.reason=notice;
+          }
+        }else{
+          notice='PASS / WATCH: no contract at any price meets reversal/trend, target-reachability, liquidity and quote-quality requirements.';
+          state.window.reason=notice;
+        }
+      }
+    }else if(!state.armed&&!state.open)notice='Paper bot paused. No new purchases.';
+    return {notice,remaining,marketTicker:m.ticker};
+  }
+  return {step};
+}
