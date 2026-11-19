@@ -2,7 +2,7 @@
  * Independent of the existing market proxy and GitHub Pages browser trader.
  */
 import { DurableObject } from 'cloudflare:workers';
-import {freshPaperState,makeV2Engine} from './v2.js';
+import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 
 const INTERVAL_MS=30000;
 const API='https://api.kraken.com/0/public/';
@@ -73,6 +73,7 @@ export class ScoutEngine extends DurableObject {
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
+    const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
     try{
       const [kj,tj,fivej,onej]=await Promise.all([
@@ -91,15 +92,13 @@ export class ScoutEngine extends DurableObject {
       if(!prices?.length||!short?.length||!rows(tj))
         throw Error('Kraken candles or ticker missing');
       // Calculate from completed candles only.
-      const {indicators}=await import('./v2.js');
       m5=indicators(prices);
-      const {fastScan}=await import('./v2.js');
-      one=fastScan(short);
+      one=engine.fastScan(short);
       if(!Number.isFinite(m5?.e50)||!one)throw Error('Kraken indicators incomplete');
       fresh=true;
     }catch(e){error=safeErr(e)}
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    try{report=makeV2Engine(s).step(market,one,m5,fresh)}
+    try{report=engine.step(market,one,m5,fresh)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
     this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
       lastNotice:report.notice||'',lastFeedOkay:fresh});
