@@ -44,12 +44,13 @@ export class ScoutEngine extends DurableObject {
     const s=normalize(this.ctx.storage.kv.get('runtime'));
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
+    this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
     return s;
   }
   save(s,meta={}){
     const sql=this.ctx.storage.sql;
     this.ctx.storage.transactionSync(()=>{
-      for(const t of s.trades) if(t.ticker&&Number.isFinite(t.exitAt))
+      for(const t of s.trades) if(t.ticker&&Number.isFinite(t.exitAt)&&!this.loadedTradeTickers?.has(t.ticker))
         sql.exec('INSERT OR IGNORE INTO trades(ticker,exit_at,data) VALUES(?,?,?)',
           t.ticker,t.exitAt,JSON.stringify(t));
       for(const d of s.decisions) if(d.ticker)
@@ -76,26 +77,30 @@ export class ScoutEngine extends DurableObject {
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
     try{
-      const [kj,tj,fivej,onej]=await Promise.all([
+      const [kj,tj,fivej]=await Promise.all([
         remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
-        remote(API+'OHLC?pair=ETHUSD&interval=5'),
-        remote(API+'OHLC?pair=ETHUSD&interval=1')
+        remote(API+'OHLC?pair=ETHUSD&interval=5')
       ]);
-      if(tj.error?.length||fivej.error?.length||onej.error?.length)
+      if(tj.error?.length||fivej.error?.length)
         throw Error('Kraken API rejected a request');
       const retrieved=Date.parse(kj.worker_retrieved_at);
       if(!Number.isFinite(retrieved)||Date.now()-retrieved>90000||retrieved>Date.now()+5000)
         throw Error('Kalshi quote is stale or missing its retrieval timestamp');
       market=getMarket(kj);
       if(!market)throw Error('No open ETH 15-minute contract in market feed');
-      const prices=rows(fivej)?.slice(0,-1),short=rows(onej)?.slice(0,-1);
-      if(!prices?.length||!short?.length||!rows(tj))
-        throw Error('Kraken candles or ticker missing');
-      // Calculate from completed candles only.
+      const prices=rows(fivej)?.slice(0,-1);
+      if(!prices?.length||!rows(tj))
+        throw Error('Kraken 5m candles or ticker missing');
+      // Calculate from completed candles only; allow protective exits without 1m data.
       m5=indicators(prices);
-      one=engine.fastScan(short);
-      if(!Number.isFinite(m5?.e50)||!one)throw Error('Kraken indicators incomplete');
+      if(!Number.isFinite(m5?.e50))throw Error('Kraken 5m indicators incomplete');
       fresh=true;
+      try {
+        const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
+        if(onej.error?.length)throw Error('Kraken 1m API error');
+        one=engine.fastScan(rows(onej)?.slice(0,-1)||[]);
+        if(!one)throw Error('Kraken 1m indicators incomplete');
+      } catch(e) { error='1m indicator unavailable: '+safeErr(e) }
     }catch(e){error=safeErr(e)}
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     try{report=engine.step(market,one,m5,fresh)}
