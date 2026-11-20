@@ -4,6 +4,13 @@
 
 Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 
+## 2026-11-19 CT — Reusable deployment script and assistant continuity rules
+
+- **What:** Added a safe cloud/deploy-viewer.ps1 script on development branch v3-dashboard-gateway-20261119, which deploys only the separate read-only V3 viewer and creates a private viewing key locally in Windows PowerShell; added repository-wide [AGENTS.md](../AGENTS.md) to require reuse of the approved design and a log entry on every future change.
+- **Why:** Faster setup, no accidental V2/V3 Worker replacement, no need to rebuild the website design and consistent historical documentation.
+- **Tests:** [Gateway test and dry-run validation](https://github.com/Leoseazon/eth-15-scout/actions/runs/44674702503) passed.
+- **Deployment:** Script committed and tested in development; **Cloudflare viewer still not deployed**. V3 live bot and stored records unchanged.
+
 ## 2026-11-19 CT — Read-only V3 viewer gateway audit
 
 - **What:** Corrected the journal page-number validation; added an authenticated read-only pagination regression test and opened [Gateway PR #3](https://github.com/Leoseazon/eth-15-scout/pull/3).
