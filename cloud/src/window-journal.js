@@ -15,8 +15,8 @@ export function parseOfficialWindow(m,now=Date.now()){
   const result=String(m.result||'').toLowerCase();
   const status=String(m.status||'unknown').toLowerCase();
   const direction=result==='yes'?'UP':result==='no'?'DOWN':null;
-  const confirmed=status==='settled'&&direction!==null&&m.is_provisional!==true;
-  const voided=status==='settled'&&result==='void';
+  const confirmed=status==='finalized'&&direction!==null&&m.is_provisional!==true;
+  const voided=status==='finalized'&&result==='void';
   const settledAt=m.settlement_ts?Date.parse(m.settlement_ts):null;
   return {ticker:m.ticker,closeAt,outcome:confirmed?direction:null,
     reportedDirection:direction,officialResult:result||null,
