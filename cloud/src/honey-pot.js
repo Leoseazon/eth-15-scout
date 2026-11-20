@@ -13,7 +13,7 @@ export const HONEY_POLICY=Object.freeze({
   minAbsoluteStrikeMargin:2.50,
   minVolatilityMultiple:1.25,
   maxAllInStake:.90,
-  stopDropDollars:.10 // ABSOLUTE entry-to-bid decline, not ten percent
+  stopLossFraction:.10 // 10% relative to the actual entry contract price
 });
 export function honeyPotGate({
  side,price,secondsRemaining,spread,askSize,bidSize,
@@ -46,11 +46,13 @@ export function honeyPotGate({
    fastChecks,margin,requiredMargin};
 }
 
-// Stop is based on the actual executable bid, not the current asking price.
-// A 85c entry: 75c is NOT more than 10c down; 74.9c IS.
-// Return false rather than inventing an exit if a usable bid is missing.
+// STOP uses actual executable BID; if the bid declines >=10% relative
+// to the contract's entry ASK, attempt paper exit (subject to bid depth).
+// 85c entry: threshold 76.5c; a quoted 76c bid triggers, 77c does not.
+// 80c entry: threshold 72c. No inferred fill with an unavailable bid.
 export function honeyStopTriggered(entryPrice,executableBid){
   return Number.isFinite(entryPrice)&&Number.isFinite(executableBid)&&
-    entryPrice>=0&&executableBid>=0&&
-    (entryPrice-executableBid)>HONEY_POLICY.stopDropDollars+1e-9;
+    entryPrice>0&&entryPrice<1&&
+    executableBid>=0&&executableBid<=1&&
+    executableBid <= entryPrice*(1-HONEY_POLICY.stopLossFraction)+1e-9;
 }
