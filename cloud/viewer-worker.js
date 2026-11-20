@@ -151,23 +151,45 @@ export default {
    // Market context is independent of the bot tick: errors do not prevent
    // account and paper history from loading.
    let market=null,marketError=null;
-   try{
-    const [q,one,five,ticker]=await Promise.all([
-     jsonGet(env.MARKET_PROXY),
-     jsonGet(KRAKEN+'OHLC?pair=ETHUSD&interval=1'),
-     jsonGet(KRAKEN+'OHLC?pair=ETHUSD&interval=5'),
-     jsonGet(KRAKEN+'Ticker?pair=ETHUSD')
-    ]);
-    if(one.error?.length||five.error?.length||ticker.error?.length)
-     throw new Error('Kraken response rejected');
-    market=marketContext({m1:one,m5:five,ticker,quote:marketFrom(q)});
-   }catch(e){marketError=String(e?.message||e).slice(0,120)}
+   // Preferred: reuse actual candles fetched for the V3 decision engine.
+   // This avoids simultaneous fresh Kraken API calls being necessary for
+   // a responsive chart while the engine itself is already healthy.
+   if(status.marketSnapshot?.asOf &&
+      Date.now()-status.marketSnapshot.asOf<120000 &&
+      status.marketSnapshot.candles?.m5?.length){
+     market={...status.marketSnapshot,
+       source:'V3 engine market snapshot (Kraken spot is not Kalshi settlement)'};
+   }else{
+     try{
+       // Fallback sources are independent: a failed 1m or Kalshi proxy
+       // call must NOT blank out a healthy 5m ETH chart.
+       const [q,one,five,ticker]=await Promise.allSettled([
+         jsonGet(env.MARKET_PROXY),
+         jsonGet(KRAKEN+'OHLC?pair=ETHUSD&interval=1'),
+         jsonGet(KRAKEN+'OHLC?pair=ETHUSD&interval=5'),
+         jsonGet(KRAKEN+'Ticker?pair=ETHUSD')
+       ]);
+       if(five.status!=='fulfilled'||five.value.error?.length)
+         throw new Error('Kraken 5-minute reference feed unavailable');
+       const fallbackOne=one.status==='fulfilled'&&!one.value.error?.length?
+         one.value:{result:{}};
+       const fallbackTicker=ticker.status==='fulfilled'&&!ticker.value.error?.length?
+         ticker.value:{result:{}};
+       const fallbackQuote=q.status==='fulfilled'?marketFrom(q.value):null;
+       market=marketContext({m1:fallbackOne,m5:five.value,
+         ticker:fallbackTicker,quote:fallbackQuote});
+     }catch(e){marketError=String(e?.message||e).slice(0,120)}
+   }
    // Do not leak authentication details, secrets, host configuration, or
    // technical stack traces through the JSON payload.
    return respond({paperOnly:true,readOnly:true,version:'V3',
     receivedAt:Date.now(),status,
     activity:{trades:records.trades||[],decisions:records.decisions||[],
       events:journalData?.events||[],pending:journalData?.pending||[],
+      windows:journalData?.windows||status.recentWindows||[],
+      windowScan:{at:status.lastWindowScanAt||null,
+        verifiedAt:status.lastWindowScanOkayAt||null,
+        error:status.lastWindowScanError||null},
       journalTotals:journalData?.totals||null,journalAnchor:journalData?.anchor||null,
       journalAvailable:!!journalData},
     market,marketError},200,origin);
