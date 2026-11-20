@@ -374,8 +374,18 @@ function toPending(pos) {
     }
     if(state.open && now>=new Date(state.open.closeTime).getTime()) toPending(state.open);
     updateDailyRisk(now);
-    if(!m || !m5 || !fresh){
-      return {notice:'Waiting for fresh Kalshi and Kraken data; no simulated entry.'};
+    // PHASE 1: Kalshi's executable quote is required for exits, but
+    // Kraken indicators must NEVER be required for a protective exit.
+    // A missing Kalshi market fails closed: no assumed bid or paper sale.
+    if(!m){
+      const warning=state.open?
+        'EXIT RISK: no validated fresh Kalshi quote; protective paper exit cannot execute.':
+        'Waiting for fresh Kalshi and Kraken data; no simulated entry.';
+      if(state.open && state.open.exitRiskNotice!==warning){
+        state.open.exitRiskNotice=warning;
+        note('EXIT RISK',warning,state.open.ticker);
+      }
+      return {notice:warning};
     }
     if((state.armed||state.open) && (!state.window||state.window.ticker!==m.ticker))
       state.window={ticker:m.ticker,end:new Date(m.close_time).getTime(),entered:state.blocked.includes(m.ticker),reason:'No qualifying paper trade setup',seenArmed:false};
@@ -403,7 +413,7 @@ function toPending(pos) {
         else if(targetAction==='HOLD_PENDING'){
           notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
           pos.reversalConfirmations=0;
-        }else if(one&&remaining<7&&context?.three&&context?.five&&
+        }else if(fresh&&m5&&one&&remaining<7&&context?.three&&context?.five&&
           Number.isFinite(context?.oneClosedAt)){
           const q=judge(pos.side,one,m5,m,remaining);
           const structural=structuralExit(pos.side,context.three,context.five);
@@ -421,12 +431,40 @@ function toPending(pos) {
             pos.lastReversalCandleTs=null;
           }
         }
+        // A successful bid/depth check clears any previous warning.
+        if(pos.exitRiskNotice){
+          note('EXIT FEED RECOVERED','Executable Kalshi bid/depth available again.',pos.ticker);
+          pos.exitRiskNotice=null;
+        }
         if(why)closeEarly(pos,bid,why,m);
       }else if(remaining<=0)toPending(pos);
+      else {
+        const warning='EXIT RISK: usable Kalshi bid/depth unavailable for '+pos.side+
+          ' position; no paper fill assumed.';
+        if(pos.exitRiskNotice!==warning){
+          pos.exitRiskNotice=warning;
+          note('EXIT RISK',warning,pos.ticker);
+        }
+      }
+    }else if(state.open){
+      const warning='EXIT RISK: fresh Kalshi quote belongs to a different contract; no paper exit assumed.';
+      if(state.open.exitRiskNotice!==warning){
+        state.open.exitRiskNotice=warning;
+        note('EXIT RISK',warning,state.open.ticker);
+      }
     }
     // Refresh risk AFTER marking an open position or recording its exit.
     // If the marked drawdown hits the 20% hard limit, latch that halt for today.
     const dailyRisk=updateDailyRisk(Date.now());
+    // Technical signals are optional for managing an existing position,
+    // but absolutely mandatory for NEW entries under unchanged V3 rules.
+    if(!m5||!fresh){
+      return {notice:notice.startsWith('PAPER SELL')?notice:
+        state.open?
+          'Open position: Kalshi-only protective exits checked; Kraken trend data unavailable. New entries suspended.':
+          'Waiting for fresh Kalshi and Kraken data; no simulated entry.',
+        remaining,marketTicker:m.ticker};
+    }
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
     if(state.armed&&!state.open&&freshRemaining>1&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
       if(!dailyRisk.canEnter)notice='Daily 20% paper risk hard stop reached. No new positions today.';
