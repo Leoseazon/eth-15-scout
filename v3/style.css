@@ -362,3 +362,18 @@ body.unauthenticated #live-action{display:none}
 
 /* Private account moved above metrics; it still must remain behind login. */
 body.unauthenticated #performance{display:none}
+
+/* Pre-release reference is NOT the actual rollout; first engine tick is authoritative. */
+.observation-bar{border-top:1px solid var(--stroke-soft);background:#142333;display:grid;
+ grid-template-columns:1fr 1fr 1fr;gap:9px;padding:12px 17px}
+.observation-bar>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.observation-bar .mini-label{font-size:9px}
+.observation-bar strong{color:#d8e7e8;font-size:11px;line-height:1.4;overflow-wrap:anywhere}
+@media(max-width:770px){
+ .observation-bar{grid-template-columns:1fr 1fr;padding:12px}
+ .observation-bar>div:first-child{grid-column:span 2}
+}
+@media(max-width:480px){
+ .observation-bar{grid-template-columns:1fr}
+ .observation-bar>div:first-child{grid-column:auto}
+}
