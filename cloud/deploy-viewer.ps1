@@ -17,8 +17,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Viewer deploy failed. No secret created.' }
 if (-not $SkipKeySetup) {
   Write-Host '== Set private V3 viewer key (copy never shown) ==' -ForegroundColor Cyan
   $bytes = New-Object byte[] 32
-  [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
-  $key = [Convert]::ToHexString($bytes)
+  $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+  $key = [BitConverter]::ToString($bytes).Replace('-','')
   try {
     # Wrangler accepts a piped secret. The value is never printed to screen.
     $key | npx.cmd wrangler secret put VIEW_TOKEN --config wrangler.viewer.toml
