@@ -7,6 +7,7 @@ import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './st
 import {paperEntryArmed,settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 import {TIMESTOP_TAG,LATE_VALUE_TAG,paperResults,reconcilePending} from './paper-ledger.js';
+import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
@@ -177,47 +178,58 @@ export class ScoutEngine extends DurableObject {
     const today=chicagoDay(now);
     const context={strict:true,three:null,five:null,oneClosedAt:null,
       regime:s.dailyRegime?.day===today?s.dailyRegime:null};
-    try{
-      // Fetch 1m signals alongside 5m/Kalshi/ticker; no serial 1m round trip.
-      const [kj,tj,fivej,onej]=await Promise.all([
-        remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
-        remote(API+'OHLC?pair=ETHUSD&interval=5'),
-        remote(API+'OHLC?pair=ETHUSD&interval=1').catch(e=>({error:[safeErr(e)]}))
-      ]);
-      if(tj.error?.length||fivej.error?.length)
-        throw Error('Kraken API rejected a request');
-      const retrieved=Date.parse(kj.worker_retrieved_at);
-      s.lastQuoteRetrievedAt=Number.isFinite(retrieved)?retrieved:null;
-      if(!Number.isFinite(retrieved)||Date.now()-retrieved>90000||retrieved>Date.now()+5000)
-        throw Error('Kalshi quote is stale or missing its retrieval timestamp');
-      market=getMarket(kj);
-      if(!market)throw Error('No open ETH 15-minute contract in market feed');
-      const prices=rows(fivej)?.slice(0,-1);
-      fiveCandles=prices||[];
-      const validSpot=Object.values(tj.result||{}).find(t=>Array.isArray(t?.c));
-      tickerSpot=Number(validSpot?.c?.[0]);
-      
-if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
-
-        throw Error('Kraken 5m candles or ticker missing');
-      // Never evaluate new entries with missing/stale completed 5m candles.
-      if(!completedFresh(prices,5))throw Error('Kraken 5m completed candles stale');
-      m5=indicators(prices);
-      context.five=analyzeStructure(prices);
-      if(!Number.isFinite(m5?.e50)||!context.five)
-        throw Error('Kraken 5m indicators/structure incomplete');
-      fresh=true;
-      try {
-        if(onej.error?.length)throw Error('Kraken 1m API error: '+String(onej.error[0]).slice(0,60));
+    // PHASE 1: network results are independent: Kraken failure must not
+    // prevent paper exits using a validated, executable Kalshi quote.
+    const batch=await collectMarketFeeds(remote,mUrl,API,now);
+    const feedChecks=batch.checks,feedIssues=[...batch.failures];
+    const fail=(source,reason)=>{
+      const msg=safeErr(reason);
+      feedChecks[source]={...feedChecks[source],ok:false,error:msg};
+      if(!feedIssues.includes(source+': '+msg))feedIssues.push(source+': '+msg);
+    };
+    const kj=batch.payloads.kalshi;
+    if(kj){
+      const validity=validateKalshiSnapshot(kj,Date.now(),90000);
+      s.lastQuoteRetrievedAt=validity.retrievedAt;
+      feedChecks.kalshi={...feedChecks.kalshi,...validity};
+      if(validity.ok){
+        market=getMarket(kj);
+        if(!market)fail('kalshi','No currently open ETH 15-minute contract in quote');
+      }else fail('kalshi',validity.reason);
+    }else s.lastQuoteRetrievedAt=null;
+    const tj=batch.payloads.krakenTicker,fivej=batch.payloads.kraken5m,
+      onej=batch.payloads.kraken1m;
+    if(tj&&fivej){
+      try{
+        const prices=rows(fivej)?.slice(0,-1);
+        fiveCandles=prices||[];
+        const validSpot=Object.values(tj.result||{}).find(t=>Array.isArray(t?.c));
+        tickerSpot=Number(validSpot?.c?.[0]);
+        if(!prices?.length){fail('kraken5m','5m candles missing');throw Error('5m candles missing')}
+        if(!Number.isFinite(tickerSpot)){fail('krakenTicker','ETH ticker invalid');throw Error('ETH ticker invalid')}
+        if(!completedFresh(prices,5)){fail('kraken5m','completed 5m candles stale');throw Error('5m candles stale')}
+        m5=indicators(prices);context.five=analyzeStructure(prices);
+        if(!Number.isFinite(m5?.e50)||!context.five){
+          fail('kraken5m','5m indicators/structure incomplete');throw Error('5m indicators/structure incomplete')
+        }
+        fresh=true;
+      }catch(e){feedIssues.push('entryIndicators: '+safeErr(e))}
+    }
+    if(onej){
+      try{
         const oneRows=rows(onej)?.slice(0,-1)||[];
         oneCandles=oneRows;
-        if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
+        if(!completedFresh(oneRows,1))throw Error('1m candles stale');
         one=engine.fastScan(oneRows);
         context.oneClosedAt=Number(oneRows.at(-1)?.[0]);
         context.three=analyzeStructure(aggregate3m(oneRows));
-        if(!one||!context.three)throw Error('Kraken 1m/3m indicators incomplete');
-      } catch(e) { error='1m indicator unavailable: '+safeErr(e) }
-    }catch(e){error=safeErr(e)}
+        if(!one||!context.three)throw Error('1m/3m indicators incomplete');
+      }catch(e){
+        fail('kraken1m',e);one=null;context.three=null;context.oneClosedAt=null;
+      }
+    }
+    s.lastFeedChecks=feedChecks;
+    error=feedIssues.length?feedIssues.slice(0,3).join('; ').slice(0,200):null;
     // ONE light context refresh per Houston day (retry at most each 30m
     // on failure). This is crypto price/volume context, NOT verified macro
     // event news, ETF flows or a calibrated probability forecast.
@@ -266,11 +278,11 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     }
     // Persist actual bot decisions BEFORE any historical market-result scan.
     // The read-only viewer sees this tick without waiting for archival IO.
-    s.lastMarketDataAt=fresh?now:null;
+    s.lastMarketDataAt=fresh&&one&&context.three&&market?now:null;
     s.lastDecisionProcessingMs=Date.now()-now;
     const tickMeta={lastTick:Date.now(),lastError:error,
       lastMarket:market?.ticker||null,lastNotice:report.notice||'',
-      lastFeedOkay:fresh};
+      lastFeedOkay:!!(fresh&&one&&context.three&&market)};
     this.save(s,tickMeta);
     // Archiving is noncritical. It does not change the strategy or P&L.
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
@@ -321,7 +333,8 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
         lastDecisionProcessingMs:s.lastDecisionProcessingMs||null,
         lastQuoteRetrievedAt:s.lastQuoteRetrievedAt||null,
-        lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
+        lastFeedOkay:!!s.lastFeedOkay,feedChecks:s.lastFeedChecks||null,
+        policyVersion:'V3-PAPER',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10),
