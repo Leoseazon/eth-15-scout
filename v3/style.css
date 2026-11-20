@@ -382,3 +382,6 @@ body.unauthenticated #performance{display:none}
 .live-heading-right{flex-wrap:wrap;justify-content:flex-end}
 #live-proxy-age{white-space:nowrap;font-size:10px}
 @media(max-width:620px){.live-heading-right{flex-wrap:nowrap}}
+
+/* Exchange outcome data remains active for PAPER settlement, not a public dashboard panel. */
+.outcome-section[hidden]{display:none!important}
