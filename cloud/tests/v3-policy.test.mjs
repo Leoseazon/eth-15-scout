@@ -69,7 +69,9 @@ test('40 percent downside stop only activates strictly INSIDE final six minutes'
     // This tests stop timing without a guessed exchange settlement.
     const open=s.open;
     const q=mk(minutes);
-    q.yes_bid_dollars=String(Number((open.entry*0.5).toFixed(3)));
+    const exitBid=String(Number((open.entry*0.5).toFixed(3)));
+    if(open.side==='UP')q.yes_bid_dollars=exitBid;
+    else q.no_bid_dollars=exitBid;
     // Prevent the structural exit from masking the stop rule in the fixture.
     engine.step(q,strong,slow,true,structureFixture());
     if(minutes<6){
@@ -83,6 +85,24 @@ test('40 percent downside stop only activates strictly INSIDE final six minutes'
   }
 });
 
+test('BUY and early SELL permanently capture seconds remaining in paper events and trade data',()=>{
+  const s=freshPaperState();s.armed=true;
+  const engine=makeV2Engine(s),m=mk(10);
+  engine.step(m,strong,slow,true,structureFixture());
+  assert.ok(s.open);
+  const entry=s.events.find(e=>e.type==='PAPER BUY');
+  assert.ok(Number.isInteger(entry.remainingSeconds)&&entry.remainingSeconds>0);
+  assert.equal(s.open.remainingSecondsAtEntry,entry.remainingSeconds);
+  assert.match(entry.msg,/remaining/);
+  if(s.open.side==='UP')m.yes_bid_dollars='0.96';
+  else m.no_bid_dollars='0.96';
+  engine.step(m,strong,slow,true,structureFixture());
+  const sale=s.events.find(e=>e.type==='PAPER SELL');
+  assert.ok(sale);
+  assert.ok(Number.isInteger(sale.remainingSeconds)&&sale.remainingSeconds>0);
+  assert.equal(s.trades[0].remainingSecondsAtExit,sale.remainingSeconds);
+  assert.match(sale.msg,/remaining/);
+});
 test('normal 96¢ bid triggers a paper exit if enough time remains',()=>{
   assert.equal(profitExitGate(.959,5),'NONE');
   assert.equal(profitExitGate(.96,5),'SELL');
