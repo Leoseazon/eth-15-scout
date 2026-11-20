@@ -194,6 +194,40 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10)});
     }
+    if(path==='/v1/journal'&&req.method==='GET'){
+      // Append-only SQLite is the canonical research record; no 100-row
+      // history ceiling and no browser localStorage dependency.
+      // Anchor fixes the displayed historical snapshot during pagination.
+      const u=new URL(req.url),rawLimit=Number(u.searchParams.get('limit')||100),
+        rawOffset=Number(u.searchParams.get('offset')||0),
+        rawAnchor=Number(u.searchParams.get('anchor')||Date.now());
+      if(![rawLimit,rawOffset,rawAnchor].every(Number.isSafeInteger)||
+         rawLimit<1||rawLimit>100||rawOffset<0||rawOffset>1000000||
+         rawAnchor<1000000000000||rawAnchor>Date.now()+60000)
+        return json({error:'Invalid journal pagination'},400);
+      const sql=this.ctx.storage.sql;
+      const events=sql.exec(
+        'SELECT key,happened_at,data FROM events WHERE happened_at<=? ORDER BY happened_at DESC,key DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>({id:r.key,at:r.happened_at,...JSON.parse(r.data)}));
+      const trades=sql.exec(
+        'SELECT ticker,exit_at,data FROM trades WHERE exit_at<=? ORDER BY exit_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
+      const decisions=sql.exec(
+        'SELECT ticker,decided_at,data FROM decisions WHERE decided_at<=? ORDER BY decided_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
+      const counts=sql.exec(`SELECT
+        (SELECT count(*) FROM events WHERE happened_at<=?) events,
+        (SELECT count(*) FROM trades WHERE exit_at<=?) trades,
+        (SELECT count(*) FROM decisions WHERE decided_at<=?) decisions`,
+        rawAnchor,rawAnchor,rawAnchor).toArray()[0];
+      return json({paperOnly:true,readOnly:true,anchor:rawAnchor,offset:rawOffset,limit:rawLimit,
+        totals:counts,events,trades,decisions,
+        // Pending settlement is UNCONFIRMED, never counted as a win.
+        pending:this.record().pending});
+    }
     if(path==='/v1/history'&&req.method==='GET'){
       const sql=this.ctx.storage.sql;
       const trades=sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 100')
