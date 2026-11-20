@@ -3,6 +3,7 @@
  * The surrounding cloud scheduler and storage are new. See README.
  */
 import {PAPER_POLICY, entryBudget, entryGate, profitExitGate} from './v3-policy.js';
+import {structuralEntry, structuralExit} from './structure.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -97,9 +98,12 @@ function recentLearning(priceBucket) {
  return {n,net,extra:(n>=8&&net<0)?1:0};
 }
 
-function chooseCandidate(m,one,m5,remaining,rejections=[]){
+function chooseCandidate(m,one,m5,remaining,rejections=[],context=null){
  const target=Number(m.floor_strike);
  if(!Number.isFinite(target)||!one||!m5)return null;
+ if(context?.strict&&(!context.three||!context.five||!Number.isFinite(context.oneClosedAt))){
+   rejections.push('Incomplete fresh 1m/3m/5m structure');return null;
+ }
  const ranked=[];
  for(const side of ['UP','DOWN']){
    const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
@@ -115,8 +119,21 @@ function chooseCandidate(m,one,m5,remaining,rejections=[]){
    const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
    const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
    const learn=recentLearning(priceBucketOf(price));
-   const reversal=signal.turn&&signal.plausible&&signal.alignment&&signal.passed>=4+learn.extra;
-   const momentum=slowTrend&&directionOk&&reachDist&&signal.passed>=5+learn.extra;
+   const structure=context?.three&&context?.five?
+     structuralEntry(side,context.three,context.five):null;
+   // Hierarchy: 3m/5m structure is a veto, NOT led by 1m, bands or A/D.
+   if(structure&&!structure.ok){rejections.push(side+': '+structure.reason);continue;}
+   const regime=context?.regime;
+   const macroAgainst=regime?.status==='ready'&&
+     ((side==='UP'&&regime.regime==='RISK_OFF')||
+      (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
+   // Daily crypto regime and Bollinger/A/D can add at most ONE 1m check.
+   // They never overrule strong primary structure or become trade signals.
+   const addedConfirmation=structure?.secondaryCaution||macroAgainst?1:0;
+   const reversal=signal.turn&&signal.plausible&&signal.alignment&&
+     signal.passed>=4+learn.extra+addedConfirmation;
+   const momentum=slowTrend&&directionOk&&reachDist&&
+     signal.passed>=5+learn.extra+addedConfirmation;
    if(!reversal&&!momentum){rejections.push(side+': insufficient reversal/momentum confirmations');continue;}
    const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
      plausible:signal.plausible,alignment:signal.alignment,spread});
@@ -192,7 +209,7 @@ function toPending(pos) {
  persist();
 }
 
-  function step(m,one,m5,fresh=true) {
+  function step(m,one,m5,fresh=true,context=null) {
     const now=Date.now();
     if(state.window && ((m && state.window.ticker!==m.ticker) || now>state.window.end)){
       decisionComplete(state.window); state.window=null;
@@ -214,13 +231,30 @@ function toPending(pos) {
         const gain=(bid-pos.entry)/pos.entry;
         let why=null;
         const targetAction=profitExitGate(bid,remaining);
-        if(targetAction==='SELL')why='96¢ bid take-profit';
-        else if(targetAction==='HOLD_PENDING')
+        // Order of importance: hard stop > 96¢ target > confirmed structure
+        // deterioration. Secondary bands/A-D and macro never force exits.
+        if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
+        else if(targetAction==='SELL')why='96¢ bid take-profit';
+        else if(targetAction==='HOLD_PENDING'){
           notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
-        else if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
-        else if(one&&remaining<7){
+          pos.reversalConfirmations=0;
+        }else if(one&&remaining<7&&context?.three&&context?.five&&
+          Number.isFinite(context?.oneClosedAt)){
           const q=judge(pos.side,one,m5,m,remaining);
-          if(q.passed<=1)why='Reversal invalidated by current momentum';
+          const structural=structuralExit(pos.side,context.three,context.five);
+          if(q.passed<=1&&structural.confirm){
+            // Two distinct CLOSED one-minute candles; repeated 30-second
+            // observations of one candle cannot trigger a panic exit.
+            if(pos.lastReversalCandleTs!==context.oneClosedAt){
+              pos.reversalConfirmations=(pos.reversalConfirmations||0)+1;
+              pos.lastReversalCandleTs=context.oneClosedAt;
+            }
+            if(pos.reversalConfirmations>=2)
+              why='Confirmed two-candle reversal and 3m/5m structure failure';
+          }else{
+            pos.reversalConfirmations=0;
+            pos.lastReversalCandleTs=null;
+          }
         }
         if(why)closeEarly(pos,bid,why,m);
       }else if(remaining<=0)toPending(pos);
@@ -233,7 +267,7 @@ function toPending(pos) {
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
         const rejected=[];
-        const c=chooseCandidate(m,one,m5,freshRemaining,rejected);
+        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context);
         if(c){
           if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
           else {
