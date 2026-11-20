@@ -101,7 +101,8 @@ function recentLearning(priceBucket) {
 function chooseCandidate(m,one,m5,remaining,rejections=[],context=null){
  const target=Number(m.floor_strike);
  if(!Number.isFinite(target)||!one||!m5)return null;
- if(context?.strict&&(!context.three||!context.five||!Number.isFinite(context.oneClosedAt))){
+ // FAIL CLOSED in V3: direct calls cannot skip higher-priority structure.
+ if(!context?.three||!context?.five||!Number.isFinite(context?.oneClosedAt)){
    rejections.push('Incomplete fresh 1m/3m/5m structure');return null;
  }
  const ranked=[];
