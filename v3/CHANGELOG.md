@@ -4,6 +4,13 @@
 
 Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 
+## 2026-11-19 CT — Read-only V3 viewer gateway audit
+
+- **What:** Corrected the journal page-number validation; added an authenticated read-only pagination regression test and opened [Gateway PR #3](https://github.com/Leoseazon/eth-15-scout/pull/3).
+- **Why:** Ensure the future dashboard can retrieve a consistent full research journal while blocking malformed requests, unauthorized access and write/control endpoints.
+- **Tests:** GitHub Actions [viewer and cloud validation run](https://github.com/Leoseazon/eth-15-scout/actions/runs/44674462628) passed, including V3 bot tests, gateway tests and separate Cloudflare dry-run builds.
+- **Deployment:** **Code reviewed/tested only.** Viewer Worker and new journal endpoint are NOT yet deployed. Existing V3 paper bot/data unchanged.
+
 ## 2026-11-19 CT — Canonical design and lasting update history
 
 - **What:** Created the permanent V3 design specification and this persistent change log in the GitHub repository.
