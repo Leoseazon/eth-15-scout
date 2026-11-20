@@ -43,7 +43,7 @@
 <div id="top"></div>
 <main id="main" class="wrap">
  <div class="intro">
-   <div><p class="eyebrow">LIVE PAPER RESEARCH CONSOLE</p><h1>Market overview <span class="muted-normal">/ ETH 15m</span></h1><p class="intro-sub">Monitor simulated trades, actual bot decisions and reference indicators. You decide independently whether to follow a signal on Kalshi.</p></div>
+   <div><p class="eyebrow">ETH-15 SCOUT · PAPER-ONLY RESEARCH</p><h1>Find the edge <span class="muted-normal">/ before it is priced in</span></h1><p class="intro-sub"><strong>Bot philosophy:</strong> Identify promising ETH 15-minute setups early, before Kalshi contracts fully reprice. Balance emerging evidence, affordable entry prices and minutes remaining to pursue better potential returns while controlling reversal, liquidity and settlement risk.</p></div>
    <div class="intro-right"><span id="mode-badge" class="pill pill-neutral"><span class="dot"></span>Disconnected</span><span id="updated-label" class="micro">No data loaded</span></div>
  </div>
  <section id="connect-panel" class="connect-panel" aria-label="Private V3 dashboard sign-in">
@@ -100,7 +100,7 @@
     <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
     <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
     <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
-    <div class="account-row"><span>Stake awaiting settlement</span><strong id="pending-stake-value">—</strong></div>
+    <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
     <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
    </div>
    <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
@@ -173,14 +173,14 @@
   <div class="journal-tools"><div><strong>V3 research journal</strong><p id="journal-summary">Permanent cloud journal: awaiting connection</p><small>Paper entries, exits, WATCH/PASS decisions and unresolved settlements. Records are not erased when this page closes.</small></div>
    <div class="journal-actions"><button type="button" id="older-events" disabled>Load older events</button><button type="button" id="export-trades" disabled>Export trades CSV</button><button type="button" id="export-journal" disabled>Export full journal JSON</button></div></div>
   <p class="activity-footnote" id="journal-message">WATCH is not a final PASS. Pending outcomes are never counted as confirmed wins.</p>
-  <section class="outcome-section" aria-labelledby="outcome-title">
+  <section class="outcome-section" aria-labelledby="outcome-title" hidden>
    <div class="outcome-header"><div><p class="eyebrow">OFFICIAL EXCHANGE RECORD</p>
     <h3 id="outcome-title">15-minute market outcomes</h3>
     <p>Every recorded ETH 15m market close — even without a paper bet. UP/DOWN is confirmed only after Kalshi publishes the settled result.</p></div>
     <span class="badge neutral" id="outcome-count">Not yet available</span></div>
    <div class="outcome-grid-head"><span>END TIME (CT)</span><span>RESULT</span><span>V3 ACTIVITY</span><span>KALSHI CONTRACT</span></div>
    <div id="outcome-list" class="outcome-list" aria-live="polite"><div class="empty-state">Historical market outcomes will appear once the V3 exchange-result journal is activated.</div></div>
-   <p id="outcome-status" class="outcome-footnote">Source: Kalshi public market API, not Kraken spot prices. Pending and provisional results remain unconfirmed.</p>
+   <p id="outcome-status" class="outcome-footnote">Automatic exchange verification stays active in the backend to reconcile paper stakes and never changes early-sale realized P/L.</p>
   </section>
  </section>
  <footer><div class="footer-notice">ⓘ &nbsp;Decision support and simulated fills only. <strong>This website cannot place real-money trades.</strong> The market display uses Kraken reference prices, not official Kalshi settlement values.</div><div>ETH-15 Scout V3 <span>·</span> Private viewer</div></footer>
