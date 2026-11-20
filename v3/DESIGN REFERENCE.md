@@ -29,13 +29,15 @@ ETH-15 Scout V3 is a **paper-only research dashboard** for Kalshi ETH 15-minute 
 ## Permanent layout hierarchy
 
 1. Header: V3 brand, PAPER ONLY label, overview/signals/activity/performance navigation, connection indicator, refresh button, optional sounds.
-2. Status strip: monitoring, paper mode armed/paused, current market, daily risk mode, last engine tick and staleness.
-3. ETH market: live Kraken **reference** price, 1/3/5-minute candles, EMA chart, actual Kalshi ticker/strike/asks/countdown, latest V3 decision.
-4. Ranked signals: five-minute primary structure and support/resistance; three-minute swing confirmation; EMA 21/50 and VWAP; one-minute trigger context; secondary RSI/Bollinger/A-D and daily BTC/ETH regime. Weak indicators must not lead the bot decision.
-5. Paper account: starting $100 bankroll, available virtual cash, net realized P&L, estimated open P&L, completed exits, win rate, open trade and pending/unsettled count.
-6. Daily risk: 12% soft / 20% hard; max $3 normal and $1.50 soft paper entry; show the bot's real runtime risk state, not guesses.
-7. Chronological persistent research journal: paper BUY, SELL, WATCH, final PASS, fees, reason, P&L and pending records; historical pagination, CSV trade export and JSON journal export.
-8. Footer: simulated-only and not official Kalshi settlement pricing.
+2. **TOP PRIORITY — LIVE V3 PAPER BOT ACTION HERO**, above the account metrics and chart: actual current WATCH/PASS/BUY/SELL status, open paper position, UP/DOWN side, quantity, simulated entry price and stake, mark-to-bid estimated P&L, market ticker, contract countdown, latest actual trade and tick freshness. Never promote an old stale signal as live. If no position is open, say so clearly.
+3. Status strip: monitoring, paper mode armed/paused, current market, daily risk mode, last engine tick and staleness.
+4. ETH market: live Kraken **reference** price, 1/3/5-minute candles, EMA chart, actual Kalshi ticker/strike/asks/countdown, latest V3 decision.
+5. Ranked signals: five-minute primary structure and support/resistance; three-minute swing confirmation; EMA 21/50 and VWAP; one-minute trigger context; secondary RSI/Bollinger/A-D and daily BTC/ETH regime. Weak indicators must not lead the bot decision.
+6. Paper account: starting $100 bankroll, available virtual cash, net realized P&L, estimated open P&L, completed exits, win rate, open trade and pending/unsettled count.
+7. Daily risk: 12% soft / 20% hard; max $3 normal and $1.50 soft paper entry; show the bot's real runtime risk state, not guesses.
+8. Chronological persistent research journal: paper BUY, SELL, WATCH, final PASS, fees, reason, P&L and pending records; historical pagination, CSV trade export and JSON journal export.
+9. Official Kalshi 15-minute market outcomes: independent archive of **every** closed Kalshi KXETH15M market, including windows with no paper bet; timestamp in Central Time, confirmed UP/DOWN only when Kalshi status is settled and non-provisional, otherwise PENDING/UNCONFIRMED or VOID. Show last known V3 paper activity alongside the contract. Do not guess the outcome from Kraken spot.
+10. Footer: simulated-only and not official Kalshi settlement pricing.
 
 ## Notifications
 
