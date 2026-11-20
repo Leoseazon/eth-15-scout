@@ -132,6 +132,25 @@ function latestPaperExecution(data){
  candidates.sort((a,b)=>b.at-a.at);
  return candidates[0]||null;
 }
+function renderObservationCohort(data){
+ const markers=Array.isArray(data.activity?.releaseMarkers)?data.activity.releaseMarkers:[];
+ const marker=markers.find(x=>x.tag==='V3-OBSERVATION-50-100-20261119');
+ const firstTick=Number(marker?.first_engine_tick_at);
+ if(!Number.isFinite(firstTick)||firstTick<=0){
+  txt('release-first-tick','Awaiting first updated engine tick');
+  txt('observation-progress','Not started · earlier trades excluded');
+  return;
+ }
+ txt('release-first-tick',new Date(firstTick).toLocaleString('en-US',{
+  timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',
+  hour:'numeric',minute:'2-digit'})+' CT');
+ const trades=Array.isArray(data.activity?.trades)?data.activity.trades:[];
+ // Exclude trades entered on the earlier version even if the exit happened
+ // after new code shipped; use ENTRY timestamp to define the trade cohort.
+ const count=trades.filter(t=>t?.confirmed===true&&
+  Number.isFinite(Number(t.time))&&Number(t.time)>=firstTick).length;
+ txt('observation-progress',count+' / 50–100 new-build exits · earlier trades separate');
+}
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
  const tickAge=Date.now()-Number(s.lastTick);
@@ -283,7 +302,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);drawChart();
+ renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);drawChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -556,6 +575,7 @@ async function fullJournal(){
   createdAt:new Date().toISOString(),anchor,
   note:'Simulated fills and fees. Kalshi settled outcome separate from simulated P&L.',
   totals,events,trades,decisions,windows,pending,
+  releaseMarkers:lastPayload?.activity?.releaseMarkers||[],
   open:lastPayload?.status?.open||null,
   account:lastPayload?.status||null};
 }
@@ -639,7 +659,7 @@ document.querySelectorAll('[data-tf]').forEach(b=>b.addEventListener('click',()=
  drawChart();
 }));
 window.addEventListener('resize',()=>{if(lastPayload)drawChart()});
-setInterval(()=>{if(token&&!document.hidden)load()},30000);
+setInterval(()=>{if(token&&!document.hidden)load()},15000);
 setInterval(()=>{if(lastPayload){renderLiveAction(lastPayload);txt('metric-age',ago(lastPayload.status?.lastTick));
  txt('contract-time',lastPayload.market?.contract?.close_time?
  'Closes '+ct(lastPayload.market.contract.close_time)+' CT · '+remaining(lastPayload.market.contract.close_time):'Latest engine contract')}},15000);
