@@ -6,13 +6,12 @@ import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {paperEntryArmed} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
-import {buildPaperSettlement} from './settlement-accounting.js';
+import {TIMESTOP_TAG,paperResults,reconcilePending} from './paper-ledger.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
 const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
-const STOP60_TAG='V3-STOP60-AUDIT-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
@@ -164,8 +163,8 @@ export class ScoutEngine extends DurableObject {
     // Separate prospective cohort for the owner-requested risk-rule change.
     this.ctx.storage.sql.exec(
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
-      STOP60_TAG,now,PRE_RELEASE_NOTED_AT,
-      'First tick on paper-only 60% stop and official settlement accounting update');
+      TIMESTOP_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First engine tick of 40 percent contract stop gated to last six minutes and new settlement accounting');
 
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
@@ -281,6 +280,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
       // Re-save with the same CURRENT tick metadata, not stale runtime fields.
       this.save(s,tickMeta);
     }
+    // Only official finalized outcomes resolve paper holdings.
+    const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
+    if(settled>0)this.save(s,tickMeta);
   }
   async alarm(){
     const start=Date.now();
@@ -318,6 +320,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10),
+        paperResults:paperResults(this.ctx.storage.sql,RELEASE_TAG),
         lastWindowScanAt:s.lastWindowScanAt||null,
         lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
         lastWindowScanError:s.lastWindowScanError||null,
@@ -364,7 +367,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         (SELECT count(*) FROM window_outcomes WHERE close_at<=?) windows`,
         rawAnchor,rawAnchor,rawAnchor,rawAnchor).toArray()[0];
       return json({paperOnly:true,readOnly:true,anchor:rawAnchor,offset:rawOffset,limit:rawLimit,
-        totals:counts,events,trades,decisions,windows,
+        totals:{...counts,paperResults:paperResults(sql,RELEASE_TAG),
+          officialWindows:sql.exec("SELECT count(*) n FROM window_outcomes WHERE status='OFFICIAL_RESULT'").toArray()[0].n},
+        events,trades,decisions,windows,
         releaseMarkers:sql.exec(
          'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
