@@ -24,7 +24,19 @@
    <a href="#activity">Activity</a>
    <a href="#performance">Performance</a>
   </nav>
-  <div class="header-side"><span class="paper-pill">● &nbsp;PAPER ONLY</span><span id="sync-label" class="sync-label">Not connected</span><button class="icon-btn" id="refresh" type="button" aria-label="Refresh live data" title="Refresh data">↻</button></div>
+  <div class="header-side">
+   <span class="paper-pill">● &nbsp;PAPER ONLY</span>
+   <details class="sound-menu" id="sound-menu">
+    <summary id="sound-summary" aria-label="Configure paper-trade sound notifications">♫ Sounds off</summary>
+    <div class="sound-panel">
+     <strong>Paper-trade sound alerts</strong>
+     <p>Two gentle, different signals for newly detected paper buys and sells. Sounds never replay old history.</p>
+     <button type="button" class="sound-toggle" id="sound-toggle" aria-pressed="false">Enable trade sounds</button>
+     <div class="sound-previews"><button type="button" id="preview-buy">↗ Hear buy</button><button type="button" id="preview-sell">↘ Hear sell</button></div>
+     <small>Sound works while this page is open and your browser allows audio.</small>
+    </div>
+   </details>
+   <span id="sync-label" class="sync-label">Not connected</span><button class="icon-btn" id="refresh" type="button" aria-label="Refresh live data" title="Refresh data">↻</button></div>
  </div>
 </header>
 <div id="top"></div>
@@ -105,7 +117,9 @@
   <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS">PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
   <div class="feed-head"><span>TIME (CT)</span><span>EVENT</span><span>CONTRACT</span><span>DETAILS</span></div>
   <div id="activity-list" class="activity-list"><div class="empty-state">Connect your read-only V3 feed to view actual activity.</div></div>
-  <p class="activity-footnote">WATCH shows the most recent live decision; historical PASS and completed exits come from the bot's saved records. Pending outcomes are not counted as confirmed wins.</p>
+  <div class="journal-tools"><div><strong>V3 research journal</strong><p id="journal-summary">Permanent cloud journal: awaiting connection</p><small>Paper entries, exits, WATCH/PASS decisions and unresolved settlements. Records are not erased when this page closes.</small></div>
+   <div class="journal-actions"><button type="button" id="older-events" disabled>Load older events</button><button type="button" id="export-trades" disabled>Export trades CSV</button><button type="button" id="export-journal" disabled>Export full journal JSON</button></div></div>
+  <p class="activity-footnote" id="journal-message">WATCH is not a final PASS. Pending outcomes are never counted as confirmed wins.</p>
  </section>
  <footer><div class="footer-notice">ⓘ &nbsp;Decision support and simulated fills only. <strong>This website cannot place real-money trades.</strong> The market display uses Kraken reference prices, not official Kalshi settlement values.</div><div>ETH-15 Scout V3 <span>·</span> Private viewer</div></footer>
 </main>
