@@ -23,7 +23,7 @@ function rsi(a,n=14){
   for(let i=1;i<=n;i++){const d=a[i]-a[i-1];up+=Math.max(0,d);down+=Math.max(0,-d)}
   up/=n;down/=n;
   for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];up=(up*(n-1)+Math.max(0,d))/n;down=(down*(n-1)+Math.max(0,-d))/n}
-  return down===0?100:100-100/(1+up/down);
+  return down===0?(up===0?50:100):100-100/(1+up/down);
 }
 export function completedFresh(rows,minutes,now=Date.now()){
   const end=Number(rows?.at(-1)?.[0])*1000;
