@@ -39,3 +39,19 @@
 3. System/market context, technical charts, signals, risk, historical journal and official window results.
 
 **Audit status:** Code, tests and deployed site may be ready independently from live Cloudflare Worker activation. Never describe the entire upgrade as active until the owner's actual PowerShell deployment and live end-to-end verification succeed.
+
+## November 20 revision — new prospective paper-only strategy
+
+The original V3-OBSERVATION-50-100-20261119 first engine tick and November 19 ~11:40 PM CT pre-release reference remain immutable. The website displayed the original first tick as November 20, 12:15 AM CT.
+The revised strategy has a distinct release marker, V3-TIME40-6M-20261120, recorded only on its actual first deployed engine tick. Do not count trades toward the revised cohort before that tick.
+
+- A fixed 40% contract-price drawdown stop is activated strictly INSIDE the final six minutes. Discretionary confirmed 3m/5m reversal exits may still occur earlier. Executable bid and sufficient depth are required; slippage may exceed the threshold.
+- Kalshi 80c+ paper contract buys are eligible with five minutes or less remaining (minimum 1.5m, ask below 96c), not earlier, if 7/7 signals, compatible trend, strike plausibility, <=3c spread, all prior fee and liquidity checks pass.
+- Completed five-minute swing support/resistance zones veto entries near a barrier. For shallow zone breaches two fully closed three-minute candle closes beyond the zone confirm the breakout. Kraken zones are proxies, not CF Benchmarks settlement prices.
+- Every new paper BUY and early SELL logs integer seconds remaining in the contract. Historical entries may be reconstructed from original timestamps and contract close time only.
+- Wins, losses and flats are based on realized fee-adjusted paper trade P/L from the complete SQLite trade ledger. Early sale outcomes stay unchanged regardless of the eventual Kalshi UP/DOWN result.
+- Pending held-to-expiry paper stakes are unresolved until official finalized nonprovisional Kalshi results are available, then reconciled once with $1 per winning contract / $0 per losing contract. No guessed settlement or double payout.
+
+The next 50–100 early-sale paper exits are defined by their ENTRY time at or after the revised first tick. Held-to-official-settlement positions are tracked separately. Original cash, positions, previous results, the first release marker and all archival records must be preserved.
+
+Before deployment, perform normal Node tests, Cloudflare dry-runs and security checks; after deployment, verify first revised tick, viewer health, official outcomes, trade counters, old history and bankroll continuity. No further strategy changes during observation except documented safety/correctness repairs.
