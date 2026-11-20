@@ -2,8 +2,9 @@
 /* ETH-15 Scout V3. Read-only UI: no buy/sell calls, no bot controls,
    no untrusted HTML, no third-party scripts or fabricated market data. */
 const API='https://eth-15-scout-v3-view.leoseazon.workers.dev/api/v3/dashboard';
+const LOGIN_API='https://eth-15-scout-v3-view.leoseazon.workers.dev/api/v3/login';
 const JOURNAL_API='https://eth-15-scout-v3-view.leoseazon.workers.dev/api/v3/journal';
-const KEY='eth15scout:v3:viewer:session';
+const KEY='eth15scout:v3:login-session';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
 const money=(v,sign=false)=>n(v)===null?'—':(sign&&v>0?'+':'')+
@@ -16,39 +17,89 @@ const txt=(id,v)=>{const e=$(id);if(e)e.textContent=String(v===undefined||v===nu
 const cls=(id,type)=>{const e=$(id);if(!e)return;e.classList.remove('success','warning','danger','neutral');e.classList.add(type||'neutral')};
 const trendStyle=t=>t==='UP'?'success':t==='DOWN'?'danger':'neutral';
 const regimeName=s=>s==='RISK_ON'?'Risk-on':s==='RISK_OFF'?'Risk-off':s==='MIXED'?'Mixed':'Unavailable';
-let token='',lastPayload=null,filter='ALL',tf='m5',busy=false;
+let token='',expiresAt=0,lastPayload=null,filter='ALL',tf='m5',busy=false,signingIn=false;
 let journalState={ready:false,anchor:null,offset:0,events:[],totals:null};
-try{token=sessionStorage.getItem(KEY)||''}catch{}
+function storeSession(result,remember){
+ token=result.token;expiresAt=result.expiresAt;
+ const destination=remember?localStorage:sessionStorage;
+ try{localStorage.removeItem(KEY);sessionStorage.removeItem(KEY);
+   destination.setItem(KEY,JSON.stringify({token,expiresAt}));}catch{}
+}
+function restoreSession(){
+ for(const storage of [localStorage,sessionStorage]){
+  try{
+   const record=JSON.parse(storage.getItem(KEY)||'null');
+   if(record&&typeof record.token==='string'&&record.token.length>=50&&
+     Number.isFinite(record.expiresAt)&&record.expiresAt>Date.now()){
+      token=record.token;expiresAt=record.expiresAt;return;
+   }
+   storage.removeItem(KEY);
+  }catch{}
+ }
+}
+restoreSession();
 function connectMessage(s,bad=false){txt('connect-message',s);$('connect-message').style.color=bad?'#e5a1ab':''}
-function connectionVisible(show){$('connect-panel').classList.toggle('hidden',!show)}
-function reset(){
- token='';lastPayload=null;try{sessionStorage.removeItem(KEY)}catch{}
+function connectionVisible(show){
+ $('connect-panel').classList.toggle('hidden',!show);
+ document.body.classList.toggle('unauthenticated',show);
+ $('sign-out').hidden=show;
+}
+function reset(message='You have signed out. Use your same username and password to sign in again.'){
+ token='';expiresAt=0;lastPayload=null;busy=false;
+ journalState={ready:false,anchor:null,offset:0,events:[],totals:null};
+ try{sessionStorage.removeItem(KEY);localStorage.removeItem(KEY)}catch{}
  connectionVisible(true);txt('sync-label','Not connected');txt('updated-label','No data loaded');
  txt('mode-badge','Disconnected');cls('mode-badge','neutral');
- connectMessage('Enter your viewing key to connect.');
+ connectMessage(message);
 }
 function sanitizeErr(response){
- if(response.status===401)return 'Access key rejected. Check the key generated when deploying the viewer.';
- if(response.status===503)return 'Viewer gateway is not configured yet. Deploy it and set its private secret.';
- if(response.status===403)return 'This dashboard origin is not authorized.';
+ if(response.status===401)return 'Your session expired. Please sign in again using the same username and password.';
+ if(response.status===429)return 'Too many sign-in attempts. Please try again shortly.';
+ if(response.status===503)return 'The Cloudflare viewer login has not been activated yet.';
+ if(response.status===403)return 'This website is not authorized to connect to the viewer.';
  return 'Unable to load V3 now (HTTP '+response.status+').';
+}
+async function login(){
+ if(signingIn)return;
+ const username=$('login-user').value.trim(),password=$('login-password').value;
+ const remember=$('remember-device').checked;
+ if(username.length<3||password.length<16){connectMessage('Enter your username and password (password minimum 16 characters).',true);return}
+ signingIn=true;
+ const btn=document.querySelector('.login-submit');btn.disabled=true;
+ connectMessage('Checking your credentials…');
+ try{
+  const response=await fetch(LOGIN_API,{method:'POST',mode:'cors',cache:'no-store',
+   headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({username,password,remember})});
+  if(!response.ok)throw new Error(response.status===401?'Incorrect username or password.':sanitizeErr(response));
+  const result=await response.json();
+  if(result.ok!==true||result.readOnly!==true||typeof result.token!=='string'||
+     !Number.isFinite(result.expiresAt)||result.expiresAt<=Date.now())
+    throw new Error('Invalid login response.');
+  storeSession(result,remember);
+  $('login-password').value='';
+  connectMessage('Connected to the private V3 paper viewer.');
+  await load();
+ }catch(err){
+  connectMessage(err instanceof TypeError?'Viewer is not connected to Cloudflare yet.':
+   String(err.message||err),true);
+ }finally{signingIn=false;btn.disabled=false}
 }
 async function load(){
  if(!token||busy)return;
- busy=true;
- txt('sync-label','Refreshing…');
+ if(expiresAt<=Date.now()){reset('Your remembered session expired. Sign in again with your same username and password.');return}
+ busy=true;txt('sync-label','Refreshing…');
  try{
   const response=await fetch(API,{mode:'cors',headers:{Authorization:'Bearer '+token},cache:'no-store'});
+  if(response.status===401){reset('Session expired. Please sign in again using your same username and password.');return}
   if(!response.ok)throw new Error(sanitizeErr(response));
   const result=await response.json();
   if(result.paperOnly!==true||result.readOnly!==true)throw new Error('Unexpected response from the read-only viewer.');
   synchronizeJournal(result);
   if(window.ScoutSounds)window.ScoutSounds.observe(result.activity?.events||[]);
-  lastPayload=result;
-  connectionVisible(false);
-  render(result);
+  lastPayload=result;connectionVisible(false);render(result);
  }catch(err){
-  const msg=err instanceof TypeError?'Unable to reach the V3 viewer. The gateway may not be deployed yet.':
+  const msg=err instanceof TypeError?'Unable to reach the V3 viewer. The Cloudflare gateway may not be deployed yet.':
    String(err?.message||err);
   txt('sync-label','Connection issue');
   if(!lastPayload)connectionVisible(true);
@@ -404,14 +455,9 @@ $('export-trades').addEventListener('click',()=>exportResearch('csv'));
 $('export-journal').addEventListener('click',()=>exportResearch('json'));
 setSoundUI();
 
-$('connect-form').addEventListener('submit',e=>{
- e.preventDefault();
- const value=$('view-key').value.trim();
- if(value.length<24){connectMessage('Viewing key must be at least 24 characters.',true);return}
- token=value;try{sessionStorage.setItem(KEY,token)}catch{}
- $('view-key').value='';load();
-});
-$('refresh').addEventListener('click',()=>{if(!token){connectionVisible(true);connectMessage('Enter your key to connect.')}else load()});
+$('connect-form').addEventListener('submit',e=>{e.preventDefault();login()});
+$('sign-out').addEventListener('click',()=>reset());
+$('refresh').addEventListener('click',()=>{if(!token){connectionVisible(true);connectMessage('Sign in to connect to V3.')}else load()});
 document.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{
  filter=b.dataset.filter;
  document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('selected',x===b));
@@ -427,4 +473,5 @@ setInterval(()=>{if(token&&!document.hidden)load()},30000);
 setInterval(()=>{if(lastPayload){txt('metric-age',ago(lastPayload.status?.lastTick));
  txt('contract-time',lastPayload.market?.contract?.close_time?
  'Closes '+ct(lastPayload.market.contract.close_time)+' CT · '+remaining(lastPayload.market.contract.close_time):'Latest engine contract')}},15000);
-if(token){load()}else{connectionVisible(true)}
+if(token&&expiresAt>Date.now()){connectionVisible(false);load()}
+else{connectionVisible(true)}
