@@ -106,7 +106,7 @@ export default {
      const offset=query.get('offset')||'0';
      const limit=query.get('limit')||'100';
      const anchor=query.get('anchor');
-     const validInt=v=>/^\\d{1,16}$/.test(v);
+     const validInt=v=>/^\d{1,16}$/.test(v);
      if(!validInt(offset)||!validInt(limit)||(anchor&&!validInt(anchor))||
         Number(offset)>1000000||Number(limit)<1||Number(limit)>100)
        return respond({error:'Invalid journal pagination'},400,origin);
