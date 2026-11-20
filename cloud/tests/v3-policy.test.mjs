@@ -76,6 +76,57 @@ test('90c+ entries remain strict with seven checks and five-minute deadline',()=
    assert.equal(entryGate({...proof,...changed}).ok,false,
      JSON.stringify(changed));
 });
+test('final three minutes: 20–69c requires 7/7, but 70–79c requires 5/7',()=>{
+ const base={remaining:2.5,slowTrend:true,plausible:true,
+   alignment:true,spread:.01,lateValueVerified:false};
+ assert.equal(PAPER_POLICY.finalThreeLowPriceChecks,7);
+ assert.equal(PAPER_POLICY.finalThreeMidPriceChecks,5);
+ for(const price of [.20,.35,.69]){
+   assert.equal(entryGate({...base,price,passed:6}).ok,false,
+     '6/7 must be insufficient at '+price);
+   assert.equal(entryGate({...base,price,passed:7}).ok,true,
+     '7/7 should be eligible at '+price);
+ }
+ for(const price of [.70,.75,.79]){
+   assert.equal(entryGate({...base,price,passed:4}).ok,false,
+     '4/7 must be insufficient at '+price);
+   assert.equal(entryGate({...base,price,passed:5}).ok,true,
+     '5/7 should be eligible at '+price);
+   for(const override of [{slowTrend:false},{plausible:false},
+     {alignment:false},{spread:.031}]){
+     assert.equal(entryGate({...base,price,passed:5,...override}).ok,false,
+       '5/7 must not waive '+JSON.stringify(override));
+   }
+ }
+ assert.equal(entryGate({...base,price:.69,passed:6,remaining:3}).ok,true,
+   'three-minute strict rule activates only below 3m');
+ assert.equal(entryGate({...base,price:.79,passed:5,remaining:1.5}).ok,true);
+ assert.equal(entryGate({...base,price:.79,passed:5,remaining:1.49}).ok,false);
+ // 80c+ retains the separately guarded 6/7 rule inside 3 minutes.
+ assert.equal(entryGate({...base,price:.80,passed:5,lateValueVerified:true}).ok,false);
+ assert.equal(entryGate({...base,price:.80,passed:6,lateValueVerified:true}).ok,true);
+ // Sub-20c still requires 7/7 (and the separate MICRO-VALUE gate).
+ assert.equal(entryGate({...base,price:.19,passed:6}).ok,false);
+ assert.equal(entryGate({...base,price:.19,passed:7}).ok,true);
+});
+test('engine requires an actual 5-of-7 directional setup for final-3m 70–79c buys',()=>{
+ const five={...strong,rPrev:59,mPrev:1.8};
+ const sixtyNine=freshPaperState();sixtyNine.armed=true;
+ makeV2Engine(sixtyNine).step(mk(2.5,.69),five,slow,true,structureFixture());
+ assert.equal(sixtyNine.open,null,'69c final-3m 5/7 must be rejected');
+ const seventy=freshPaperState();seventy.armed=true;
+ makeV2Engine(seventy).step(mk(2.5,.70),five,slow,true,structureFixture());
+ assert.ok(seventy.open,'70c final-3m 5/7 should qualify with full other protections');
+ assert.equal(seventy.open.score,5);
+ assert.ok(seventy.open.cost<=3);
+ const seventyNine=freshPaperState();seventyNine.armed=true;
+ makeV2Engine(seventyNine).step(mk(2.5,.79),five,slow,true,structureFixture());
+ assert.ok(seventyNine.open,'79c final-3m 5/7 should qualify');
+ assert.equal(seventyNine.open.score,5);
+ const seven=freshPaperState();seven.armed=true;
+ makeV2Engine(seven).step(mk(2.5,.69),strong,slow,true,structureFixture());
+ assert.ok(seven.open,'69c final-3m 7/7 must remain eligible');
+});
 test('40 percent downside stop only activates strictly INSIDE final six minutes',()=>{
   assert.equal(PAPER_POLICY.contractStopLossFraction,0.40);
   assert.equal(PAPER_POLICY.stopLossArmedMinutes,6);
