@@ -134,22 +134,17 @@ function latestPaperExecution(data){
 }
 function renderObservationCohort(data){
  const markers=Array.isArray(data.activity?.releaseMarkers)?data.activity.releaseMarkers:[];
- const marker=markers.find(x=>x.tag==='V3-OBSERVATION-50-100-20261119');
- const firstTick=Number(marker?.first_engine_tick_at);
- if(!Number.isFinite(firstTick)||firstTick<=0){
-  txt('release-first-tick','Awaiting first updated engine tick');
-  txt('observation-progress','Not started · earlier trades excluded');
-  return;
- }
- txt('release-first-tick',new Date(firstTick).toLocaleString('en-US',{
-  timeZone:'America/Chicago',month:'short',day:'numeric',year:'numeric',
-  hour:'numeric',minute:'2-digit'})+' CT');
- const trades=Array.isArray(data.activity?.trades)?data.activity.trades:[];
- // Exclude trades entered on the earlier version even if the exit happened
- // after new code shipped; use ENTRY timestamp to define the trade cohort.
- const count=trades.filter(t=>t?.confirmed===true&&
-  Number.isFinite(Number(t.time))&&Number(t.time)>=firstTick).length;
- txt('observation-progress',count+' / 50–100 new-build exits · earlier trades separate');
+ const original=markers.find(x=>x.tag==='V3-OBSERVATION-50-100-20261119');
+ const revised=markers.find(x=>x.tag==='V3-TIME40-6M-20261120');
+ const first=Number(original?.first_engine_tick_at),next=Number(revised?.first_engine_tick_at);
+ const date=x=>new Date(x).toLocaleString('en-US',{timeZone:'America/Chicago',
+  month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' CT';
+ txt('release-first-tick',Number.isFinite(first)&&first>0?date(first):'Awaiting original release');
+ txt('revised-first-tick',Number.isFinite(next)&&next>0?date(next):'Awaiting time-gated stop deployment');
+ const nNew=data.status?.paperResults?.revisedCohort;
+ txt('observation-progress',Number.isFinite(nNew)&&next>0?
+  nNew+' / 50–100 revised-rule early paper exits · older trades separate':
+  'Not started · revised strategy not yet deployed');
 }
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
@@ -295,11 +290,16 @@ function render(data){
  const pendingCost=unsettled.reduce((sum,p)=>sum+(n(p.cost)??0),0);
  txt('pending-stake-value',unsettled.length?money(pendingCost):
    n(s.pending)===0?'$0.00':'Awaiting detailed journal');
- const trades=data.activity?.trades||[];
- txt('trades-value',Number.isFinite(s.trades)?s.trades:trades.length);
- const wins=trades.filter(t=>t.confirmed&&n(t.pnl)>0).length;
- const completed=trades.filter(t=>t.confirmed&&n(t.pnl)!==null).length;
- txt('win-rate',completed?fmt(wins/completed*100,1)+'%':'—');
+ // Full SQLite ledger only: exchange outcome never rewrites early-sale P/L.
+ const results=s.paperResults||data.activity?.journalTotals?.paperResults||null;
+ const wins=n(results?.wins),losses=n(results?.losses),flats=n(results?.flats);
+ txt('trades-value',n(results?.completed)===null?'—':results.completed);
+ txt('wins-count',wins===null?'—':wins);
+ txt('losses-count',losses===null?'—':losses);
+ txt('win-rate',wins!==null&&losses!==null&&(wins+losses)>0?
+  fmt(wins/(wins+losses)*100,1)+'%':'—');
+ $('win-rate').title=flats!==null&&flats>0?
+  flats+' flat paper trade(s) excluded from win rate':'Realized fee-adjusted paper trades';
  if(s.open){
   txt('open-position-value',String(s.open.side||'')+' · '+(s.open.qty||'?')+
    ' paper contracts · '+quote(s.open.entry)+' entry · '+String(s.open.ticker||''));
@@ -481,8 +481,11 @@ function renderOutcomes(data){
  const ids=new Map(journalState.windows.map(w=>[w.ticker,w]));
  for(const w of recent)if(w?.ticker)ids.set(w.ticker,w);
  const windows=[...ids.values()].sort((a,b)=>(b.closeAt||0)-(a.closeAt||0));
- const official=windows.filter(w=>w.status==='OFFICIAL_RESULT').length;
- txt('outcome-count',windows.length?windows.length+' recorded · '+official+' official':'No records');
+ const allTotal=Number(data.activity?.journalTotals?.windows);
+ const allOfficial=Number(data.activity?.journalTotals?.officialWindows);
+ txt('outcome-count',Number.isFinite(allTotal)&&Number.isFinite(allOfficial)?
+  allTotal+' archived · '+allOfficial+' official':
+  windows.length?windows.length+' shown · full totals pending':'No records');
  const eventMap=new Map(),records=activityRecords(data);
  for(const e of records){
   const arr=eventMap.get(e.ticker)||[];
