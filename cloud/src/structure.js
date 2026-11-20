@@ -123,6 +123,8 @@ export function structuralEntry(side,three,five){
   // Primary trend veto; a 1m signal cannot overrule the completed 3m trend.
   if(three.trend!=='NEUTRAL'&&three.trend!==side)
     return {ok:false,reason:'3m trend opposes entry'};
+  if(five.trend!=='NEUTRAL'&&five.trend!==side)
+    return {ok:false,reason:'5m trend opposes entry'};
   const level=side==='UP'?five.resistance:five.support;
   const price=three.price,tol=Math.max(five.tolerance,three.range*.65);
   // Nearby 5m resistance (UP) / support (DOWN) requires a real 3m breakout.
