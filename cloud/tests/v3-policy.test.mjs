@@ -123,9 +123,29 @@ test('unfilled market PASS is recorded only once after expiration',()=>{
   assert.equal(s.decisions[0].status,'PASS');
 });
 
-test('daily 4% paper realized loss cap still prevents entry',()=>{
+test('daily paper realized-loss safeguard is 12% of the initial bankroll',()=>{
+  assert.equal(PAPER_POLICY.dailyRealizedLossFraction,0.12);
+  const atLimit=freshPaperState();atLimit.armed=true;
+  atLimit.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  makeV2Engine(atLimit).step(mk(10),strong,slow,true);
+  assert.equal(atLimit.open,null);
+  assert.match(atLimit.window?.reason||atLimit.events.at(-1)?.msg||'', /./);
+});
+
+test('net daily loss below $12 permits a qualifying paper entry',()=>{
+  const below=freshPaperState();below.armed=true;
+  below.trades=[{ticker:'LOSS-1199',exitAt:Date.now(),pnl:-11.99,confirmed:true}];
+  makeV2Engine(below).step(mk(10),strong,slow,true);
+  assert.ok(below.open,'loss $11.99 should not hit a $12 limit');
+  assert.ok(below.open.cost<=3);
+});
+
+test('daily safeguard is based on net realized P/L, not gross losing trades',()=>{
   const s=freshPaperState();s.armed=true;
-  s.trades=[{ticker:'LOSS-1',exitAt:Date.now(),pnl:-4.5,confirmed:true}];
+  s.trades=[
+    {ticker:'LOSS-15',exitAt:Date.now(),pnl:-15,confirmed:true},
+    {ticker:'WIN-4',exitAt:Date.now(),pnl:4,confirmed:true}
+  ];
   makeV2Engine(s).step(mk(10),strong,slow,true);
-  assert.equal(s.open,null);
+  assert.ok(s.open,'net -$11 remains above the -$12 threshold');
 });
