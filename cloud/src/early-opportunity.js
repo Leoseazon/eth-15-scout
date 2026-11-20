@@ -33,7 +33,7 @@ export function settlementRewardQuality({price,entryFeePerContract,remaining}){
   if(![price,entryFeePerContract,remaining].every(Number.isFinite)||
       !(price>0&&price<1)||entryFeePerContract<0||remaining<=0)
     return {ok:false,reason:'Missing price/fee/time'};
-  const cost=price+entryFeePerContract;
+  const cost=Number((price+entryFeePerContract).toFixed(4));
   const reward=1-cost;
   const rewardToCost=reward/cost;
   return {ok:reward>=EARLY_POLICY.minNetSettlementReward,
