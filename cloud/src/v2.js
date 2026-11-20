@@ -2,7 +2,7 @@
  * Deliberately unchanged trading logic; no live Kalshi account or orders.
  * The surrounding cloud scheduler and storage are new. See README.
  */
-import {PAPER_POLICY, entryBudget, entryGate, profitExitGate} from './v3-policy.js';
+import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
 import {structuralEntry, structuralExit} from './structure.js';
 
 export const freshPaperState = () => ({
@@ -98,7 +98,7 @@ function recentLearning(priceBucket) {
  return {n,net,extra:(n>=8&&net<0)?1:0};
 }
 
-function chooseCandidate(m,one,m5,remaining,rejections=[],context=null){
+function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode='NORMAL'){
  const target=Number(m.floor_strike);
  if(!Number.isFinite(target)||!one||!m5)return null;
  // FAIL CLOSED in V3: direct calls cannot skip higher-priority structure.
@@ -139,6 +139,23 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null){
    const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
      plausible:signal.plausible,alignment:signal.alignment,spread});
    if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
+   if(riskMode==='SOFT'){
+     // A soft daily-loss breach does NOT block every setup, but a one-minute
+     // signal, favorable Bollinger reading, or daily regime can never waive
+     // higher-priority structure, liquidity, and fee limitations.
+     const aligned=context.three.trend===side&&context.five.trend===side;
+     const budget=entryBudget(state.cash,state.risk,PAPER_POLICY.softMaxStakeIncludingFees);
+     const expectedQty=Math.floor(budget/price);
+     const minDepth=Math.max(2,PAPER_POLICY.softMinimumDepthMultiple*expectedQty);
+     if(signal.passed<PAPER_POLICY.softRequiredChecks||!slowTrend||
+        !aligned||!signal.plausible||!signal.alignment||
+        structure?.secondaryCaution||!Number.isFinite(spread)||
+        spread>PAPER_POLICY.softMaxSpread||
+        expectedQty<1||askSize<minDepth||bidSize<minDepth){
+       rejections.push(side+': 12% soft-loss mode requires 7/7 checks, fully aligned 3m/5m, no structural caution, spread <=3c and 2x book depth');
+       continue;
+     }
+   }
    const strategy=reversal?'REVERSAL':'MOMENTUM';
    // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
    const grossWinningUpside=1-price-fee(price,1);
@@ -160,9 +177,11 @@ function decisionComplete(window,reason='No qualifying setup') {
  persist(); // Save PASS immediately, even if the market feed fails next.
 }
 
-function enter(m,side,signal,now,price,strategy='REVERSAL') {
+function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
- const budget=entryBudget(state.cash,state.risk);
+ if(riskMode==='HARD')return false;
+ const budget=entryBudget(state.cash,state.risk,
+   riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees);
  let qty=Math.floor(budget/price);
  while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
  if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
@@ -210,12 +229,32 @@ function toPending(pos) {
  persist();
 }
 
+  function updateDailyRisk(now=Date.now()) {
+    const day=chicagoDay(now);
+    const realizedToday=state.trades.filter(t=>
+      Number.isFinite(t.exitAt)&&chicagoDay(t.exitAt)===day&&Number.isFinite(t.pnl)
+    ).reduce((total,t)=>total+t.pnl,0);
+    const openLoss=state.open?(Number.isFinite(state.open.markPnl)?
+      Math.min(0,state.open.markPnl):-Number(state.open.cost||0)):0;
+    // Pending positions are NOT assumed settled. Account for potential loss
+    // of their existing stake until official settlement verifies the result.
+    const pendingExposure=state.pending.filter(p=>
+      Number.isFinite(p.time)&&chicagoDay(p.time)===day
+    ).reduce((total,p)=>total+Number(p.cost||0),0);
+    const previousMode=state.dailyRisk?.day===day?state.dailyRisk.mode:'NORMAL';
+    const next=assessDailyRisk({initial:state.initial,realizedToday,openLoss,
+      pendingExposure,previousMode});
+    state.dailyRisk={day,...next};
+    return state.dailyRisk;
+  }
+
   function step(m,one,m5,fresh=true,context=null) {
     const now=Date.now();
     if(state.window && ((m && state.window.ticker!==m.ticker) || now>state.window.end)){
       decisionComplete(state.window); state.window=null;
     }
     if(state.open && now>=new Date(state.open.closeTime).getTime()) toPending(state.open);
+    updateDailyRisk(now);
     if(!m || !m5 || !fresh){
       return {notice:'Waiting for fresh Kalshi and Kraken data; no simulated entry.'};
     }
@@ -260,17 +299,18 @@ function toPending(pos) {
         if(why)closeEarly(pos,bid,why,m);
       }else if(remaining<=0)toPending(pos);
     }
+    // Refresh risk AFTER marking an open position or recording its exit.
+    // If the marked drawdown hits the 20% hard limit, latch that halt for today.
+    const dailyRisk=updateDailyRisk(Date.now());
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
     if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
-      const today=chicagoDay(Date.now());
-      const daily=state.trades.filter(t=>chicagoDay(t.exitAt)===today).reduce((a,t)=>a+t.pnl,0);
-      if(daily<=-state.initial*PAPER_POLICY.dailyRealizedLossFraction)notice='Daily 12% net realized paper-loss cap reached. No new entries.';
+      if(!dailyRisk.canEnter)notice='Daily 20% paper risk hard stop reached. No new positions today.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
         const rejected=[];
-        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context);
+        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
         if(c){
-          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
+          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode))state.window.entered=true;
           else {
             notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
             state.window.reason=notice;
