@@ -26,6 +26,16 @@ ETH-15 Scout V3 is a **paper-only research dashboard** for Kalshi ETH 15-minute 
 - Low-glare borders, softly rounded cards, organized spacing, system sans-serif, readable sizes and accessible focus states.
 - Desktop and mobile responsive; reduced-motion preference supported. Keep the important trade decision, contract, time left and risk readable immediately.
 
+## Locked V3 priority order (approved November 19, ~11:40 PM CST)
+
+The first, above-the-fold view is for the **current live 15-minute market**. It MUST show the actual current V3 bot decision, Kalshi contract, expiry countdown, precise target/strike, and **both UP/YES and DOWN/NO real ask and bid prices** together. Quotes must be sourced from Kalshi, time-labeled, and hidden rather than fabricated when stale/missing. Current open PAPER position, side, stake and last recorded PAPER trade belong here as well.
+
+**Immediately below:** one full-width simulated account performance strip showing available cash, bankroll, realized paper P/L, estimated open P/L, unsettled positions and stake, completed exits, win rate and new-version 50–100-trade observation progress. Charts, technical indicators, risk, audit trail and official market outcome history follow below.
+
+Keep pre-release reference **Nov 19, 2026 ~11:40 PM America/Chicago** separate from the actual one-time first engine tick after final Cloudflare deployment. The first engine tick defines the new-trade cohort. Preserve all earlier trade records.
+
+Design changes must be regression-tested and documented in CHANGELOG. The trade strategy and risk engine remain frozen through the new 50–100 completed paper trades, subject to verified safety fixes.
+
 ## Permanent layout hierarchy
 
 1. Header: V3 brand, PAPER ONLY label, overview/signals/activity/performance navigation, connection indicator, refresh button, optional sounds.
