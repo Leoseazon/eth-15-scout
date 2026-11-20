@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PAPER_POLICY,entryBudget,entryGate,profitExitGate,assessDailyRisk} from '../src/v3-policy.js';
+import {PAPER_POLICY,entryBudget,entryGate,profitExitGate,assessDailyRisk,paperEntryArmed} from '../src/v3-policy.js';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
 import {structureFixture} from './fixtures.mjs';
 
@@ -265,4 +265,12 @@ test('existing 96c profit and hard stop logic are not altered by daily loss limi
   engine.step(quote,strong,slow,true,structureFixture());
   assert.equal(s.open,null);
   assert.match(s.trades[0].reason,/96¢/);
+});
+
+test('V3 simulation requires an explicit enabled flag AND active monitoring',()=>{
+  assert.equal(paperEntryArmed(undefined,true),false);
+  assert.equal(paperEntryArmed('disabled',true),false);
+  assert.equal(paperEntryArmed('true',true),false);
+  assert.equal(paperEntryArmed('enabled',false),false);
+  assert.equal(paperEntryArmed('enabled',true),true);
 });
