@@ -33,7 +33,8 @@ export async function collectMarketFeeds(fetcher,marketUrl,krakenApiBase,at=Date
    krakenApiBase+'OHLC?pair=ETHUSD&interval=5',
    krakenApiBase+'OHLC?pair=ETHUSD&interval=1'
  ];
- const settled=await Promise.allSettled(urls.map(url=>fetcher(url)));
+ // Promise wrappers also capture synchronous fetcher failures as rejected results.
+ const settled=await Promise.allSettled(urls.map(url=>Promise.resolve().then(()=>fetcher(url))));
  return inspectFeedResults(settled,at);
 }
 
