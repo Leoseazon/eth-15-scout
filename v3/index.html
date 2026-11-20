@@ -37,7 +37,7 @@
      <small>Sound works while this page is open and your browser allows audio.</small>
     </div>
    </details>
-   <span id="sync-label" class="sync-label">Not connected</span><button class="icon-btn" id="refresh" type="button" aria-label="Refresh live data" title="Refresh data">↻</button></div>
+   <span id="sync-label" class="sync-label">Not connected</span><button class="icon-btn" id="refresh" type="button" aria-label="Refresh live data" title="Refresh data">↻</button><button id="sign-out" class="sign-out" type="button" hidden>Sign out</button></div>
  </div>
 </header>
 <div id="top"></div>
@@ -46,9 +46,17 @@
    <div><p class="eyebrow">LIVE PAPER RESEARCH CONSOLE</p><h1>Market overview <span class="muted-normal">/ ETH 15m</span></h1><p class="intro-sub">Monitor simulated trades, actual bot decisions and reference indicators. You decide independently whether to follow a signal on Kalshi.</p></div>
    <div class="intro-right"><span id="mode-badge" class="pill pill-neutral"><span class="dot"></span>Disconnected</span><span id="updated-label" class="micro">No data loaded</span></div>
  </div>
- <section id="connect-panel" class="connect-panel" aria-label="Private dashboard connection">
-  <div><p class="eyebrow">SECURE READ-ONLY ACCESS</p><h2>Connect to your V3 paper bot</h2><p>Enter your private dashboard viewing key. It stays in this browser tab/session and is never written into the website code. This dashboard cannot buy, sell or control the bot.</p></div>
-  <form id="connect-form" class="connect-form" autocomplete="off"><label for="view-key">Viewer access key</label><div class="form-inline"><input type="password" id="view-key" placeholder="Paste your private viewing key" minlength="24" required autocomplete="off" spellcheck="false"><button class="btn btn-primary" type="submit">Connect <span aria-hidden="true">→</span></button></div><p id="connect-message" class="micro" role="status" aria-live="polite">Viewer gateway must be deployed before the first connection.</p></form>
+ <section id="connect-panel" class="connect-panel" aria-label="Private V3 dashboard sign-in">
+  <div><p class="eyebrow">SECURE V3 ACCESS</p><h2>Welcome back to ETH-15 Scout</h2><p>Sign in with your personal username and password to view your paper trading dashboard. Your login stays the same. The trading bot runs independently and this website cannot place actual orders.</p></div>
+  <form id="connect-form" class="connect-form" autocomplete="on">
+   <label for="login-user">Username</label>
+   <input type="text" id="login-user" name="username" placeholder="Your V3 username" minlength="3" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false">
+   <label for="login-password">Password</label>
+   <input type="password" id="login-password" name="password" placeholder="Your V3 password" minlength="16" maxlength="256" required autocomplete="current-password">
+   <label class="remember-row" for="remember-device"><input id="remember-device" type="checkbox" checked> Remember this device for 30 days</label>
+   <button class="btn btn-primary login-submit" type="submit">Sign in to V3 <span aria-hidden="true">→</span></button>
+   <p id="connect-message" class="micro" role="status" aria-live="polite">Your credentials must be configured in the separate read-only Cloudflare viewer before first sign-in.</p>
+  </form>
  </section>
  <section id="overview" class="overview">
   <div class="metric-grid">
