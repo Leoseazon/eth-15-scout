@@ -56,6 +56,33 @@ test('the final 1.5–3 minutes demand exceptionally strong 7/7 evidence',()=>{
   assert.ok(s.open);assert.ok(s.open.cost<=3);
 });
 
+
+test('40 percent downside stop only activates strictly INSIDE final six minutes',()=>{
+  assert.equal(PAPER_POLICY.contractStopLossFraction,0.40);
+  assert.equal(PAPER_POLICY.stopLossArmedMinutes,6);
+  for(const minutes of [10,6,5.9,3,0.5]){
+    const s=freshPaperState();s.armed=true;
+    const engine=makeV2Engine(s),m=mk(10);
+    engine.step(m,strong,slow,true,structureFixture());
+    assert.ok(s.open);
+    // Simulate DOWN or UP contract's own executable bid falling 50%.
+    // This tests stop timing without a guessed exchange settlement.
+    const open=s.open;
+    const q=mk(minutes);
+    q.yes_bid_dollars=String(Number((open.entry*0.5).toFixed(3)));
+    // Prevent the structural exit from masking the stop rule in the fixture.
+    engine.step(q,strong,slow,true,structureFixture());
+    if(minutes<6){
+      assert.equal(s.open,null,'must stop after threshold at '+minutes+'m');
+      assert.equal(s.trades.length,1);
+      assert.match(s.trades[0].reason,/40%/);
+    }else{
+      assert.ok(s.open,'must not trigger fixed 40% stop at '+minutes+'m');
+      assert.equal(s.trades.length,0);
+    }
+  }
+});
+
 test('normal 96¢ bid triggers a paper exit if enough time remains',()=>{
   assert.equal(profitExitGate(.959,5),'NONE');
   assert.equal(profitExitGate(.96,5),'SELL');
