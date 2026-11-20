@@ -18,7 +18,7 @@ const cls=(id,type)=>{const e=$(id);if(!e)return;e.classList.remove('success','w
 const trendStyle=t=>t==='UP'?'success':t==='DOWN'?'danger':'neutral';
 const regimeName=s=>s==='RISK_ON'?'Risk-on':s==='RISK_OFF'?'Risk-off':s==='MIXED'?'Mixed':'Unavailable';
 let token='',expiresAt=0,lastPayload=null,filter='ALL',tf='m5',busy=false,signingIn=false;
-let journalState={ready:false,anchor:null,offset:0,events:[],totals:null};
+let journalState={ready:false,anchor:null,offset:0,events:[],windows:[],totals:null};
 function storeSession(result,remember){
  token=result.token;expiresAt=result.expiresAt;
  const destination=remember?localStorage:sessionStorage;
@@ -46,7 +46,7 @@ function connectionVisible(show){
 }
 function reset(message='You have signed out. Use your same username and password to sign in again.'){
  token='';expiresAt=0;lastPayload=null;busy=false;
- journalState={ready:false,anchor:null,offset:0,events:[],totals:null};
+ journalState={ready:false,anchor:null,offset:0,events:[],windows:[],totals:null};
  try{sessionStorage.removeItem(KEY);localStorage.removeItem(KEY)}catch{}
  connectionVisible(true);txt('sync-label','Not connected');txt('updated-label','No data loaded');
  txt('mode-badge','Disconnected');cls('mode-badge','neutral');
@@ -267,7 +267,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderFeed(data);updateJournalControls(data);drawChart();
+ renderLiveAction(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);drawChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -396,30 +396,94 @@ function synchronizeJournal(result){
  const activity=result.activity||{};
  if(!activity.journalAvailable)return;
  const events=Array.isArray(activity.events)?activity.events:[];
+ const windows=Array.isArray(activity.windows)?activity.windows:[];
  if(!journalState.ready){
   journalState={ready:true,anchor:activity.journalAnchor,
-   offset:events.length,events:[...events],totals:activity.journalTotals||null};
+   offset:Math.max(events.length,windows.length),events:[...events],
+   windows:[...windows],totals:activity.journalTotals||null};
  }else{
-  const seen=new Set(journalState.events.map(x=>x.id||
-    [x.time,x.type,x.ticker,x.msg].join('|')));
+  const seen=new Set(journalState.events.map(x=>x.id||[x.time,x.type,x.ticker,x.msg].join('|')));
   for(const e of events){
    const key=e.id||[e.time,e.type,e.ticker,e.msg].join('|');
    if(!seen.has(key)){journalState.events.push(e);seen.add(key)}
   }
+  const ids=new Map(journalState.windows.map(w=>[w.ticker,w]));
+  for(const w of windows)if(w?.ticker)ids.set(w.ticker,w);
+  journalState.windows=[...ids.values()];
  }
  journalState.events.sort((a,b)=>(b.time||b.at||0)-(a.time||a.at||0));
+ journalState.windows.sort((a,b)=>(b.closeAt||0)-(a.closeAt||0));
 }
 function updateJournalControls(data){
  const totals=journalState.totals,ready=journalState.ready;
- $('older-events').disabled=!ready||journalState.offset>=Number(totals?.events||0);
+ $('older-events').disabled=!ready||journalState.offset>=Math.max(
+   Number(totals?.events||0),Number(totals?.windows||0),
+   Number(totals?.trades||0),Number(totals?.decisions||0));
  $('export-trades').disabled=!ready;
  $('export-journal').disabled=!ready;
  txt('journal-summary',ready?
   String(totals?.events??'—')+' recorded events · '+
   String(totals?.trades??'—')+' completed trade exits · '+
   String(totals?.decisions??'—')+' final PASS decisions · '+
+  String(totals?.windows??'—')+' Kalshi market windows · '+
   String((data.activity?.pending||[]).length)+' unresolved positions'
   :'Full journal available after updated V3 gateway deployment');
+}
+function renderOutcomes(data){
+ const root=$('outcome-list');if(!root)return;
+ root.replaceChildren();
+ const recent=Array.isArray(data.activity?.windows)?data.activity.windows:[];
+ const ids=new Map(journalState.windows.map(w=>[w.ticker,w]));
+ for(const w of recent)if(w?.ticker)ids.set(w.ticker,w);
+ const windows=[...ids.values()].sort((a,b)=>(b.closeAt||0)-(a.closeAt||0));
+ const official=windows.filter(w=>w.status==='OFFICIAL_RESULT').length;
+ txt('outcome-count',windows.length?windows.length+' recorded · '+official+' official':'No records');
+ const eventMap=new Map(),records=activityRecords(data);
+ for(const e of records){
+  const arr=eventMap.get(e.ticker)||[];
+  arr.push(e.type);eventMap.set(e.ticker,arr);
+ }
+ const trades=[...(data.activity?.trades||[])];
+ if(data.status?.open)trades.push(data.status.open);
+ for(const t of trades){
+  if(!t.ticker)continue;
+  const arr=eventMap.get(t.ticker)||[];
+  if(!arr.includes('PAPER BUY'))arr.push('PAPER BUY');
+  eventMap.set(t.ticker,arr);
+ }
+ if(!windows.length){
+  const empty=document.createElement('div');empty.className='empty-state';
+  empty.textContent='Awaiting V3 exchange-result journal activation. No outcome will be guessed from the price chart.';
+  root.append(empty);
+ }else{
+  for(const w of windows.slice(0,30)){
+   const line=document.createElement('div');line.className='outcome-item';
+   const date=document.createElement('time');
+   date.textContent=w.closeAt?new Date(w.closeAt).toLocaleString('en-US',{
+    timeZone:'America/Chicago',month:'short',day:'2-digit',
+    hour:'2-digit',minute:'2-digit'}):'—';
+   const result=document.createElement('div');
+   const badge=document.createElement('span');
+   badge.className='outcome-pill '+(w.status==='OFFICIAL_RESULT'?
+     w.outcome==='UP'?'up':'down':w.status==='VOID'?'void':'pending');
+   badge.textContent=w.status==='OFFICIAL_RESULT'?w.outcome+' · OFFICIAL':
+     w.status==='VOID'?'VOID':w.status==='REPORTED'?'REPORTED · UNCONFIRMED':'PENDING';
+   result.append(badge);
+   const activity=document.createElement('span');activity.className='outcome-action';
+   const types=eventMap.get(w.ticker)||[];
+   activity.textContent=types.includes('PAPER BUY')?'Paper trade':
+     types.includes('PASS')?'PASS':types.includes('WATCH')?'WATCH':'No recorded entry';
+   const contract=document.createElement('span');contract.className='outcome-ticker';
+   contract.textContent=w.ticker||'—';
+   line.append(date,result,activity,contract);root.append(line);
+  }
+ }
+ const scan=data.activity?.windowScan;
+ txt('outcome-status',scan?.error?
+  'Kalshi result scan is currently unavailable; earlier official records are preserved. Details: '+scan.error:
+  scan?.verifiedAt?'Source: Kalshi public API · Last successful check '+ago(scan.verifiedAt)+
+   ' · Only settled, non-provisional outcomes are confirmed':
+  'Kalshi exchange outcomes are pending activation on the V3 bot. No Kraken-derived outcomes are displayed.');
 }
 function journalStatus(message){txt('journal-message',message)}
 async function journalPage(offset,anchor){
@@ -431,22 +495,28 @@ async function journalPage(offset,anchor){
  if(!r.ok)throw new Error('Journal page unavailable (HTTP '+r.status+')');
  const j=await r.json();
  if(j.paperOnly!==true||j.readOnly!==true||
-    !Array.isArray(j.events)||!Array.isArray(j.trades)||!Array.isArray(j.decisions))
+    !Array.isArray(j.events)||!Array.isArray(j.trades)||!Array.isArray(j.decisions)||
+    !Array.isArray(j.windows))
    throw new Error('Invalid journal response');
  return j;
 }
 async function olderEvents(){
  if(!journalState.ready||!token)return;
- $('older-events').disabled=true;journalStatus('Loading older paper events…');
+ $('older-events').disabled=true;journalStatus('Loading older research records…');
  try{
   const page=await journalPage(journalState.offset,journalState.anchor);
   const have=new Set(journalState.events.map(e=>e.id));
   for(const e of page.events)if(!have.has(e.id)){journalState.events.push(e);have.add(e.id)}
-  journalState.offset+=page.events.length;
+  const winIds=new Set(journalState.windows.map(w=>w.ticker));
+  for(const w of page.windows)if(w?.ticker&&!winIds.has(w.ticker)){
+   journalState.windows.push(w);winIds.add(w.ticker);
+  }
+  journalState.offset+=Math.max(page.events.length,page.windows.length,page.trades.length,page.decisions.length);
   journalState.events.sort((a,b)=>(b.time||b.at||0)-(a.time||a.at||0));
-  if(lastPayload){renderFeed(lastPayload);updateJournalControls(lastPayload)}
-  journalStatus('Loaded '+page.events.length+' older entries · '+
-   journalState.events.length+' journal events visible. No history overwritten.');
+  journalState.windows.sort((a,b)=>(b.closeAt||0)-(a.closeAt||0));
+  if(lastPayload){renderFeed(lastPayload);renderOutcomes(lastPayload);updateJournalControls(lastPayload)}
+  journalStatus('Loaded '+page.events.length+' older entries and '+page.windows.length+
+   ' exchange windows. Existing journal entries were preserved.');
  }catch(err){
   journalStatus('Older history could not load: '+String(err.message||err));
   if(lastPayload)updateJournalControls(lastPayload);
@@ -454,22 +524,22 @@ async function olderEvents(){
 }
 async function fullJournal(){
  if(!token||!journalState.ready)throw new Error('V3 journal is not connected');
- // Take one anchored snapshot for consistent pagination. Each category is
- // independently paginated at the same index; none silently stops at 100.
- let offset=0,anchor=journalState.anchor,totals=null,events=[],trades=[],decisions=[],pending=[];
+ let offset=0,anchor=journalState.anchor,totals=null,
+  events=[],trades=[],decisions=[],windows=[],pending=[];
  do{
   const page=await journalPage(offset,anchor);
-  anchor=page.anchor;totals=page.totals||{events:0,trades:0,decisions:0};
-  events.push(...page.events);trades.push(...page.trades);decisions.push(...page.decisions);
+  anchor=page.anchor;totals=page.totals||{events:0,trades:0,decisions:0,windows:0};
+  events.push(...page.events);trades.push(...page.trades);
+  decisions.push(...page.decisions);windows.push(...page.windows);
   if(!offset)pending=Array.isArray(page.pending)?page.pending:[];
   offset+=100;
-  if(offset%1000===0)journalStatus('Exporting historical journal… '+offset+' rows scanned per category.');
+  if(offset%1000===0)journalStatus('Exporting historical journal… '+offset+' records scanned per category.');
  }while(offset<Math.max(Number(totals.events)||0,Number(totals.trades)||0,
-   Number(totals.decisions)||0));
- return {format:'ETH-15 Scout V3 research journal',version:1,
+   Number(totals.decisions)||0,Number(totals.windows)||0));
+ return {format:'ETH-15 Scout V3 research journal',version:2,
   createdAt:new Date().toISOString(),anchor,
-  note:'Simulated quotes/fees only. Pending results are not verified settlements.',
-  totals,events,trades,decisions,pending,
+  note:'Simulated fills and fees. Kalshi settled outcome separate from simulated P&L.',
+  totals,events,trades,decisions,windows,pending,
   open:lastPayload?.status?.open||null,
   account:lastPayload?.status||null};
 }
@@ -512,7 +582,8 @@ async function exportResearch(type){
   }
   journalStatus('Research export prepared: '+data.events.length+' events, '+
    data.trades.length+' completed exits, '+data.decisions.length+
-   ' final PASS decisions. Nothing was deleted from Cloudflare.');
+   ' final PASS decisions, '+data.windows.length+
+   ' exchange market outcomes. Nothing was deleted from Cloudflare.');
  }catch(err){journalStatus('Export could not complete: '+String(err.message||err))}
  finally{btn.disabled=!journalState.ready}
 }
