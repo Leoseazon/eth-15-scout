@@ -26,6 +26,8 @@ const rows=j=>Object.values(j.result||{}).find(Array.isArray);
 const safeErr=e=>String(e?.message||e).slice(0,200);
 function normalize(s){
   return {...freshPaperState(),...s,armed:!!s?.armed,monitoring:s?.monitoring!==false,
+    // Migrate the old fixed 2% V2 default to the approved $3/3% PAPER ceiling.
+    risk:s?.risk===2?3:(s?.risk??3),
     pending:Array.isArray(s?.pending)?s.pending:[],
     blocked:Array.isArray(s?.blocked)?s.blocked:[],
     trades:[],decisions:[],events:[]};
@@ -38,7 +40,11 @@ export class ScoutEngine extends DurableObject {
       CREATE TABLE IF NOT EXISTS decisions(
       ticker TEXT PRIMARY KEY, decided_at INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(
-      key TEXT PRIMARY KEY, happened_at INTEGER NOT NULL, data TEXT NOT NULL);`);
+      key TEXT PRIMARY KEY, happened_at INTEGER NOT NULL, data TEXT NOT NULL);
+       CREATE TABLE IF NOT EXISTS runtime_status(
+         id INTEGER PRIMARY KEY CHECK(id=1), armed INTEGER NOT NULL,
+         monitoring INTEGER NOT NULL, observed_at INTEGER NOT NULL,
+         last_market TEXT, last_error TEXT);`);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -63,6 +69,13 @@ export class ScoutEngine extends DurableObject {
       }
       const runtime={...s,...meta,trades:[],decisions:[],events:[],
         blocked:s.blocked.slice(-200)};
+      // Read-only production safety check from Data Studio, no public URL required.
+      sql.exec(`INSERT INTO runtime_status(id,armed,monitoring,observed_at,last_market,last_error)
+        VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        armed=excluded.armed,monitoring=excluded.monitoring,
+        observed_at=excluded.observed_at,last_market=excluded.last_market,
+        last_error=excluded.last_error`,s.armed?1:0,s.monitoring?1:0,
+        meta.lastTick||Date.now(),meta.lastMarket??null,meta.lastError??null);
       this.ctx.storage.kv.put('runtime',runtime);
     });
   }
@@ -136,6 +149,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
+        lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
         recentTrades:s.trades.slice(0,10)});
     }
     if(path==='/v1/history'&&req.method==='GET'){
