@@ -169,7 +169,7 @@ export class ScoutEngine extends DurableObject {
     this.ctx.storage.sql.exec(
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
       LATE_VALUE_TAG,now,PRE_RELEASE_NOTED_AT,
-      'First tick of 8m 80–89c paper rules, 60–90s 80–85c honey-pot requiring 4/7 and >10c absolute bid stop');
+      'First tick of 8m 80–89c paper rules, 60–90s 80–85c honey-pot requiring 4/7 and >=10% entry-price bid stop');
 
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
