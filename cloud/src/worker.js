@@ -6,11 +6,13 @@ import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {paperEntryArmed} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
+import {buildPaperSettlement} from './settlement-accounting.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
 const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
+const STOP60_TAG='V3-STOP60-AUDIT-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
@@ -159,6 +161,11 @@ export class ScoutEngine extends DurableObject {
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
       RELEASE_TAG,now,PRE_RELEASE_NOTED_AT,
       'First engine tick on final observation build; target 50–100 completed paper trades');
+    // Separate prospective cohort for the owner-requested risk-rule change.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      STOP60_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First tick on paper-only 60% stop and official settlement accounting update');
 
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
