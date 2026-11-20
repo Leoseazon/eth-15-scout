@@ -506,8 +506,15 @@ function renderOutcomes(data){
  const ids=new Map(journalState.windows.map(w=>[w.ticker,w]));
  for(const w of recent)if(w?.ticker)ids.set(w.ticker,w);
  const windows=[...ids.values()].sort((a,b)=>(b.closeAt||0)-(a.closeAt||0));
- const allTotal=Number(data.activity?.journalTotals?.windows);
- const allOfficial=Number(data.activity?.journalTotals?.officialWindows);
+ const totalRaw=data.activity?.journalTotals?.windows;
+ const allTotal=totalRaw===undefined||totalRaw===null?NaN:Number(totalRaw);
+ const officialRaw=data.activity?.journalTotals?.officialWindows;
+ const allOfficial=officialRaw===undefined||officialRaw===null?NaN:Number(officialRaw);
+ // User preference: retain the official exchange journal on the website
+ // ONLY after the backend actually verifies at least one finalized result.
+ // A list of PENDING/REPORTED records must never imply live verification.
+ const officialPanel=$('outcome-list')?.closest('.outcome-section');
+ if(officialPanel)officialPanel.hidden=!(Number.isSafeInteger(allOfficial)&&allOfficial>0);
  txt('outcome-count',Number.isFinite(allTotal)&&Number.isFinite(allOfficial)?
   allTotal+' archived · '+allOfficial+' official':
   windows.length?windows.length+' shown · full totals pending':'No records');
