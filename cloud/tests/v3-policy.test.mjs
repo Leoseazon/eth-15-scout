@@ -45,42 +45,37 @@ test('maximum entry cost includes fees and never exceeds $3',()=>{
   assert.ok(s.open.cost>2); // actually uses the new allowance when quotes permit
 });
 
-test('80c+ price is forbidden above five minutes and possible at five with strong proof',()=>{
- const strict={price:.80,passed:7,slowTrend:true,
-   plausible:true,alignment:true,spread:.01};
- for(const remaining of [12.5,10,6,5.001])
+test('80–89c late-entry is gated at EIGHT minutes with 5/7 or 6/7 and independent proof',()=>{
+ const strict={price:.85,passed:5,slowTrend:false,
+   plausible:true,alignment:false,spread:.01,lateValueVerified:true};
+ for(const remaining of [12,10,8.001])
    assert.equal(entryGate({...strict,remaining}).ok,false,
-     'high price too early: '+remaining+' minutes');
- for(const remaining of [5,4.99,4,3,2,1.5])
+     '80–89c too early at '+remaining+'m');
+ for(const remaining of [8,7.99,5,3])
    assert.equal(entryGate({...strict,remaining}).ok,true,
-     'high price eligible at '+remaining+' minutes');
- for(const change of [{passed:6},{slowTrend:false},
-   {plausible:false},{alignment:false},{spread:.035}]){
-   assert.equal(entryGate({...strict,...change,remaining:5}).ok,false,
-     'weak 80c setup forbidden: '+JSON.stringify(change));
- }
- assert.equal(entryGate({...strict,remaining:5,price:.96}).ok,false,
-   '96c entry ceiling remains');
- assert.equal(entryGate({...strict,remaining:1.49}).ok,false,
-   'min entry time still enforced');
- // A less expensive contract stays eligible earlier under existing rules.
- assert.equal(entryGate({...strict,remaining:8,price:.65,passed:5}).ok,true);
+     'guarded 5/7 eligible at '+remaining+'m');
+ assert.equal(entryGate({...strict,remaining:2.99}).ok,false,
+   '5/7 is insufficient below three minutes');
+ assert.equal(entryGate({...strict,passed:6,remaining:2.99}).ok,true);
+ assert.equal(entryGate({...strict,passed:6,remaining:1.5}).ok,true);
+ assert.equal(entryGate({...strict,passed:6,remaining:1.49}).ok,false);
+ assert.equal(entryGate({...strict,lateValueVerified:false,remaining:6}).ok,false);
+ assert.equal(entryGate({...strict,passed:4,remaining:6}).ok,false);
+ assert.equal(entryGate({...strict,spread:.04,remaining:6}).ok,false);
+ assert.equal(entryGate({...strict,plausible:false,remaining:6}).ok,false);
+ assert.equal(entryGate({...strict,price:.90,remaining:6}).ok,false,
+   '90c+ still ineligible before five minutes');
+ assert.equal(entryGate({...strict,price:.96,remaining:3}).ok,false);
 });
-test('the final 1.5–3 minutes demand exceptionally strong 7/7 evidence',()=>{
-  const opts={price:.83,remaining:2,passed:7,slowTrend:true,
-    plausible:true,alignment:true,spread:.02};
-  assert.equal(entryGate(opts).ok,true);
-  assert.equal(entryGate({...opts,passed:6}).ok,false);
-  assert.equal(entryGate({...opts,slowTrend:false}).ok,false);
-  assert.equal(entryGate({...opts,spread:.04}).ok,false);
-  assert.equal(entryGate({...opts,remaining:1.3}).ok,false);
-  assert.equal(entryGate({...opts,price:.96}).ok,false);
-  const s=freshPaperState();s.armed=true;
-  makeV2Engine(s).step(mk(2,.83),strong,slow,true,structureFixture());
-  assert.ok(s.open);assert.ok(s.open.cost<=3);
+test('90c+ entries remain strict with seven checks and five-minute deadline',()=>{
+ const proof={price:.91,remaining:4,passed:7,slowTrend:true,
+   plausible:true,alignment:true,spread:.02};
+ assert.equal(entryGate(proof).ok,true);
+ for(const changed of [{remaining:5.01},{passed:6},{slowTrend:false},
+   {plausible:false},{alignment:false},{spread:.04},{price:.96}])
+   assert.equal(entryGate({...proof,...changed}).ok,false,
+     JSON.stringify(changed));
 });
-
-
 test('40 percent downside stop only activates strictly INSIDE final six minutes',()=>{
   assert.equal(PAPER_POLICY.contractStopLossFraction,0.40);
   assert.equal(PAPER_POLICY.stopLossArmedMinutes,6);
