@@ -2,6 +2,7 @@
 /* ETH-15 Scout V3. Read-only UI: no buy/sell calls, no bot controls,
    no untrusted HTML, no third-party scripts or fabricated market data. */
 const API='https://eth-15-scout-v3-view.leoseazon.workers.dev/api/v3/dashboard';
+const JOURNAL_API='https://eth-15-scout-v3-view.leoseazon.workers.dev/api/v3/journal';
 const KEY='eth15scout:v3:viewer:session';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
@@ -16,6 +17,7 @@ const cls=(id,type)=>{const e=$(id);if(!e)return;e.classList.remove('success','w
 const trendStyle=t=>t==='UP'?'success':t==='DOWN'?'danger':'neutral';
 const regimeName=s=>s==='RISK_ON'?'Risk-on':s==='RISK_OFF'?'Risk-off':s==='MIXED'?'Mixed':'Unavailable';
 let token='',lastPayload=null,filter='ALL',tf='m5',busy=false;
+let journalState={ready:false,anchor:null,offset:0,events:[],totals:null};
 try{token=sessionStorage.getItem(KEY)||''}catch{}
 function connectMessage(s,bad=false){txt('connect-message',s);$('connect-message').style.color=bad?'#e5a1ab':''}
 function connectionVisible(show){$('connect-panel').classList.toggle('hidden',!show)}
@@ -40,6 +42,8 @@ async function load(){
   if(!response.ok)throw new Error(sanitizeErr(response));
   const result=await response.json();
   if(result.paperOnly!==true||result.readOnly!==true)throw new Error('Unexpected response from the read-only viewer.');
+  synchronizeJournal(result);
+  if(window.ScoutSounds)window.ScoutSounds.observe(result.activity?.events||[]);
   lastPayload=result;
   connectionVisible(false);
   render(result);
@@ -129,7 +133,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderFeed(data);drawChart();
+ renderFeed(data);updateJournalControls(data);drawChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -141,28 +145,50 @@ function activityRecords(data){
  const s=data.status||{},trades=data.activity?.trades||[],
   decisions=data.activity?.decisions||[];
  const out=[];
- if(s.lastNotice&&s.lastTick){
-  let type=/^PAPER SELL/i.test(s.lastNotice)?'PAPER SELL':
-   /^SIMULATED BUY|^PAPER BUY/i.test(s.lastNotice)?'PAPER BUY':
-   /^PASS/i.test(s.lastNotice)&&!/^PASS \/ WATCH/i.test(s.lastNotice)?'PASS':'WATCH';
-  out.push({time:s.lastTick,type,ticker:s.lastMarket||'',details:s.lastNotice});
+ if(journalState.ready){
+  const events=journalState.events;
+  for(const e of events){
+   if(!e?.type)continue;
+   out.push({id:e.id,time:e.time||e.at||0,type:e.type,
+     ticker:e.ticker||'',details:e.msg||'—'});
+  }
+  if(s.lastNotice&&s.lastTick){
+   const duplicate=events.some(e=>e.msg===s.lastNotice&&e.ticker===s.lastMarket&&
+      Math.abs((e.time||0)-s.lastTick)<90000);
+   if(!duplicate){
+    const type=/^PAPER SELL/i.test(s.lastNotice)?'PAPER SELL':
+      /^SIMULATED BUY|^PAPER BUY/i.test(s.lastNotice)?'PAPER BUY':
+      /^PASS(?! \/ WATCH)/i.test(s.lastNotice)?'PASS':'WATCH';
+    // A bot-status line is NOT a validated trade event: do not create fake
+    // buys/sells from status text and never use it for audio notifications.
+    if(type==='WATCH')out.push({time:s.lastTick,type:'WATCH',ticker:s.lastMarket||'',
+      details:s.lastNotice});
+   }
+  }
+ }else{
+  if(s.lastNotice&&s.lastTick){
+   const type=/^PAPER SELL/i.test(s.lastNotice)?'PAPER SELL':
+     /^SIMULATED BUY|^PAPER BUY/i.test(s.lastNotice)?'PAPER BUY':
+     /^PASS(?! \/ WATCH)/i.test(s.lastNotice)?'PASS':'WATCH';
+   out.push({time:s.lastTick,type,ticker:s.lastMarket||'',details:s.lastNotice});
+  }
+  for(const d of decisions){out.push({time:d.time||0,type:'PASS',
+    ticker:d.ticker||'',details:d.reason||'No qualifying paper setup'})}
+  for(const t of trades){
+   if(t.exitAt)out.push({time:t.exitAt,type:'PAPER SELL',ticker:t.ticker||'',
+    details:(t.side||'')+' '+(t.qty||'')+' × '+quote(t.exitPrice)+
+      ' · P/L '+money(t.pnl,true)+' · '+String(t.reason||'Simulated exit')});
+   if(t.time)out.push({time:t.time,type:'PAPER BUY',ticker:t.ticker||'',
+    details:(t.side||'')+' '+(t.qty||'')+' × '+quote(t.entry)+' · '+money(t.cost)+' spent'});
+  }
+  if(s.open?.time)out.push({time:s.open.time,type:'PAPER BUY',
+    ticker:s.open.ticker||'',details:(s.open.side||'')+' '+(s.open.qty||'')+
+      ' paper contracts · still open'});
  }
- for(const d of decisions){out.push({time:d.time||0,type:'PASS',
-  ticker:d.ticker||'',details:d.reason||'No qualifying paper setup'})}
- for(const t of trades){
-  if(t.exitAt)out.push({time:t.exitAt,type:'PAPER SELL',ticker:t.ticker||'',
-   details:(t.side||'')+' '+(t.qty||'')+' × '+quote(t.exitPrice)+
-    ' · P/L '+money(t.pnl,true)+' · '+String(t.reason||'Simulated exit')});
-  if(t.time)out.push({time:t.time,type:'PAPER BUY',ticker:t.ticker||'',
-   details:(t.side||'')+' '+(t.qty||'')+' × '+quote(t.entry)+' · '+money(t.cost)+' spent'});
- }
- if(s.open?.time)out.push({time:s.open.time,type:'PAPER BUY',
-  ticker:s.open.ticker||'',details:(s.open.side||'')+' '+(s.open.qty||'')+
-  ' paper contracts · still open'});
  out.sort((a,b)=>b.time-a.time);
  const seen=new Set();
- return out.filter(item=>{const k=item.type+':'+item.ticker+':'+Math.floor(item.time/1000);
-  if(seen.has(k))return false;seen.add(k);return true}).slice(0,75);
+ return out.filter(item=>{const k=item.id||item.type+':'+item.ticker+':'+Math.floor(item.time/1000);
+  if(seen.has(k))return false;seen.add(k);return true});
 }
 function renderFeed(data){
  const root=$('activity-list');root.replaceChildren();
@@ -232,6 +258,152 @@ function drawChart(){
    left+slot*(ix+.5)-14,height-9);
  }
 }
+function synchronizeJournal(result){
+ const activity=result.activity||{};
+ if(!activity.journalAvailable)return;
+ const events=Array.isArray(activity.events)?activity.events:[];
+ if(!journalState.ready){
+  journalState={ready:true,anchor:activity.journalAnchor,
+   offset:events.length,events:[...events],totals:activity.journalTotals||null};
+ }else{
+  const seen=new Set(journalState.events.map(x=>x.id||
+    [x.time,x.type,x.ticker,x.msg].join('|')));
+  for(const e of events){
+   const key=e.id||[e.time,e.type,e.ticker,e.msg].join('|');
+   if(!seen.has(key)){journalState.events.push(e);seen.add(key)}
+  }
+ }
+ journalState.events.sort((a,b)=>(b.time||b.at||0)-(a.time||a.at||0));
+}
+function updateJournalControls(data){
+ const totals=journalState.totals,ready=journalState.ready;
+ $('older-events').disabled=!ready||journalState.offset>=Number(totals?.events||0);
+ $('export-trades').disabled=!ready;
+ $('export-journal').disabled=!ready;
+ txt('journal-summary',ready?
+  String(totals?.events??'—')+' recorded events · '+
+  String(totals?.trades??'—')+' completed trade exits · '+
+  String(totals?.decisions??'—')+' final PASS decisions · '+
+  String((data.activity?.pending||[]).length)+' unresolved positions'
+  :'Full journal available after updated V3 gateway deployment');
+}
+function journalStatus(message){txt('journal-message',message)}
+async function journalPage(offset,anchor){
+ const url=new URL(JOURNAL_API);url.searchParams.set('offset',String(offset));
+ url.searchParams.set('limit','100');
+ if(anchor)url.searchParams.set('anchor',String(anchor));
+ const r=await fetch(url.toString(),{cache:'no-store',
+  headers:{Authorization:'Bearer '+token}});
+ if(!r.ok)throw new Error('Journal page unavailable (HTTP '+r.status+')');
+ const j=await r.json();
+ if(j.paperOnly!==true||j.readOnly!==true||
+    !Array.isArray(j.events)||!Array.isArray(j.trades)||!Array.isArray(j.decisions))
+   throw new Error('Invalid journal response');
+ return j;
+}
+async function olderEvents(){
+ if(!journalState.ready||!token)return;
+ $('older-events').disabled=true;journalStatus('Loading older paper events…');
+ try{
+  const page=await journalPage(journalState.offset,journalState.anchor);
+  const have=new Set(journalState.events.map(e=>e.id));
+  for(const e of page.events)if(!have.has(e.id)){journalState.events.push(e);have.add(e.id)}
+  journalState.offset+=page.events.length;
+  journalState.events.sort((a,b)=>(b.time||b.at||0)-(a.time||a.at||0));
+  if(lastPayload){renderFeed(lastPayload);updateJournalControls(lastPayload)}
+  journalStatus('Loaded '+page.events.length+' older entries · '+
+   journalState.events.length+' journal events visible. No history overwritten.');
+ }catch(err){
+  journalStatus('Older history could not load: '+String(err.message||err));
+  if(lastPayload)updateJournalControls(lastPayload);
+ }
+}
+async function fullJournal(){
+ if(!token||!journalState.ready)throw new Error('V3 journal is not connected');
+ // Take one anchored snapshot for consistent pagination. Each category is
+ // independently paginated at the same index; none silently stops at 100.
+ let offset=0,anchor=journalState.anchor,totals=null,events=[],trades=[],decisions=[],pending=[];
+ do{
+  const page=await journalPage(offset,anchor);
+  anchor=page.anchor;totals=page.totals||{events:0,trades:0,decisions:0};
+  events.push(...page.events);trades.push(...page.trades);decisions.push(...page.decisions);
+  if(!offset)pending=Array.isArray(page.pending)?page.pending:[];
+  offset+=100;
+  if(offset%1000===0)journalStatus('Exporting historical journal… '+offset+' rows scanned per category.');
+ }while(offset<Math.max(Number(totals.events)||0,Number(totals.trades)||0,
+   Number(totals.decisions)||0));
+ return {format:'ETH-15 Scout V3 research journal',version:1,
+  createdAt:new Date().toISOString(),anchor,
+  note:'Simulated quotes/fees only. Pending results are not verified settlements.',
+  totals,events,trades,decisions,pending,
+  open:lastPayload?.status?.open||null,
+  account:lastPayload?.status||null};
+}
+function download(name,content,mime){
+ const blob=new Blob([content],{type:mime}),href=URL.createObjectURL(blob);
+ const a=document.createElement('a');a.href=href;a.download=name;
+ document.body.append(a);a.click();a.remove();
+ setTimeout(()=>URL.revokeObjectURL(href),6000);
+}
+function csvText(journal){
+ const fields=['ticker','side','qty','status','entry_time_utc','exit_time_utc',
+  'entry_price','exit_price','entry_fee','exit_fee','total_cost','net_proceeds',
+  'net_pnl','settlement_confirmed','exit_reason'];
+ const csvCell=v=>{
+  const value=String(v??'');
+  // Defend analysts opening CSV in Excel from formula injection.
+  const safe=/^[\s]*[=+@]/.test(value)?"'"+value:value;
+  return '"'+safe.replace(/"/g,'""')+'"';
+ };
+ const format=t=>[t.ticker,t.side,t.qty,t.status,
+  t.time?new Date(t.time).toISOString():'',
+  t.exitAt?new Date(t.exitAt).toISOString():'',
+  t.entry,t.exitPrice,t.entryFee,t.sellFee,t.cost,t.proceeds,t.pnl,
+  t.confirmed===true?'YES':'NO',t.reason||''];
+ return [fields.join(','),...journal.trades.map(t=>format(t).map(csvCell).join(',')),
+  ...journal.pending.map(t=>format({...t,confirmed:false,status:'PENDING'}).map(csvCell).join(',')),
+  ...(journal.open?[format({...journal.open,confirmed:false,status:'OPEN'}).map(csvCell).join(',')]:[])
+ ].join('\r\n');
+}
+async function exportResearch(type){
+ const btn=$(type==='csv'?'export-trades':'export-journal');
+ btn.disabled=true;journalStatus('Preparing complete anchored V3 paper journal…');
+ try{
+  const data=await fullJournal(),stamp=new Date().toISOString().slice(0,10);
+  if(type==='csv'){
+   download('ETH-15-Scout-V3-Trades-'+stamp+'.csv',csvText(data),'text/csv;charset=utf-8');
+  }else{
+   download('ETH-15-Scout-V3-Research-'+stamp+'.json',
+    JSON.stringify(data,null,2),'application/json');
+  }
+  journalStatus('Research export prepared: '+data.events.length+' events, '+
+   data.trades.length+' completed exits, '+data.decisions.length+
+   ' final PASS decisions. Nothing was deleted from Cloudflare.');
+ }catch(err){journalStatus('Export could not complete: '+String(err.message||err))}
+ finally{btn.disabled=!journalState.ready}
+}
+function setSoundUI(){
+ const sound=window.ScoutSounds;
+ const enabled=!!sound?.enabled;
+ txt('sound-summary',enabled?'♫ Sounds on':'♩ Sounds off');
+ $('sound-summary').classList.toggle('enabled',enabled);
+ txt('sound-toggle',enabled?'Mute sounds':'Enable trade sounds');
+ $('sound-toggle').setAttribute('aria-pressed',String(enabled));
+}
+$('sound-toggle').addEventListener('click',async()=>{
+ const sound=window.ScoutSounds;
+ if(!sound){return}
+ const good=await sound.setEnabled(!sound.enabled);
+ if(!good)$('sound-toggle').title='Audio blocked by this browser. Try clicking a preview.';
+ setSoundUI();
+});
+$('preview-buy').addEventListener('click',()=>window.ScoutSounds?.preview('PAPER BUY'));
+$('preview-sell').addEventListener('click',()=>window.ScoutSounds?.preview('PAPER SELL'));
+$('older-events').addEventListener('click',olderEvents);
+$('export-trades').addEventListener('click',()=>exportResearch('csv'));
+$('export-journal').addEventListener('click',()=>exportResearch('json'));
+setSoundUI();
+
 $('connect-form').addEventListener('submit',e=>{
  e.preventDefault();
  const value=$('view-key').value.trim();
