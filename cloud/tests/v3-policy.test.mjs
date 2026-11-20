@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PAPER_POLICY,entryBudget,entryGate,profitExitGate} from '../src/v3-policy.js';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
+import {structureFixture} from './fixtures.mjs';
 
 const strong = {
   last:1795,prev:1794,e8:1794,e8prev:1793,e21:1792,
@@ -25,7 +26,7 @@ test('maximum entry cost includes fees and never exceeds $3',()=>{
   assert.equal(entryBudget(1000,100),3);
   assert.equal(entryBudget(-1,3),0);
   const s=freshPaperState();s.armed=true;
-  makeV2Engine(s).step(mk(10),strong,slow,true);
+  makeV2Engine(s).step(mk(10),strong,slow,true,structureFixture());
   assert.ok(s.open);
   assert.ok(s.open.cost<=3);
   assert.ok(s.open.cost>2); // actually uses the new allowance when quotes permit
@@ -36,7 +37,7 @@ test('80¢+ quotes are blocked with 3+ minutes remaining',()=>{
     assert.equal(entryGate({price:.80,remaining,passed:7,slowTrend:true,
       plausible:true,alignment:true,spread:.01}).ok,false);
     const s=freshPaperState();s.armed=true;
-    makeV2Engine(s).step(mk(remaining,.80),strong,slow,true);
+    makeV2Engine(s).step(mk(remaining,.80),strong,slow,true,structureFixture());
     assert.equal(s.open,null);
   }
 });
@@ -51,7 +52,7 @@ test('the final 1.5–3 minutes demand exceptionally strong 7/7 evidence',()=>{
   assert.equal(entryGate({...opts,remaining:1.3}).ok,false);
   assert.equal(entryGate({...opts,price:.96}).ok,false);
   const s=freshPaperState();s.armed=true;
-  makeV2Engine(s).step(mk(2,.83),strong,slow,true);
+  makeV2Engine(s).step(mk(2,.83),strong,slow,true,structureFixture());
   assert.ok(s.open);assert.ok(s.open.cost<=3);
 });
 
@@ -61,14 +62,14 @@ test('normal 96¢ bid triggers a paper exit if enough time remains',()=>{
   const s=freshPaperState();s.armed=true;
   const m=mk(10);
   const engine=makeV2Engine(s);
-  engine.step(m,strong,slow,true);
+  engine.step(m,strong,slow,true,structureFixture());
   assert.ok(s.open);
   m.yes_bid_dollars='0.96';
-  engine.step(m,strong,slow,true);
+  engine.step(m,strong,slow,true,structureFixture());
   assert.equal(s.open,null);
   assert.equal(s.trades.length,1);
   assert.match(s.trades[0].reason,/96¢/);
-  engine.step(m,strong,slow,true);
+  engine.step(m,strong,slow,true,structureFixture());
   assert.equal(s.trades.length,1); // one trade per contract, no duplicate
 });
 
@@ -77,10 +78,10 @@ test('inside last 60 seconds a 96¢ bid may be held until official settlement',(
   assert.equal(profitExitGate(.96,1),'HOLD_PENDING');
   const s=freshPaperState();s.armed=true;
   const engine=makeV2Engine(s);
-  engine.step(mk(10),strong,slow,true);
+  engine.step(mk(10),strong,slow,true,structureFixture());
   assert.ok(s.open);
   const late=mk(.5);late.yes_bid_dollars='0.97';
-  engine.step(late,strong,slow,true);
+  engine.step(late,strong,slow,true,structureFixture());
   assert.ok(s.open);
   assert.equal(s.trades.length,0);
   // The held position uses the original closeTime captured at entry.
@@ -97,13 +98,13 @@ test('PASS / WATCH keeps rescanning the SAME market and finalizes only at expira
   const engine=makeV2Engine(s);
   const m=mk(10);
   const weak={...strong,rNow:49,rPrev:49,three:0,mNow:-1,sNow:1};
-  engine.step(m,weak,slow,true);
+  engine.step(m,weak,slow,true,structureFixture());
   assert.equal(s.open,null);
   assert.equal(s.decisions.length,0);
   assert.equal(s.events.filter(x=>x.type==='WATCH').length,1);
-  engine.step(m,weak,slow,true);
+  engine.step(m,weak,slow,true,structureFixture());
   assert.equal(s.events.filter(x=>x.type==='WATCH').length,1);
-  engine.step(m,strong,slow,true);
+  engine.step(m,strong,slow,true,structureFixture());
   assert.ok(s.open,'same market can qualify after first WATCH');
   assert.equal(s.decisions.length,0,'WATCH is not final PASS');
 });
@@ -112,7 +113,7 @@ test('unfilled market PASS is recorded only once after expiration',()=>{
   const s=freshPaperState();s.armed=true;
   const engine=makeV2Engine(s);const m=mk(10);
   const weak={...strong,rNow:49,rPrev:49,three:0,mNow:-1,sNow:1};
-  engine.step(m,weak,slow,true);
+  engine.step(m,weak,slow,true,structureFixture());
   assert.equal(s.decisions.length,0);
   engine.step(null,null,null,false); // no fresh data alone does not finalize
   assert.equal(s.decisions.length,0);
@@ -127,7 +128,7 @@ test('daily paper realized-loss safeguard is 12% of the initial bankroll',()=>{
   assert.equal(PAPER_POLICY.dailyRealizedLossFraction,0.12);
   const atLimit=freshPaperState();atLimit.armed=true;
   atLimit.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
-  makeV2Engine(atLimit).step(mk(10),strong,slow,true);
+  makeV2Engine(atLimit).step(mk(10),strong,slow,true,structureFixture());
   assert.equal(atLimit.open,null);
   assert.match(atLimit.window?.reason||atLimit.events.at(-1)?.msg||'', /./);
 });
@@ -135,7 +136,7 @@ test('daily paper realized-loss safeguard is 12% of the initial bankroll',()=>{
 test('net daily loss below $12 permits a qualifying paper entry',()=>{
   const below=freshPaperState();below.armed=true;
   below.trades=[{ticker:'LOSS-1199',exitAt:Date.now(),pnl:-11.99,confirmed:true}];
-  makeV2Engine(below).step(mk(10),strong,slow,true);
+  makeV2Engine(below).step(mk(10),strong,slow,true,structureFixture());
   assert.ok(below.open,'loss $11.99 should not hit a $12 limit');
   assert.ok(below.open.cost<=3);
 });
@@ -146,6 +147,6 @@ test('daily safeguard is based on net realized P/L, not gross losing trades',()=
     {ticker:'LOSS-15',exitAt:Date.now(),pnl:-15,confirmed:true},
     {ticker:'WIN-4',exitAt:Date.now(),pnl:4,confirmed:true}
   ];
-  makeV2Engine(s).step(mk(10),strong,slow,true);
+  makeV2Engine(s).step(mk(10),strong,slow,true,structureFixture());
   assert.ok(s.open,'net -$11 remains above the -$12 threshold');
 });
