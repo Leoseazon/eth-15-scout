@@ -229,7 +229,7 @@ function toPending(pos) {
     if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
       const today=chicagoDay(Date.now());
       const daily=state.trades.filter(t=>chicagoDay(t.exitAt)===today).reduce((a,t)=>a+t.pnl,0);
-      if(daily<=-state.initial*0.04)notice='Daily 4% paper loss cap reached. No new entries.';
+      if(daily<=-state.initial*PAPER_POLICY.dailyRealizedLossFraction)notice='Daily 12% net realized paper-loss cap reached. No new entries.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
         const rejected=[];
