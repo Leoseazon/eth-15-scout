@@ -21,11 +21,11 @@ async function jsonGet(url,deadline=8500){
  if(!response.ok)throw new Error('Data provider HTTP '+response.status);
  return response.json();
 }
-function directQuoteTicker(ticker){
+export function directQuoteTicker(ticker){
  if(typeof ticker!=='string'||!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker))return null;
  return 'https://external-api.kalshi.com/trade-api/v2/markets/'+encodeURIComponent(ticker);
 }
-function publicContract(m,observedAt){
+export function publicContract(m,observedAt){
  if(!m||typeof m.ticker!=='string')return null;
  const raw=(k)=>{const v=m[k];return v==null||v===''?null:v};
  const closeAt=Date.parse(m.close_time);
