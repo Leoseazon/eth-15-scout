@@ -2,8 +2,10 @@
  * Deliberately unchanged trading logic; no live Kalshi account or orders.
  * The surrounding cloud scheduler and storage are new. See README.
  */
+import {PAPER_POLICY, entryBudget, entryGate, profitExitGate} from './v3-policy.js';
+
 export const freshPaperState = () => ({
-  initial:100,cash:100,realized:0,armed:false,risk:2,open:null,pending:[],
+  initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
   trades:[],decisions:[],events:[],window:null,blocked:[]
 });
 const fee = (price, qty) => Math.ceil(Math.max(0, 0.07 * qty * price * (1 - price)) * 100 - 1e-8) / 100;
@@ -95,7 +97,7 @@ function recentLearning(priceBucket) {
  return {n,net,extra:(n>=8&&net<0)?1:0};
 }
 
-function chooseCandidate(m,one,m5,remaining){
+function chooseCandidate(m,one,m5,remaining,rejections=[]){
  const target=Number(m.floor_strike);
  if(!Number.isFinite(target)||!one||!m5)return null;
  const ranked=[];
@@ -115,7 +117,10 @@ function chooseCandidate(m,one,m5,remaining){
    const learn=recentLearning(priceBucketOf(price));
    const reversal=signal.turn&&signal.plausible&&signal.alignment&&signal.passed>=4+learn.extra;
    const momentum=slowTrend&&directionOk&&reachDist&&signal.passed>=5+learn.extra;
-   if(!reversal&&!momentum)continue;
+   if(!reversal&&!momentum){rejections.push(side+': insufficient reversal/momentum confirmations');continue;}
+   const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
+     plausible:signal.plausible,alignment:signal.alignment,spread});
+   if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
    const strategy=reversal?'REVERSAL':'MOMENTUM';
    // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
    const grossWinningUpside=1-price-fee(price,1);
@@ -139,7 +144,7 @@ function decisionComplete(window,reason='No qualifying setup') {
 
 function enter(m,side,signal,now,price,strategy='REVERSAL') {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
- const budget=Math.min(state.cash*state.risk/100,state.initial*0.02);
+ const budget=entryBudget(state.cash,state.risk);
  let qty=Math.floor(budget/price);
  while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
  if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
@@ -208,9 +213,11 @@ function toPending(pos) {
       if(Number.isFinite(proceeds)){
         const gain=(bid-pos.entry)/pos.entry;
         let why=null;
-        if(gain>=0.55&&pos.markPnl>0)why='Profit target (+55% contract-price movement)';
+        const targetAction=profitExitGate(bid,remaining);
+        if(targetAction==='SELL')why='96¢ bid take-profit';
+        else if(targetAction==='HOLD_PENDING')
+          notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
         else if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
-        else if(remaining<1.25)why='Market close approaching';
         else if(one&&remaining<7){
           const q=judge(pos.side,one,m5,m,remaining);
           if(q.passed<=1)why='Reversal invalidated by current momentum';
@@ -219,13 +226,14 @@ function toPending(pos) {
       }else if(remaining<=0)toPending(pos);
     }
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
-    if(state.armed&&!state.open&&freshRemaining>=2.5&&freshRemaining<=12.5&&one){
+    if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
       const today=chicagoDay(Date.now());
       const daily=state.trades.filter(t=>chicagoDay(t.exitAt)===today).reduce((a,t)=>a+t.pnl,0);
       if(daily<=-state.initial*0.04)notice='Daily 4% paper loss cap reached. No new entries.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
-        const c=chooseCandidate(m,one,m5,freshRemaining);
+        const rejected=[];
+        const c=chooseCandidate(m,one,m5,freshRemaining,rejected);
         if(c){
           if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
           else {
@@ -233,11 +241,19 @@ function toPending(pos) {
             state.window.reason=notice;
           }
         }else{
-          notice='PASS / WATCH: no contract at any price meets reversal/trend, target-reachability, liquidity and quote-quality requirements.';
+          notice='PASS / WATCH: '+(rejected.length?rejected.join('; ').slice(0,300):'no contract meets reversal/trend, target-reachability, liquidity and quote-quality requirements.');
           state.window.reason=notice;
         }
       }
     }else if(!state.armed&&!state.open)notice='Paper bot paused. No new purchases.';
+    // PASS is final only when the market expires. While it remains active,
+    // WATCH records a change in rejection reason and the engine keeps scanning.
+    if(state.armed && state.window && !state.window.entered && !state.open &&
+       notice && !notice.startsWith('Paper bot paused') && state.window.lastWatch!==notice){
+      note('WATCH',notice,m.ticker);
+      state.window.lastWatch=notice;
+      state.window.reason=notice;
+    }
     return {notice,remaining,marketTicker:m.ticker};
   }
   return {step,fastScan};
