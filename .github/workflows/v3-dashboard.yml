@@ -19,4 +19,4 @@ jobs:
           node-version: '22'
       - run: node --check v3/app.js
       - run: node --check v3/sounds.js
-      - run: node --test v3/test-sounds.mjs
+      - run: node --test v3/test-sounds.mjs v3/test-layout.mjs
