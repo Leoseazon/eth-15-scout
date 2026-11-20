@@ -461,7 +461,8 @@ function toPending(pos) {
     if(!m5||!fresh){
       return {notice:notice.startsWith('PAPER SELL')?notice:
         state.open?
-          'Open position: Kalshi-only protective exits checked; Kraken trend data unavailable. New entries suspended.':
+          (state.open.exitRiskNotice||
+           'Open position: Kalshi-only protective exits checked; Kraken trend data unavailable. New entries suspended.'):
           'Waiting for fresh Kalshi and Kraken data; no simulated entry.',
         remaining,marketTicker:m.ticker};
     }
