@@ -66,23 +66,41 @@ test('three fast checks or before 90s or during final 60s cannot use honey-pot',
   assert.equal(s.open,null,'incorrect honey-pot buy at '+min+' min');
  }
 });
-test('honey-pot stop triggers ONLY on executable BID more than ten cents below entry',()=>{
- assert.equal(honeyStopTriggered(.85,.75),false);
- assert.equal(honeyStopTriggered(.85,.7501),false);
- assert.equal(honeyStopTriggered(.85,.749),true);
- assert.equal(honeyStopTriggered(.85,.70),true);
+test('honey-pot stop uses 10 percent RELATIVE entry price, on executable bid',()=>{
+ assert.equal(HONEY_POLICY.stopLossFraction,.10);
+ // 85c x 0.90 = 76.5c. One-cent bids make 76c the first trigger.
+ assert.equal(honeyStopTriggered(.85,.77),false);
+ assert.equal(honeyStopTriggered(.85,.765),true);
+ assert.equal(honeyStopTriggered(.85,.76),true);
+ assert.equal(honeyStopTriggered(.85,.75),true);
+ // 80c x 0.90 = 72c. This is a 8c drop, not the old 10c rule.
+ assert.equal(honeyStopTriggered(.80,.73),false);
+ assert.equal(honeyStopTriggered(.80,.72),true);
+ assert.equal(honeyStopTriggered(.80,.71),true);
  assert.equal(honeyStopTriggered(.85,NaN),false);
+ assert.equal(honeyStopTriggered(.85,-.01),false);
  const s=freshPaperState();s.armed=true;
  const eng=makeV2Engine(s);eng.step(market(1.25,.85),four,slow,true,structureFixture());
  assert.ok(s.open);
- const quote=market(1.10,.85);quote.yes_bid_dollars='0.74';
- eng.step(quote,four,slow,true,structureFixture());
+ const q=market(1.10,.85);q.yes_bid_dollars='0.76';
+ eng.step(q,four,slow,true,structureFixture());
  assert.equal(s.open,null);
  assert.equal(s.trades.length,1);
  assert.match(s.trades[0].reason,/HONEY-POT stop/);
- assert.equal(s.trades[0].exitPrice,.74);
+ assert.match(s.trades[0].reason,/10%/);
+ assert.equal(s.trades[0].exitPrice,.76);
  assert.ok(s.trades[0].pnl<0);
  assert.ok(s.events.some(e=>e.type==='PAPER SELL'&&/HONEY-POT stop/.test(e.msg)));
+});
+test('honey-pot 10 percent stop does NOT sell at a smaller relative drawdown',()=>{
+ const s=freshPaperState();s.armed=true;
+ const eng=makeV2Engine(s);
+ eng.step(market(1.25,.85),four,slow,true,structureFixture());
+ assert.ok(s.open);
+ const q=market(1.10,.85);q.yes_bid_dollars='0.77';
+ eng.step(q,four,slow,true,structureFixture());
+ assert.ok(s.open);
+ assert.equal(s.trades.length,0);
 });
 test('honey-pot avoids invented stop fill when quote depth disappears',()=>{
  const s=freshPaperState();s.armed=true;const eng=makeV2Engine(s);
