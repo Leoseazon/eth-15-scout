@@ -359,3 +359,6 @@ body.unauthenticated #live-action{display:none}
  .live-contract-board .board-price strong{font-size:24px}
  .live-contract-board .board-price .mini-label{font-size:9px}
 }
+
+/* Private account moved above metrics; it still must remain behind login. */
+body.unauthenticated #performance{display:none}
