@@ -29,9 +29,15 @@ const chicagoDay = ts => new Intl.DateTimeFormat('en-CA',{
 export function makeV2Engine(state) {
   let notice = '';
   const persist = () => {}; // Committed atomically by the cloud object after each tick.
-  const note = (type,msg,ticker='') => {
-    state.events.unshift({time:Date.now(),type,msg,ticker});
+  const note = (type,msg,ticker='',extra={}) => {
+    state.events.unshift({time:Date.now(),type,msg,ticker,...extra});
   };
+  const secondsLeft=(closeTime,at)=>{
+    const close=Date.parse(closeTime);
+    return Number.isFinite(close)&&Number.isFinite(at)?Math.max(0,Math.ceil((close-at)/1000)):null;
+  };
+  const clockLabel=seconds=>seconds===null?'time remaining unknown':
+    Math.floor(seconds/60)+'m '+String(seconds%60).padStart(2,'0')+'s remaining';
 
 function quote(m,side,bidask) {
  const key=(side==='UP'?'yes_':'no_')+(bidask==='ask'?'ask_dollars':'bid_dollars');
@@ -189,15 +195,16 @@ function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
  if(cost>state.cash)return false;
  state.cash=Number((state.cash-cost).toFixed(2));
  const bucket=priceBucketOf(price);
+ const remainingSecondsAtEntry=secondsLeft(m.close_time,now);
  const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
-   target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
+   remainingSecondsAtEntry,target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
    checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
    status:'OPEN',bestBid:NaN,highestProfit:0};
  state.open=position;
  state.blocked.push(m.ticker);
  // Retain one-entry-per-contract history for the whole paper journal.
  if(state.window?.ticker===m.ticker)state.window.entered=true;
- note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
+ note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost)+' · '+clockLabel(remainingSecondsAtEntry),m.ticker,{remainingSeconds:remainingSecondsAtEntry,closeTime:m.close_time});
  notice='SIMULATED BUY ('+strategy+'): '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
  persist();return true;
 }
@@ -208,14 +215,16 @@ function closeEarly(pos,bid,why,m) {
  const sellFee=fee(bid,pos.qty);
  const received=Number((pos.qty*bid-sellFee).toFixed(2));
  if(received<0)return false;
+ const exitAt=Date.now();
+ const remainingSecondsAtExit=secondsLeft(pos.closeTime,exitAt);
  const pnl=Number((received-pos.cost).toFixed(2));
  state.cash=Number((state.cash+received).toFixed(2));
  state.realized=Number((state.realized+pnl).toFixed(2));
- const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt:Date.now(),
+ const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt,remainingSecondsAtExit,
    confirmed:true,exitType:'EARLY SALE',reason:why};
  state.trades.unshift(tr);
  state.open=null;
- note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
+ note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why+' · '+clockLabel(remainingSecondsAtExit),pos.ticker,{remainingSeconds:remainingSecondsAtExit,closeTime:pos.closeTime});
  notice='PAPER SELL '+pos.side+' '+money(pnl)+' ('+why+')';
  persist();return true;
 }
