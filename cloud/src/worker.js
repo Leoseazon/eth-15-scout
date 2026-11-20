@@ -3,8 +3,13 @@
  */
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
+import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 
 const INTERVAL_MS=30000;
+const REGIME_RETRY_MS=30*60000;
+const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
+  timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date(ts));
 const API='https://api.kraken.com/0/public/';
 const json=(obj,status=200)=>new Response(JSON.stringify(obj),{
   status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',
@@ -89,6 +94,9 @@ export class ScoutEngine extends DurableObject {
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
+    const today=chicagoDay(now);
+    const context={strict:true,three:null,five:null,oneClosedAt:null,
+      regime:s.dailyRegime?.day===today?s.dailyRegime:null};
     try{
       const [kj,tj,fivej]=await Promise.all([
         remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
@@ -106,19 +114,43 @@ export class ScoutEngine extends DurableObject {
 if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
 
         throw Error('Kraken 5m candles or ticker missing');
-      // Calculate from completed candles only; allow protective exits without 1m data.
+      // Never evaluate new entries with missing/stale completed 5m candles.
+      if(!completedFresh(prices,5))throw Error('Kraken 5m completed candles stale');
       m5=indicators(prices);
-      if(!Number.isFinite(m5?.e50))throw Error('Kraken 5m indicators incomplete');
+      context.five=analyzeStructure(prices);
+      if(!Number.isFinite(m5?.e50)||!context.five)
+        throw Error('Kraken 5m indicators/structure incomplete');
       fresh=true;
       try {
         const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
         if(onej.error?.length)throw Error('Kraken 1m API error');
-        one=engine.fastScan(rows(onej)?.slice(0,-1)||[]);
-        if(!one)throw Error('Kraken 1m indicators incomplete');
+        const oneRows=rows(onej)?.slice(0,-1)||[];
+        if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
+        one=engine.fastScan(oneRows);
+        context.oneClosedAt=Number(oneRows.at(-1)?.[0]);
+        context.three=analyzeStructure(aggregate3m(oneRows));
+        if(!one||!context.three)throw Error('Kraken 1m/3m indicators incomplete');
       } catch(e) { error='1m indicator unavailable: '+safeErr(e) }
     }catch(e){error=safeErr(e)}
+    // ONE light context refresh per Houston day (retry at most each 30m
+    // on failure). This is crypto price/volume context, NOT verified macro
+    // event news, ETF flows or a calibrated probability forecast.
+    if(s.dailyRegime?.day!==today && now-(s.lastRegimeAttemptAt||0)>REGIME_RETRY_MS){
+      s.lastRegimeAttemptAt=now;
+      try{
+        const [eh,bh]=await Promise.all([
+          remote(API+'OHLC?pair=ETHUSD&interval=60'),
+          remote(API+'OHLC?pair=XBTUSD&interval=60')
+        ]);
+        if(eh.error?.length||bh.error?.length)throw Error('Hourly Kraken request rejected');
+        s.dailyRegime=buildDailyRegime(rows(eh)?.slice(0,-1)||[],
+          rows(bh)?.slice(0,-1)||[],today,now);
+      }catch(e){s.dailyRegime={day:today,at:now,status:'unavailable',
+        regime:'UNKNOWN',eventRisk:'unverified',reason:safeErr(e)};}
+    }
+    context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    try{report=engine.step(market,one,m5,fresh)}
+    try{report=engine.step(market,one,m5,fresh,context)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
     this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
       lastNotice:report.notice||'',lastFeedOkay:fresh});
@@ -150,6 +182,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
         lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
+        dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10)});
     }
     if(path==='/v1/history'&&req.method==='GET'){
