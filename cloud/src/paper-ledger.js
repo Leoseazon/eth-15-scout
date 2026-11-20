@@ -1,11 +1,12 @@
 /* Persistent PAPER ledger; no live Kalshi orders. */
 import {buildPaperSettlement} from './settlement-accounting.js';
 export const TIMESTOP_TAG='V3-TIME40-6M-20261120';
+export const LATE_VALUE_TAG='V3-80C-EIGHTMIN-20261120';
 export function paperResults(sql,releaseTag) {
   const marker=tag=>sql.exec(
     'SELECT first_engine_tick_at FROM release_markers WHERE tag=?',tag
   ).toArray()[0]?.first_engine_tick_at||null;
-  const revisedAt=marker(TIMESTOP_TAG),originalAt=marker(releaseTag);
+  const revisedAt=marker(TIMESTOP_TAG),originalAt=marker(releaseTag),latestAt=marker(LATE_VALUE_TAG);
   const q='SELECT COUNT(*) completed,'+
     " COALESCE(SUM(CASE WHEN json_extract(data,'$.pnl')>0 THEN 1 ELSE 0 END),0) wins,"+
     " COALESCE(SUM(CASE WHEN json_extract(data,'$.pnl')<0 THEN 1 ELSE 0 END),0) losses,"+
@@ -13,11 +14,13 @@ export function paperResults(sql,releaseTag) {
     " COALESCE(SUM(CASE WHEN json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) earlySales,"+
     " COALESCE(SUM(CASE WHEN json_extract(data,'$.exitType')='OFFICIAL SETTLEMENT' THEN 1 ELSE 0 END),0) officialSettlements,"+
     " COALESCE(SUM(CASE WHEN json_extract(data,'$.time')>=? AND json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) revisedCohort,"+
-    " COALESCE(SUM(CASE WHEN json_extract(data,'$.time')>=? AND json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) originalCohort"+
+    " COALESCE(SUM(CASE WHEN json_extract(data,'$.time')>=? AND json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) originalCohort,"+
+    " COALESCE(SUM(CASE WHEN json_extract(data,'$.time')>=? AND json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) latestCohort"+
     " FROM trades WHERE json_extract(data,'$.confirmed')=1 AND json_type(data,'$.pnl') IN ('integer','real')";
   const results=sql.exec(q,revisedAt||Number.MAX_SAFE_INTEGER,
-    originalAt||Number.MAX_SAFE_INTEGER).toArray()[0];
+    originalAt||Number.MAX_SAFE_INTEGER,latestAt||Number.MAX_SAFE_INTEGER).toArray()[0];
   return {...results,revisedFirstTick:revisedAt,originalFirstTick:originalAt,
+    latestFirstTick:latestAt,
     definition:'Realized, fee-adjusted per-position paper P/L (early exits independent of window outcome)'};
 }
 // Official Kalshi market finalization is required; never infer from spot ETH.
