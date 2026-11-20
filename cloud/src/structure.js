@@ -135,23 +135,33 @@ export function structuralEntry(side,three,five){
       :three.price<level.lower&&three.prevClose<level.lower;
     if(near&&!breakout)return {ok:false,reason:'Nearby 5m support/resistance barrier'};
   }
+  const local=side==='UP'?three.resistance:three.support;
+  const localDistance=local?(side==='UP'?local.lower-price:price-local.upper):Infinity;
+  const localBarrier=!!local&&localDistance>=-three.tolerance&&
+    localDistance<=three.tolerance;
   const b=three.bands;
   const stretched=side==='UP'?price>b.upper:price<b.lower;
   const adAgainst=side==='UP'?three.adDelta<0:three.adDelta>0;
-  // Bollinger and A/D are SECONDARY only: never independently enter a trade.
-  return {ok:true,secondaryCaution:!!(stretched&&adAgainst),
-    reason:stretched&&adAgainst?'Bollinger stretch with opposing A/D pressure':'Structure acceptable'};
+  // Strong 5m zone is a primary veto; 3m barrier, Bollinger and A/D
+  // add caution only. None can independently create an entry.
+  const caution=localBarrier||(stretched&&adAgainst);
+  return {ok:true,secondaryCaution:!!caution,
+    reason:localBarrier?'Near short-term 3m barrier':
+      stretched&&adAgainst?'Bollinger stretch with opposing A/D pressure':'Structure acceptable'};
 }
 export function structuralExit(side,three,five){
   if(!three||!five)return {confirm:false,nearSupport:false,reason:'Structure unavailable'};
   const badThree=side==='UP'?three.price<three.e8&&three.trend==='DOWN':
     three.price>three.e8&&three.trend==='UP';
   const badFive=side==='UP'?five.trend==='DOWN':five.trend==='UP';
-  const zone=side==='UP'?five.support:five.resistance;
-  const near=zone?(side==='UP'?three.price>=zone.lower-five.tolerance&&three.price<=zone.upper+five.tolerance:
-    three.price<=zone.upper+five.tolerance&&three.price>=zone.lower-five.tolerance):false;
-  const broken=zone?(side==='UP'?three.price<zone.lower-five.tolerance && three.prevClose<zone.lower-five.tolerance:
-    three.price>zone.upper+five.tolerance && three.prevClose>zone.upper+five.tolerance):false;
+  const majorZone=side==='UP'?five.support:five.resistance;
+  const minorZone=side==='UP'?three.support:three.resistance;
+  const zone=majorZone||minorZone;
+  const margin=majorZone?five.tolerance:three.tolerance;
+  const near=zone?(side==='UP'?three.price>=zone.lower-margin&&three.price<=zone.upper+margin:
+    three.price<=zone.upper+margin&&three.price>=zone.lower-margin):false;
+  const broken=zone?(side==='UP'?three.price<zone.lower-margin && three.prevClose<zone.lower-margin:
+    three.price>zone.upper+margin && three.prevClose>zone.upper+margin):false;
   // A/D and Bollinger do not trigger exits; hard stops remain elsewhere.
   return {confirm:badThree&&(badFive||broken)&&(!near||broken),
     nearSupport:near&&!broken,reason:broken?'Confirmed 3m zone breakdown':
