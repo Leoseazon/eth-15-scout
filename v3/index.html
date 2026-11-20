@@ -58,6 +58,33 @@
    <p id="connect-message" class="micro" role="status" aria-live="polite">Your credentials must be configured in the separate read-only Cloudflare viewer before first sign-in.</p>
   </form>
  </section>
+ <section id="live-action" class="live-action" aria-labelledby="live-action-title">
+  <div class="live-action-heading">
+   <div><p class="eyebrow">TOP PRIORITY · LIVE V3 PAPER BOT</p><h2 id="live-action-title">Current bot activity</h2></div>
+   <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span></div>
+  </div>
+  <div class="live-action-body">
+   <div class="live-action-main">
+    <span class="mini-label">CURRENT STATUS</span>
+    <div class="live-primary-line"><strong id="live-primary">CONNECTING</strong><span id="live-side" class="live-side neutral">—</span></div>
+    <p id="live-decision">Sign in to view the bot's actual paper-trade decisions.</p>
+    <div class="live-contract"><span>Contract</span><strong id="live-contract-id">—</strong></div>
+   </div>
+   <div class="live-position">
+    <div class="live-position-title">OPEN PAPER POSITION</div>
+    <strong id="live-position-state">—</strong>
+    <div id="live-position-detail" class="live-position-detail">No data</div>
+    <div class="live-position-meta"><div><span>Entry / stake</span><strong id="live-entry">—</strong></div><div><span>Est. open P&amp;L</span><strong id="live-mark-pnl">—</strong></div></div>
+   </div>
+   <div class="live-timing">
+    <div class="live-position-title">CONTRACT WINDOW</div>
+    <strong id="live-countdown">—</strong>
+    <div id="live-close-label" class="live-position-detail">End time not available</div>
+    <div class="last-execution"><span>LAST RECORDED PAPER TRADE</span><strong id="live-last-trade">None recorded</strong><small id="live-last-trade-at">—</small></div>
+   </div>
+  </div>
+  <p class="live-action-footnote">This is a **simulated** signal monitor. It never places an actual Kalshi order. Data becomes stale if the engine stops reporting.</p>
+ </section>
  <section id="overview" class="overview">
   <div class="metric-grid">
    <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
@@ -80,7 +107,7 @@
       <div><div class="mini-label">CURRENT KALSHI CONTRACT</div><strong id="contract-id">—</strong><span class="contract-small" id="contract-time">Close time unavailable</span></div>
       <div class="contract-right"><span id="contract-strike" class="contract-strike">Target —</span><div class="quote-list"><span id="up-quote">UP ask —</span><span id="down-quote">DOWN ask —</span></div></div>
     </div>
-    <div class="decision-banner"><span class="decision-dot">◎</span><div><strong>Current bot decision</strong><p id="current-notice">Awaiting V3 engine activity</p></div><span id="notice-time" class="micro">—</span></div>
+    <div class="decision-banner chart-decision"><span class="decision-dot">◎</span><div><strong>Bot market note</strong><p id="current-notice">Awaiting V3 engine activity</p></div><span id="notice-time" class="micro">—</span></div>
   </section>
   <section id="signals" class="card signals-card" aria-labelledby="signals-title">
    <div class="card-heading"><div><p class="eyebrow">WEIGHTED EVIDENCE</p><h2 id="signals-title">Signal hierarchy</h2></div><span class="badge neutral">Reference</span></div>
