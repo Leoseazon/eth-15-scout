@@ -253,3 +253,38 @@ body.unauthenticated .intro{padding-bottom:4px}
  .live-action-footnote{padding:10px 14px}
  #live-primary{font-size:25px}
 }
+
+/* Kalshi official 15-minute outcomes, visually separated from paper fills */
+.outcome-section{border-top:1px solid var(--stroke);background:#142232}
+.outcome-header{padding:22px 20px 16px;display:flex;justify-content:space-between;
+ gap:18px;align-items:center}
+.outcome-header h3{font-size:16px;letter-spacing:-.3px;margin:2px 0 5px}
+.outcome-header p:not(.eyebrow){font-size:11px;color:var(--sub);margin:4px 0 0;max-width:750px}
+.outcome-grid-head,.outcome-item{display:grid;
+ grid-template-columns:minmax(130px,.8fr) minmax(165px,.85fr) minmax(135px,.75fr) minmax(170px,1.8fr);
+ align-items:center;gap:15px;padding:11px 19px}
+.outcome-grid-head{font-size:9px;font-weight:800;color:var(--muted);
+ letter-spacing:.08em;background:#1b2b3b}
+.outcome-item{border-top:1px solid var(--stroke-soft);font-size:11px}
+.outcome-item:hover{background:#1c3040}
+.outcome-item time{font-weight:600;color:#c0d1dd}
+.outcome-pill{display:inline-flex;padding:4px 8px;border-radius:7px;font-size:10px;font-weight:800;
+ border:1px solid #46536a;white-space:nowrap}
+.outcome-pill.up{background:#24443f;border-color:#3a6d5e;color:#9ae3ce}
+.outcome-pill.down{background:#412e37;border-color:#704851;color:#e7adb5}
+.outcome-pill.pending,.outcome-pill.void{background:#3f3b2e;border-color:#675837;color:#e4cc98}
+.outcome-action,.outcome-ticker{overflow-wrap:anywhere;color:var(--sub)}
+.outcome-ticker{font-size:10px}
+.outcome-footnote{margin:0;padding:13px 20px 17px;border-top:1px solid var(--stroke-soft);
+ color:var(--muted);font-size:10px}
+@media(max-width:770px){
+ .outcome-grid-head,.outcome-item{grid-template-columns:minmax(98px,.85fr) minmax(135px,1.1fr) minmax(110px,.75fr);
+ padding:12px 13px;gap:8px}
+ .outcome-grid-head>span:last-child,.outcome-item>.outcome-ticker{display:none}
+}
+@media(max-width:480px){
+ .outcome-header{padding:16px 13px;align-items:flex-start;flex-direction:column}
+ .outcome-grid-head,.outcome-item{grid-template-columns:100px minmax(0,1fr);gap:8px}
+ .outcome-grid-head>span:nth-child(3),.outcome-item>.outcome-action{display:none}
+ .outcome-footnote{padding:12px 13px}
+}
