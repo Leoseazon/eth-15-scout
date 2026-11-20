@@ -253,6 +253,14 @@ function render(data){
  txt('down-bid','Bid '+(quotesUsable?quote(c.no_bid_dollars):'—'));
  $('up-quote').parentElement.classList.toggle('missing',yesAsk==='—');
  $('down-quote').parentElement.classList.toggle('missing',noAsk==='—');
+ const phase=s.settlementPhase;
+ txt('settlement-phase',phase==='RTI_60_SECOND_AVERAGING_UNVERIFIED'?
+  'FINAL 60s · CF RTI averaging underway · official samples unavailable':
+  phase==='AWAITING_OFFICIAL_RESULT'?
+  'Closed · awaiting finalized Kalshi exchange outcome':
+  phase==='PRE_SETTLEMENT_AVERAGING'?
+  'Official CF RTI 60-second average begins in the final minute':
+  'CF RTI settlement status unavailable');
  txt('quote-freshness',quotesUsable?
   'Kalshi quote checked '+ago(quoteTime)+' · '+String(c.quoteSource||'Bot market snapshot'):
   !active?'Engine feed is stale · quotes hidden':
