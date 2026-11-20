@@ -129,6 +129,15 @@
   <div class="journal-tools"><div><strong>V3 research journal</strong><p id="journal-summary">Permanent cloud journal: awaiting connection</p><small>Paper entries, exits, WATCH/PASS decisions and unresolved settlements. Records are not erased when this page closes.</small></div>
    <div class="journal-actions"><button type="button" id="older-events" disabled>Load older events</button><button type="button" id="export-trades" disabled>Export trades CSV</button><button type="button" id="export-journal" disabled>Export full journal JSON</button></div></div>
   <p class="activity-footnote" id="journal-message">WATCH is not a final PASS. Pending outcomes are never counted as confirmed wins.</p>
+  <section class="outcome-section" aria-labelledby="outcome-title">
+   <div class="outcome-header"><div><p class="eyebrow">OFFICIAL EXCHANGE RECORD</p>
+    <h3 id="outcome-title">15-minute market outcomes</h3>
+    <p>Every recorded ETH 15m market close — even without a paper bet. UP/DOWN is confirmed only after Kalshi publishes the settled result.</p></div>
+    <span class="badge neutral" id="outcome-count">Not yet available</span></div>
+   <div class="outcome-grid-head"><span>END TIME (CT)</span><span>RESULT</span><span>V3 ACTIVITY</span><span>KALSHI CONTRACT</span></div>
+   <div id="outcome-list" class="outcome-list" aria-live="polite"><div class="empty-state">Historical market outcomes will appear once the V3 exchange-result journal is activated.</div></div>
+   <p id="outcome-status" class="outcome-footnote">Source: Kalshi public market API, not Kraken spot prices. Pending and provisional results remain unconfirmed.</p>
+  </section>
  </section>
  <footer><div class="footer-notice">ⓘ &nbsp;Decision support and simulated fills only. <strong>This website cannot place real-money trades.</strong> The market display uses Kraken reference prices, not official Kalshi settlement values.</div><div>ETH-15 Scout V3 <span>·</span> Private viewer</div></footer>
 </main>
