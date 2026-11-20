@@ -83,6 +83,9 @@ Review proposed improvements **after the first 100 qualifying completed PAPER tr
 
 ## Running notes
 
+- **Nov 20, final-three-minute price-tier adjustment (implemented in the pending paper build, not a retroactive rule):** 20–69c requires 7/7; 70–79c requires 5/7. Existing slow-trend, strike, structure, 3c maximum final-3m spread, fees and bankroll controls stay in place. 80–89c still requires 6/7 in the 1.5–3m interval, 90–95c 7/7, and under-20c separately 7/7. Preserve first deployed engine tick as actual strategy cutoff; no previous recorded trade can be relabeled under this version.
+
+
 - **Nov 20, 2026:** Recorded proposed late-window 1m-dominant, strike/time/quote-aware alternative and deferred 40/50/60 stop study. **NO live bot changes were made from this checklist.**
 
 - **Nov 20, ~3:00 AM CT screen recording (35.6s):** WATCH/PASS history shows the last visible paper BUY at 2:22:30 AM CT and a 3:00 AM WATCH/PASS, a roughly **37.5-minute no-entry span** within the recorded display (not verified as a complete uninterrupted backend interval). Recurrent rejection categories shown: UP near 5m support/resistance and missing price-direction plus momentum/acceleration evidence; DOWN guarded EARLY-REVERSAL rejection due to time window, trend/eligibility or tight-quote requirement. At 2:22:15 a **qualified reversal setup** reportedly lacked sufficient quote depth or fee-adjusted bankroll for simulated entry; distinguish execution/liquidity failures from indicator failures. The 3:00 contract rollover briefly showed fresh Kalshi/Kraken data pending, which should not count as a normal opportunity. The capture is a partial scrolling sample, so do **not** report precise all-day pass counts or missed winnings without full exported journal and contemporaneous quotes. Preserve strategy unchanged pending tomorrow's audit.
