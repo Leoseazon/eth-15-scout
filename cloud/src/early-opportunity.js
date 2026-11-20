@@ -79,7 +79,9 @@ export function opportunityScore({
   if(![passed,spread,remaining,price].every(Number.isFinite)||
      !quality?.ok||!Number.isFinite(quality.rewardToCost))return -Infinity;
   const earlyValue=remaining>=7&&remaining<=12.5&&price<=0.68?5:0;
-  return families.breadth*7+passed*2+(turned?4:0)+
+  // A second or third MACD/EMA echo only adds a small fraction of a vote.
+  const extraEchoes=Math.min(3,Math.max(0,passed-families.breadth));
+  return families.breadth*9+extraEchoes*.75+(turned?4:0)+
     Math.min(12,quality.rewardToCost*12)+earlyValue-
     spread*150+(strikeDirectionFavorable?2:0)+
     (strategy==='EARLY-REVERSAL'?1:0);
