@@ -12,5 +12,13 @@ name = "SCOUT"
 class_name = "ScoutEngine"
 script_name = "eth-15-scout-cloud-v3test"
 
-# Supply VIEW_TOKEN separately via encrypted Cloudflare secret, NEVER in Git.
-# No cron, no Durable Object migrations and no trading endpoints.
+# Configure SCOUT_LOGIN_USER, SCOUT_LOGIN_PASSWORD and
+# SCOUT_SESSION_SECRET as Cloudflare encrypted secrets (not in Git).
+# This is a separate read-only viewer: no cron and no trading endpoints.
+# Cloudflare Workers approximate per-location login-attempt limit.
+[[ratelimits]]
+name = "LOGIN_RATE_LIMIT"
+namespace_id = "157211"
+[ratelimits.simple]
+limit = 8
+period = 60
