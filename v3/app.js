@@ -218,9 +218,25 @@ function render(data){
  const ticker=s.lastMarket||c.ticker||'Not available';
  txt('contract-id',ticker);
  txt('contract-time',c.close_time?'Closes '+ct(c.close_time)+' CT · '+remaining(c.close_time):'Latest engine contract');
- txt('contract-strike',n(Number(c.floor_strike))!==null&&c.floor_strike!==undefined?'Target '+money(Number(c.floor_strike)):'Target unavailable');
- txt('up-quote','UP ask '+quote(c.yes_ask_dollars));
- txt('down-quote','DOWN ask '+quote(c.no_ask_dollars));
+ const strike=c.floor_strike!==null&&c.floor_strike!==undefined&&c.floor_strike!==''?
+  n(Number(c.floor_strike)):null;
+ txt('contract-strike',strike!==null?money(strike):'Target unavailable');
+ const quoteTime=n(c.quoteObservedAt)??n(m.asOf);
+ const quoteFresh=quoteTime!==null&&now-quoteTime<45000&&now-quoteTime>=-5000;
+ const contractCurrent=c.ticker===ticker&&Date.parse(c.close_time)>now;
+ const quotesUsable=active&&contractCurrent&&quoteFresh;
+ const yesAsk=quotesUsable?quote(c.yes_ask_dollars):'—';
+ const noAsk=quotesUsable?quote(c.no_ask_dollars):'—';
+ txt('up-quote',yesAsk);
+ txt('down-quote',noAsk);
+ txt('up-bid','Bid '+(quotesUsable?quote(c.yes_bid_dollars):'—'));
+ txt('down-bid','Bid '+(quotesUsable?quote(c.no_bid_dollars):'—'));
+ $('up-quote').parentElement.classList.toggle('missing',yesAsk==='—');
+ $('down-quote').parentElement.classList.toggle('missing',noAsk==='—');
+ txt('quote-freshness',quotesUsable?
+  'Kalshi quote checked '+ago(quoteTime)+' · '+String(c.quoteSource||'Bot market snapshot'):
+  !active?'Engine feed is stale · quotes hidden':
+  'Quote unavailable or older than 45s · prices hidden');
  const notice=s.lastNotice||'No decision reported yet';
  txt('current-notice',notice);
  txt('notice-time',ct(s.lastTick)+' CT');
