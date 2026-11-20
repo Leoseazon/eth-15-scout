@@ -1,0 +1,16 @@
+# Read-only V3 dashboard gateway. This does not deploy or modify the bot.
+name = "eth-15-scout-v3-view"
+main = "viewer-worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = true
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+
+[[durable_objects.bindings]]
+name = "SCOUT"
+class_name = "ScoutEngine"
+script_name = "eth-15-scout-cloud-v3test"
+
+# Supply VIEW_TOKEN separately via encrypted Cloudflare secret, NEVER in Git.
+# No cron, no Durable Object migrations and no trading endpoints.
