@@ -102,6 +102,19 @@ test('honey-pot 10 percent stop does NOT sell at a smaller relative drawdown',()
  assert.ok(s.open);
  assert.equal(s.trades.length,0);
 });
+test('10% honey-pot stop overrides final-minute settlement hold when bid remains executable',()=>{
+ const s=freshPaperState();s.armed=true;
+ const engine=makeV2Engine(s);
+ engine.step(market(1.25,.85),four,slow,true,structureFixture());
+ assert.equal(s.open?.strategy,'HONEY-POT');
+ const quote=market(.75,.85);quote.yes_bid_dollars='0.76';
+ engine.step(quote,four,slow,true,structureFixture());
+ assert.equal(s.open,null);
+ assert.equal(s.trades.length,1);
+ assert.match(s.trades[0].reason,/10%/);
+ assert.ok(s.trades[0].remainingSecondsAtExit<=60);
+ assert.equal(s.pending.length,0);
+});
 test('honey-pot avoids invented stop fill when quote depth disappears',()=>{
  const s=freshPaperState();s.armed=true;const eng=makeV2Engine(s);
  eng.step(market(1.25,.85),four,slow,true,structureFixture());
