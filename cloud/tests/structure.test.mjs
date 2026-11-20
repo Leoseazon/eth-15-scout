@@ -88,6 +88,23 @@ test('5m resistance can veto UP entry, 5m support can veto DOWN entry',()=>{
   assert.equal(local.secondaryCaution,true,'3m barrier requires extra confirmation');
 });
 
+test('confirmed 5m swing barrier blocks 15m UP entry until two closed 3m candles break above',()=>{
+ const zone={center:1796,lower:1795.5,upper:1796.5,touches:3};
+ const near={...five,resistance:zone,tolerance:1};
+ assert.equal(structuralEntry('UP',three,near).ok,false);
+ // A single tick beyond resistance is NOT sufficient. Both completed
+ // 3-minute closes must establish an accepted breakout.
+ const oneClose={...three,price:1797.3,prevClose:1796.2};
+ assert.equal(structuralEntry('UP',oneClose,near).ok,false);
+ const twoCloses={...three,price:1797.3,prevClose:1797.1};
+ assert.equal(structuralEntry('UP',twoCloses,near).ok,true);
+});
+test('15m DOWN entry is rejected near a confirmed five-minute support floor',()=>{
+ const support={center:1794,lower:1793.5,upper:1794.5,touches:3};
+ const downThree={...three,trend:'DOWN',price:1794.9,prevClose:1795.1};
+ const downFive={...five,trend:'DOWN',support,tolerance:1};
+ assert.equal(structuralEntry('DOWN',downThree,downFive).ok,false);
+});
 test('Bollinger and A/D only add a secondary caution, never authorize an entry',()=>{
   const stretched={...three,price:1806,adDelta:-10};
   const z=structuralEntry('UP',stretched,five);
@@ -143,8 +160,11 @@ test('nearby support delays discretionary exits but NOT hard stop',()=>{
   engine.step(quote,weakOne,slow,true,ctx(1260,th,fi));
   engine.step(quote,weakOne,slow,true,ctx(1320,th,fi));
   assert.ok(s.open);
-  quote.yes_bid_dollars='0.34'; // down >40%: hard loss exit no delay
-  engine.step(quote,weakOne,slow,true,ctx(1380,th,fi));
+  // At exactly six minutes, the timed fixed stop is not armed.
+  // Re-check just inside six minutes while preserving support proximity.
+  const finalQuote=m(5.9);
+  finalQuote.yes_bid_dollars='0.34'; // >40% drawdown, stop now active
+  engine.step(finalQuote,weakOne,slow,true,ctx(1380,th,fi));
   assert.equal(s.open,null);
   assert.match(s.trades[0].reason,/Stop loss/);
 });

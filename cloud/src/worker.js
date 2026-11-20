@@ -4,9 +4,15 @@
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
-import {paperEntryArmed} from './v3-policy.js';
+import {paperEntryArmed,settlementClockPhase} from './v3-policy.js';
+import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
+import {TIMESTOP_TAG,LATE_VALUE_TAG,paperResults,reconcilePending} from './paper-ledger.js';
 
-const INTERVAL_MS=30000;
+// Poll every 15 seconds (REST data only; not a tick-level stream).
+// Re-evaluation still requires fully closed 1m/5m Kraken candles.
+const INTERVAL_MS=15000;
+const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
+const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
   timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
@@ -30,6 +36,15 @@ function getMarket(j){
 }
 const rows=j=>Object.values(j.result||{}).find(Array.isArray);
 const safeErr=e=>String(e?.message||e).slice(0,200);
+const finite=n=>Number.isFinite(n)?n:null;
+const viewStructure=o=>o?{at:o.closedAt,trend:o.trend,price:finite(o.price),
+ rsi:finite(o.rsi),e8:finite(o.e8),e21:finite(o.e21),adDelta:finite(o.adDelta),
+ bands:o.bands?{lower:finite(o.bands.lower),mid:finite(o.bands.mid),
+ upper:finite(o.bands.upper)}:null,
+ support:o.support||null,resistance:o.resistance||null}:null;
+const smallCandles=a=>(a||[]).slice(-84).map(r=>[
+ Number(r[0]),Number(r[1]),Number(r[2]),Number(r[3]),Number(r[4]),Number(r[6])
+]).filter(r=>r.every(Number.isFinite));
 function normalize(s){
   return {...freshPaperState(),...s,armed:!!s?.armed,monitoring:s?.monitoring!==false,
     // Migrate the old fixed 2% V2 default to the approved $3/3% PAPER ceiling.
@@ -50,7 +65,15 @@ export class ScoutEngine extends DurableObject {
        CREATE TABLE IF NOT EXISTS runtime_status(
          id INTEGER PRIMARY KEY CHECK(id=1), armed INTEGER NOT NULL,
          monitoring INTEGER NOT NULL, observed_at INTEGER NOT NULL,
-         last_market TEXT, last_error TEXT);`);
+         last_market TEXT, last_error TEXT);
+      CREATE TABLE IF NOT EXISTS window_outcomes(
+       ticker TEXT PRIMARY KEY, close_at INTEGER NOT NULL,
+       observed_at INTEGER NOT NULL, outcome TEXT, status TEXT NOT NULL,
+       data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_window_close ON window_outcomes(close_at);
+      CREATE TABLE IF NOT EXISTS release_markers(
+        tag TEXT PRIMARY KEY,first_engine_tick_at INTEGER NOT NULL,
+        pre_release_reference_at TEXT NOT NULL,description TEXT NOT NULL);`);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -89,6 +112,40 @@ export class ScoutEngine extends DurableObject {
       this.ctx.storage.kv.put('runtime',runtime);
     });
   }
+  async captureOfficialWindows(now=Date.now()){
+    // Independent archival poll. Failure never changes strategy/entries/P&L.
+    // Query ALL exchange-listed ETH15M closes, including those the bot passed.
+    let cursor='',seen=new Set(),written=0;
+    const sql=this.ctx.storage.sql;
+    for(let page=0;page<3;page++){
+      const response=await remote(windowEndpointUrl(now,cursor));
+      if(!Array.isArray(response?.markets))
+        throw Error('Kalshi market-outcome feed unavailable');
+      const windows=parseList(response,now).filter(x=>!seen.has(x.ticker));
+      this.ctx.storage.transactionSync(()=>{
+        for(const w of windows){
+          seen.add(w.ticker);
+          sql.exec(`INSERT INTO window_outcomes(
+            ticker,close_at,observed_at,outcome,status,data)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(ticker) DO UPDATE SET
+              observed_at=excluded.observed_at,
+              outcome=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.outcome ELSE excluded.outcome END,
+              status=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.status ELSE excluded.status END,
+              data=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.data ELSE excluded.data END`,
+            w.ticker,w.closeAt,w.observedAt,w.outcome,w.status,JSON.stringify(w));
+          written++;
+        }
+      });
+      const next=typeof response.cursor==='string'?response.cursor:'';
+      if(!next||next===cursor||response.markets.length<500)break;
+      cursor=next;
+    }
+    return written;
+  }
   async run(){
     if(this.busy)return this.busy;
     this.busy=this.tick().finally(()=>{this.busy=null});
@@ -97,24 +154,48 @@ export class ScoutEngine extends DurableObject {
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
+    // Immutable marker: first PAPER engine tick on this code release.
+    // Approximate 11:40 PM was planning/editing, NOT a deployment time.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      RELEASE_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First engine tick on final observation build; target 50–100 completed paper trades');
+    // Separate prospective cohort for the owner-requested risk-rule change.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      TIMESTOP_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First engine tick of 40 percent contract stop gated to last six minutes and new settlement accounting');
+    // NEW experiment timestamp. Do not overwrite previous cutovers or balances.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      LATE_VALUE_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First tick of 8m 80–89c paper rules, 60–90s 80–85c honey-pot requiring 4/7 and >=10% entry-price bid stop');
+
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
+    let fiveCandles=[],oneCandles=[],tickerSpot=null;
     const today=chicagoDay(now);
     const context={strict:true,three:null,five:null,oneClosedAt:null,
       regime:s.dailyRegime?.day===today?s.dailyRegime:null};
     try{
-      const [kj,tj,fivej]=await Promise.all([
+      // Fetch 1m signals alongside 5m/Kalshi/ticker; no serial 1m round trip.
+      const [kj,tj,fivej,onej]=await Promise.all([
         remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
-        remote(API+'OHLC?pair=ETHUSD&interval=5')
+        remote(API+'OHLC?pair=ETHUSD&interval=5'),
+        remote(API+'OHLC?pair=ETHUSD&interval=1').catch(e=>({error:[safeErr(e)]}))
       ]);
       if(tj.error?.length||fivej.error?.length)
         throw Error('Kraken API rejected a request');
       const retrieved=Date.parse(kj.worker_retrieved_at);
+      s.lastQuoteRetrievedAt=Number.isFinite(retrieved)?retrieved:null;
       if(!Number.isFinite(retrieved)||Date.now()-retrieved>90000||retrieved>Date.now()+5000)
         throw Error('Kalshi quote is stale or missing its retrieval timestamp');
       market=getMarket(kj);
       if(!market)throw Error('No open ETH 15-minute contract in market feed');
       const prices=rows(fivej)?.slice(0,-1);
+      fiveCandles=prices||[];
+      const validSpot=Object.values(tj.result||{}).find(t=>Array.isArray(t?.c));
+      tickerSpot=Number(validSpot?.c?.[0]);
       
 if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
 
@@ -127,9 +208,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         throw Error('Kraken 5m indicators/structure incomplete');
       fresh=true;
       try {
-        const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
-        if(onej.error?.length)throw Error('Kraken 1m API error');
+        if(onej.error?.length)throw Error('Kraken 1m API error: '+String(onej.error[0]).slice(0,60));
         const oneRows=rows(onej)?.slice(0,-1)||[];
+        oneCandles=oneRows;
         if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
         one=engine.fastScan(oneRows);
         context.oneClosedAt=Number(oneRows.at(-1)?.[0]);
@@ -158,16 +239,65 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     try{report=engine.step(market,one,m5,fresh,context)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
-    this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
-      lastNotice:report.notice||'',lastFeedOkay:fresh});
+    // Never block decisions on Kalshi settlement-data availability.
+    // Run AFTER step() to ensure the bot handles the current market first.
+    // Chart reuses the engine's successfully fetched reference candles.
+    // This avoids a separate set of Kraken calls being a single point of
+    // failure for the user's website; never changes the trade decision.
+    if(fresh&&market&&m5&&fiveCandles.length){
+      s.marketSnapshot={
+        asOf:now,
+        source:'Same Kraken spot candles read by V3 engine (not Kalshi settlement)',
+        spot:finite(tickerSpot),
+        contract:{ticker:market.ticker,close_time:market.close_time,
+          floor_strike:market.floor_strike,
+          yes_ask_dollars:market.yes_ask_dollars,
+          no_ask_dollars:market.no_ask_dollars},
+        freshness:{one:oneCandles.length>=25,three:!!context.three,five:true},
+        primary:{five:viewStructure(context.five),three:viewStructure(context.three),
+          ema21:finite(m5.e21),ema50:finite(m5.e50),vwap:finite(m5.vwap),
+          support:finite(m5.support),resistance:finite(m5.resistance)},
+        secondary:{rsi14:finite(m5.rsi),macd:finite(m5.macd),
+          macdSignal:finite(m5.signal)},
+        candles:{m1:smallCandles(oneCandles),
+          m3:smallCandles(aggregate3m(oneCandles)),
+          m5:smallCandles(fiveCandles)}
+      };
+    }
+    // Persist actual bot decisions BEFORE any historical market-result scan.
+    // The read-only viewer sees this tick without waiting for archival IO.
+    s.lastMarketDataAt=fresh?now:null;
+    s.lastDecisionProcessingMs=Date.now()-now;
+    const tickMeta={lastTick:Date.now(),lastError:error,
+      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
+      lastFeedOkay:fresh};
+    this.save(s,tickMeta);
+    // Archiving is noncritical. It does not change the strategy or P&L.
+    if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
+      s.lastWindowScanAt=now;
+      try{
+        s.lastWindowScanCount=await this.captureOfficialWindows(now);
+        s.lastWindowScanError=null;
+        s.lastWindowScanOkayAt=Date.now();
+      }catch(e){
+        s.lastWindowScanError=safeErr(e);
+      }
+      // Re-save with the same CURRENT tick metadata, not stale runtime fields.
+      this.save(s,tickMeta);
+    }
+    // Only official finalized outcomes resolve paper holdings.
+    const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
+    if(settled>0)this.save(s,tickMeta);
   }
   async alarm(){
+    const start=Date.now();
     try{await this.run()}catch(e){
       const s=this.record();
       this.save(s,{lastTick:Date.now(),lastError:'Uncaught cloud tick: '+safeErr(e)});
     }finally{
       const s=this.record();
-      if(s.monitoring)await this.ctx.storage.setAlarm(Date.now()+INTERVAL_MS);
+      // Stable cadence measured from tick START, not end. No overlapping runs.
+      if(s.monitoring)await this.ctx.storage.setAlarm(Math.max(Date.now()+1000,start+INTERVAL_MS));
     }
   }
   async fetch(req){
@@ -189,10 +319,70 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
+        lastDecisionProcessingMs:s.lastDecisionProcessingMs||null,
+        lastQuoteRetrievedAt:s.lastQuoteRetrievedAt||null,
         lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
-        recentTrades:s.trades.slice(0,10)});
+        recentTrades:s.trades.slice(0,10),
+        paperResults:paperResults(this.ctx.storage.sql,RELEASE_TAG),
+        lastWindowScanAt:s.lastWindowScanAt||null,
+        lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
+        lastWindowScanError:s.lastWindowScanError||null,
+        marketSnapshot:s.marketSnapshot||null,
+        settlementPhase:settlementClockPhase(
+          s.marketSnapshot?.contract?.close_time||s.open?.closeTime||'',Date.now()),
+        officialSettlementIndexAvailable:false,
+        releaseMarkers:this.ctx.storage.sql.exec(
+          'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
+        ).toArray(),
+        recentWindows:this.ctx.storage.sql.exec(
+         'SELECT data FROM window_outcomes ORDER BY close_at DESC LIMIT 16'
+        ).toArray().map(r=>JSON.parse(r.data))});
+    }
+    if(path==='/v1/journal'&&req.method==='GET'){
+      // Append-only SQLite is the canonical research record; no 100-row
+      // history ceiling and no browser localStorage dependency.
+      // Anchor fixes the displayed historical snapshot during pagination.
+      const u=new URL(req.url),rawLimit=Number(u.searchParams.get('limit')||100),
+        rawOffset=Number(u.searchParams.get('offset')||0),
+        rawAnchor=Number(u.searchParams.get('anchor')||Date.now());
+      if(![rawLimit,rawOffset,rawAnchor].every(Number.isSafeInteger)||
+         rawLimit<1||rawLimit>100||rawOffset<0||rawOffset>1000000||
+         rawAnchor<1000000000000||rawAnchor>Date.now()+60000)
+        return json({error:'Invalid journal pagination'},400);
+      const sql=this.ctx.storage.sql;
+      const events=sql.exec(
+        'SELECT key,happened_at,data FROM events WHERE happened_at<=? ORDER BY happened_at DESC,key DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>({id:r.key,at:r.happened_at,...JSON.parse(r.data)}));
+      const trades=sql.exec(
+        'SELECT ticker,exit_at,data FROM trades WHERE exit_at<=? ORDER BY exit_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
+      const decisions=sql.exec(
+        'SELECT ticker,decided_at,data FROM decisions WHERE decided_at<=? ORDER BY decided_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
+      const windows=sql.exec(
+        'SELECT data FROM window_outcomes WHERE close_at<=? ORDER BY close_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
+      const counts=sql.exec(`SELECT
+        (SELECT count(*) FROM events WHERE happened_at<=?) events,
+        (SELECT count(*) FROM trades WHERE exit_at<=?) trades,
+        (SELECT count(*) FROM decisions WHERE decided_at<=?) decisions,
+        (SELECT count(*) FROM window_outcomes WHERE close_at<=?) windows`,
+        rawAnchor,rawAnchor,rawAnchor,rawAnchor).toArray()[0];
+      return json({paperOnly:true,readOnly:true,anchor:rawAnchor,offset:rawOffset,limit:rawLimit,
+        totals:{...counts,paperResults:paperResults(sql,RELEASE_TAG),
+          officialWindows:sql.exec("SELECT count(*) n FROM window_outcomes WHERE status='OFFICIAL_RESULT'").toArray()[0].n},
+        events,trades,decisions,windows,
+        releaseMarkers:sql.exec(
+         'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
+        ).toArray(),
+        // Pending settlement is UNCONFIRMED, never counted as a win.
+        pending:this.record().pending});
     }
     if(path==='/v1/history'&&req.method==='GET'){
       const sql=this.ctx.storage.sql;

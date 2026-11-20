@@ -5,12 +5,19 @@ export const PAPER_POLICY = Object.freeze({
   minEntryMinutes: 1.5,
   maxEntryMinutes: 12.5,
   expensiveThreshold: 0.80,
-  expensiveCutoffMinutes: 3,
+  expensiveCutoffMinutes: 8, // 80-89c eligible at <=8m, not earlier
+  premiumCutoffMinutes: 5, // 90c+ still requires <=5m
+  lateValueEarlierChecks: 5, // 80-89c with 3-8m left
+  lateValueFinalChecks: 6, // 80-89c with 1.5-3m left
   maxNewEntryPrice: 0.96,
   lateMinConfirmations: 7,
+  finalThreeLowPriceChecks: 7, // 20–69c: require all fast checks under 3m
+  finalThreeMidPriceChecks: 5, // 70–79c: require five fast checks under 3m
   lateMaxSpread: 0.03,
   sellAtBid: 0.96,
   finalMinuteHold: 1,
+  stopLossArmedMinutes: 6,
+  contractStopLossFraction: 0.40, // active only inside final 6 minutes
   maxStakeIncludingFees: 3,
   defaultRiskPercent: 3,
   dailySoftLossFraction: 0.12, // normal entries stop at -$12 on a $100 initial bankroll
@@ -61,28 +68,50 @@ export function assessDailyRisk({
       mode==='HARD'?0:PAPER_POLICY.maxStakeIncludingFees};
 }
 
-// Called AFTER baseline trend/reversal, quote-size, fee and liquidity checks.
-// Late entries are possible, but only under exceptionally strict *observable*
-// confirmations. These checks do not establish true odds or a positive edge.
-export function entryGate({price, remaining, passed, slowTrend, plausible, alignment, spread}) {
-  const fail = reason => ({ok: false, reason});
-  if (![price, remaining, spread].every(Number.isFinite) || !(price > 0) ||
-      !(spread >= 0)) return fail('Incomplete price or timing information');
-  if (remaining > PAPER_POLICY.maxEntryMinutes || remaining < PAPER_POLICY.minEntryMinutes)
+// Used after quote, liquidity, price-direction and structure validation.
+// A lateValueVerified flag MUST come from the guarded strategy-specific gate;
+// caller cannot earn this permission merely by supplying 5/7 checks.
+export function entryGate({price,remaining,passed,slowTrend,plausible,alignment,spread,
+    lateValueVerified=false}) {
+  const fail=reason=>({ok:false,reason});
+  if(![price,remaining,spread].every(Number.isFinite)||price<=0||spread<0)
+    return fail('Incomplete price or timing information');
+  if(remaining>PAPER_POLICY.maxEntryMinutes||remaining<PAPER_POLICY.minEntryMinutes)
     return fail('Outside 1.5–12.5 minute entry window');
-  if (price >= PAPER_POLICY.maxNewEntryPrice)
-    return fail('Entry at 96¢ or more leaves insufficient exit room');
-  // One-second conservative guard prevents scheduling jitter from
-  // slipping a quote through the precise three-minute boundary.
-  if (price >= PAPER_POLICY.expensiveThreshold &&
-      remaining >= PAPER_POLICY.expensiveCutoffMinutes - 1/60)
-    return fail('80¢+ contract prohibited at/near the 3-minute cutoff');
-  if (remaining < PAPER_POLICY.expensiveCutoffMinutes &&
-      (passed < PAPER_POLICY.lateMinConfirmations || !slowTrend ||
-       !plausible || !alignment || spread > PAPER_POLICY.lateMaxSpread))
-    return fail('Late entry requires 7/7 checks, trend, strike plausibility and spread ≤3¢');
-  return {ok: true, reason: remaining < PAPER_POLICY.expensiveCutoffMinutes ?
-    'Exceptional late-entry checks satisfied' : 'Standard entry window'};
+  if(price>=PAPER_POLICY.maxNewEntryPrice)
+    return fail('Entry at 96c or more leaves insufficient exit room');
+  const isLateValue=price>=PAPER_POLICY.expensiveThreshold&&price<.90;
+  const premium=price>=.90;
+  const veryLate=remaining<3;
+  if(isLateValue){
+    if(remaining>PAPER_POLICY.expensiveCutoffMinutes)
+      return fail('80–89c entries require eight minutes or less');
+    const required=veryLate?PAPER_POLICY.lateValueFinalChecks:
+      PAPER_POLICY.lateValueEarlierChecks;
+    if(passed<required||!lateValueVerified||!plausible||
+       spread>PAPER_POLICY.lateMaxSpread)
+      return fail('80–89c time-sensitive setup requires guarded strike/structure, '+
+        required+'/7 checks and spread <=3c');
+    return {ok:true,reason:'Guarded 80–89c time-aware late value setup'};
+  }
+  if(premium&&remaining>PAPER_POLICY.premiumCutoffMinutes)
+    return fail('90c+ entries require five minutes or less');
+  // 20–69c: preserve strict 7/7 in the final three minutes.
+  // 70–79c: allow 5/7 in the final three minutes, WITHOUT removing the
+  // slow trend, strike plausibility, 5m RSI alignment or liquidity screens.
+  // Under-20c MICRO-VALUE has a separate mandatory 7/7 guard.
+  const finalThreeRequired=veryLate&&price>=.70&&price<.80?
+    PAPER_POLICY.finalThreeMidPriceChecks:PAPER_POLICY.finalThreeLowPriceChecks;
+  if(premium||veryLate){
+    const required=premium?PAPER_POLICY.lateMinConfirmations:finalThreeRequired;
+    if(passed<required||!slowTrend||!plausible||!alignment||
+       spread>PAPER_POLICY.lateMaxSpread)
+      return fail('Final entry requires '+required+
+        '/7 checks, aligned slow trend, strike plausibility and spread <=3c');
+  }
+  return {ok:true,reason:premium?'Exceptional 90c+ confirmation passed':
+      veryLate?'Final-3m '+finalThreeRequired+'/7 confirmations passed':
+      'Standard entry window'};
 }
 
 // A bid at 96¢ or higher normally triggers a paper exit (subject to depth
@@ -92,4 +121,16 @@ export function profitExitGate(bid, remaining) {
   if (!Number.isFinite(bid) || !Number.isFinite(remaining) ||
       bid < PAPER_POLICY.sellAtBid) return 'NONE';
   return remaining <= PAPER_POLICY.finalMinuteHold ? 'HOLD_PENDING' : 'SELL';
+}
+
+// Kalshi ETH15m final price is the 60-second CF Benchmarks RTI average.
+// This classifies CLOCK PHASE ONLY. It never computes a Kalshi result from
+// Kraken, and never treats a last traded tick as the official settlement.
+export function settlementClockPhase(closeTime,now=Date.now()){
+  const end=Date.parse(closeTime);
+  if(!Number.isFinite(end)||!Number.isFinite(now))return 'UNKNOWN';
+  const remaining=(end-now)/1000;
+  if(remaining<=0)return 'AWAITING_OFFICIAL_RESULT';
+  if(remaining<=60)return 'RTI_60_SECOND_AVERAGING_UNVERIFIED';
+  return 'PRE_SETTLEMENT_AVERAGING';
 }

@@ -4,6 +4,10 @@
  */
 import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
 import {structuralEntry, structuralExit} from './structure.js';
+import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
+import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
+import {HONEY_POLICY,honeyPotGate,honeyStopTriggered,honeyAuditReason} from './honey-pot.js';
+import {MICRO_POLICY,microValueGate} from './micro-value.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -16,7 +20,7 @@ function ema(a,n){if(a.length<n) return NaN;let e=a.slice(0,n).reduce((x,y)=>x+y
 
 function emaSeries(a,n){const out=Array(a.length).fill(NaN);if(a.length<n)return out;let e=a.slice(0,n).reduce((x,y)=>x+y,0)/n;out[n-1]=e;let k=2/(n+1);for(let i=n;i<a.length;i++){e+=k*(a[i]-e);out[i]=e}return out}
 
-function rsi(a,n=14){if(a.length<n+2)return NaN;let up=0,dn=0;for(let i=1;i<=n;i++){const d=a[i]-a[i-1];up+=Math.max(0,d);dn+=Math.max(0,-d)}up/=n;dn/=n;for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];up=(up*(n-1)+Math.max(0,d))/n;dn=(dn*(n-1)+Math.max(0,-d))/n}return dn===0?100:100-100/(1+up/dn)}
+function rsi(a,n=14){if(a.length<n+2)return NaN;let up=0,dn=0;for(let i=1;i<=n;i++){const d=a[i]-a[i-1];up+=Math.max(0,d);dn+=Math.max(0,-d)}up/=n;dn/=n;for(let i=n+1;i<a.length;i++){const d=a[i]-a[i-1];up=(up*(n-1)+Math.max(0,d))/n;dn=(dn*(n-1)+Math.max(0,-d))/n}return dn===0?(up===0?50:100):100-100/(1+up/dn)}
 
 export function indicators(rows){const c=rows.map(r=>+r[4]);const e21=ema(c,21),e50=ema(c,50);const es12=emaSeries(c,12),es26=emaSeries(c,26);const m=c.map((_,i)=>Number.isFinite(es12[i])&&Number.isFinite(es26[i])?es12[i]-es26[i]:NaN);const valid=m.filter(Number.isFinite);const sig=ema(valid,9);let pv=0,vol=0;for(const r of rows.slice(-96)){const v=+r[6],p=(+r[2]+ +r[3]+ +r[4])/3;pv+=p*v;vol+=v};const last=c[c.length-1], prev=c[c.length-2],mVal=valid[valid.length-1];const ranges=rows.slice(-20).map(r=>Number(r[2])-Number(r[3])).filter(v=>Number.isFinite(v)&&v>0).sort((a,b)=>a-b);const medRange=ranges.length?ranges[Math.floor(ranges.length/2)]:NaN;const recent=rows.slice(-70),lows=[],highs=[];for(let i=3;i<recent.length-3;i++){const low=+recent[i][3],high=+recent[i][2];if(recent.slice(i-3,i+4).every((r,j)=>j===3||low<=+r[3]))lows.push(low);if(recent.slice(i-3,i+4).every((r,j)=>j===3||high>=+r[2]))highs.push(high)}const support=lows.filter(x=>x<last).sort((a,b)=>b-a)[0];const resistance=highs.filter(x=>x>last).sort((a,b)=>a-b)[0];const rv=rsi(c);return {range:medRange,last,prev,e21,e50,rsi:rv,macd:mVal,signal:sig,vwap:vol?pv/vol:NaN,support,resistance};}
 
@@ -29,9 +33,15 @@ const chicagoDay = ts => new Intl.DateTimeFormat('en-CA',{
 export function makeV2Engine(state) {
   let notice = '';
   const persist = () => {}; // Committed atomically by the cloud object after each tick.
-  const note = (type,msg,ticker='') => {
-    state.events.unshift({time:Date.now(),type,msg,ticker});
+  const note = (type,msg,ticker='',extra={}) => {
+    state.events.unshift({time:Date.now(),type,msg,ticker,...extra});
   };
+  const secondsLeft=(closeTime,at)=>{
+    const close=Date.parse(closeTime);
+    return Number.isFinite(close)&&Number.isFinite(at)?Math.max(0,Math.ceil((close-at)/1000)):null;
+  };
+  const clockLabel=seconds=>seconds===null?'time remaining unknown':
+    Math.floor(seconds/60)+'m '+String(seconds%60).padStart(2,'0')+'s remaining';
 
 function quote(m,side,bidask) {
  const key=(side==='UP'?'yes_':'no_')+(bidask==='ask'?'ask_dollars':'bid_dollars');
@@ -120,26 +130,87 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
    const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
    const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
    const learn=recentLearning(priceBucketOf(price));
-   const structure=context?.three&&context?.five?
-     structuralEntry(side,context.three,context.five):null;
-   // Hierarchy: 3m/5m structure is a veto, NOT led by 1m, bands or A/D.
-   if(structure&&!structure.ok){rejections.push(side+': '+structure.reason);continue;}
-   const regime=context?.regime;
-   const macroAgainst=regime?.status==='ready'&&
-     ((side==='UP'&&regime.regime==='RISK_OFF')||
-      (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
-   // Daily crypto regime and Bollinger/A/D can add at most ONE 1m check.
-   // They never overrule strong primary structure or become trade signals.
-   const addedConfirmation=structure?.secondaryCaution||macroAgainst?1:0;
-   const reversal=signal.turn&&signal.plausible&&signal.alignment&&
-     signal.passed>=4+learn.extra+addedConfirmation;
-   const momentum=slowTrend&&directionOk&&reachDist&&
-     signal.passed>=5+learn.extra+addedConfirmation;
-   if(!reversal&&!momentum){rejections.push(side+': insufficient reversal/momentum confirmations');continue;}
-   const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
-     plausible:signal.plausible,alignment:signal.alignment,spread});
-   if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
-   if(riskMode==='SOFT'){
+ const families=signalFamilies(signal.checks);
+ // Price, RSI and MACD are correlated; require two evidence families,
+ // not multiple copies of one price movement.
+ if(families.breadth<2||!families.price){
+   rejections.push(side+': requires a price-direction signal plus momentum/acceleration evidence');continue;
+ }
+ const regime=context?.regime;
+ const macroAgainst=regime?.status==='ready'&&
+   ((side==='UP'&&regime.regime==='RISK_OFF')||
+    (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
+ const countertrendFive=['UP','DOWN'].includes(context.five.trend)&&context.five.trend!==side;
+ // 80-89c late-value trades use a smaller paper stake, fresh independent
+ // signals and strike cushion; 5m trend may lag and is contextual.
+ const lateBudget=entryBudget(state.cash,state.risk,LATE_VALUE_POLICY.maxStakeWithFees);
+ let lateQty=Math.floor(lateBudget/price);
+ while(lateQty>0&&lateQty*price+fee(price,lateQty)>lateBudget)lateQty--;
+ const lateProof=lateValueGate({side,price,remaining,
+   passed:signal.passed,families,onePrice:one.last,strike:target,
+   volatility:one.sd,threeTrend:context.three.trend,
+   spread,askSize,bidSize,expectedQty:lateQty,riskMode,
+   highVolRegime:regime?.status==='ready'&&regime.volatility==='HIGH'});
+ const late=lateProof.ok&&signal.passed>=
+   (remaining<3?PAPER_POLICY.lateValueFinalChecks:PAPER_POLICY.lateValueEarlierChecks)
+   +learn.extra;
+ let early=false;
+ if(countertrendFive&&!late){
+   const budget=entryBudget(state.cash,state.risk,EARLY_POLICY.maxStakeIncludingFees);
+   const expectedQty=Math.floor(budget/price);
+   const exception=earlyCountertrendGate({side,price,remaining,spread,
+     fastChecks:signal.passed,turned:signal.turn,families,
+     threeTrend:context.three.trend,fiveTrend:context.five.trend,
+     strikePlausible:signal.plausible,directionReachable:directionOk&&reachDist,
+     sufficientDepth:expectedQty>=1&&
+       askSize>=EARLY_POLICY.minDepthMultiple*expectedQty&&
+       bidSize>=EARLY_POLICY.minDepthMultiple*expectedQty,
+     macroAgainst});
+   if(!exception.ok||signal.passed<EARLY_POLICY.minFastChecks+learn.extra||
+     riskMode!=='NORMAL'){
+     rejections.push(side+': guarded early reversal unavailable ('+
+       (exception.ok?'learning or risk restriction':exception.reason)+')');
+     continue;
+   }
+   early=true;
+ }
+ const structure=structuralEntry(side,context.three,context.five,
+   {allowOpposingFive:early||late,allowSingleBreakout:late&&remaining<=5});
+ // Even an early exceptional setup NEVER bypasses 3m trend or
+ // 3m/5m pivot resistance/support. A local caution also vetoes it.
+ if(!structure.ok||((early||late)&&structure.secondaryCaution)){
+   rejections.push(side+': '+(structure.ok?'Guarded trade blocked by local 3m caution':structure.reason));
+   continue;
+ }
+ const addedConfirmation=structure.secondaryCaution||macroAgainst?1:0;
+ const reversal=signal.turn&&signal.plausible&&signal.alignment&&
+   signal.passed>=4+learn.extra+addedConfirmation;
+ const momentum=slowTrend&&directionOk&&reachDist&&
+   signal.passed>=5+learn.extra+addedConfirmation;
+ if(!reversal&&!momentum&&!late){
+   rejections.push(side+': insufficient diversified reversal/momentum evidence');
+   continue;
+ }
+ const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
+   plausible:signal.plausible||late,alignment:signal.alignment,spread,
+   lateValueVerified:late});
+ if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
+ // Cheap quotes are not automatically bargains. Apply strict independent
+ // three- and five-minute corroboration and a 50c all-in paper limit.
+ const micro=price<MICRO_POLICY.maxAskExclusive;
+ if(micro){
+   const budget=entryBudget(state.cash,state.risk,MICRO_POLICY.maxAllInStake);
+   let qty=Math.floor(budget/price);
+   while(qty>0&&qty*price+fee(price,qty)>budget)qty--;
+   const proof=microValueGate({price,passed:signal.passed,slowTrend,
+     plausible:signal.plausible,alignment:signal.alignment,
+     threeTrend:context.three.trend,fiveTrend:context.five.trend,side,
+     structureCaution:structure.secondaryCaution,regimeAgainst:macroAgainst,
+     strikeReachable:directionOk&&reachDist,spread,askSize,bidSize,qty,
+     riskMode});
+   if(!proof.ok){rejections.push(side+': '+proof.reason);continue;}
+ }
+ if(riskMode==='SOFT'){
      // A soft daily-loss breach does NOT block every setup, but a one-minute
      // signal, favorable Bollinger reading, or daily regime can never waive
      // higher-priority structure, liquidity, and fee limitations.
@@ -156,16 +227,57 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
        continue;
      }
    }
-   const strategy=reversal?'REVERSAL':'MOMENTUM';
-   // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
-   const grossWinningUpside=1-price-fee(price,1);
-   if(!(grossWinningUpside>0))continue;
-   const edgeQuality=(signal.passed*10)+(strategy==='REVERSAL'?3:0)-spread*130
-       +(d*(one.last-target)>=0?3:0)+Math.min(10,grossWinningUpside*10);
-   ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,breakEven:price+fee(price,1)});
+   const strategy=micro?'MICRO-VALUE':late?'LATE-VALUE':early?'EARLY-REVERSAL':reversal?'REVERSAL':'MOMENTUM';
+ const quality=settlementRewardQuality({price,entryFeePerContract:fee(price,1),
+   remaining});
+ if(!quality.ok){rejections.push(side+': '+quality.reason);continue;}
+ // Ranking expresses relative opportunity, NOT a calibrated probability.
+ const edgeQuality=opportunityScore({passed:signal.passed,families,
+   turned:signal.turn,strategy,spread,quality,remaining,price,
+   strikeDirectionFavorable:d*(one.last-target)>=0});
+ ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,
+   breakEven:quality.breakEvenProbability,maxNetSettlementReward:quality.reward,
+   signalFamilies:families.breadth,early,
+   maxStakeCap:micro?MICRO_POLICY.maxAllInStake:
+     late?LATE_VALUE_POLICY.maxStakeWithFees:
+     early?EARLY_POLICY.maxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees});
  }
  ranked.sort((a,b)=>b.score-a.score);
  return ranked[0]||null;
+}
+
+// Isolated paper experiment: require 4 of 7 fresh 1m checks; 3m/5m
+// TREND agreement is not required. Retain strict quote/risk/strike checks.
+// Never start a position inside the official final RTI averaging minute.
+function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
+ const sideCandidates=[];
+ for(const side of ['UP','DOWN']){
+   const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
+   if(!Number.isFinite(price)||!Number.isFinite(bid)){
+     rejections.push(side+': honey-pot quote unavailable');continue;
+   }
+   const askSize=depth(m,side,'ask'),bidSize=depth(m,side,'bid');
+   const signal=judge(side,one,null,m,remaining);
+   const proof=honeyPotGate({side,price,secondsRemaining:remaining*60,
+     fastChecks:signal.passed,
+     spread:price-bid,askSize,bidSize,krakenPrice:one.last,
+     strike:Number(m.floor_strike),oneMinuteVolatility:one.sd,riskMode});
+   if(!proof.ok){rejections.push(honeyAuditReason(side,price,signal.passed,proof.reason));continue;}
+   const expected=price+fee(price,1);
+   if(expected>HONEY_POLICY.maxAllInStake||expected>state.cash){
+     rejections.push(side+': fee-inclusive honey-pot budget unavailable');
+     continue;
+   }
+   sideCandidates.push({side,price,bid,
+     signal,
+     strategy:'HONEY-POT',maxStakeCap:HONEY_POLICY.maxAllInStake,
+     signalFamilies:signalFamilies(signal.checks).breadth,
+     maxNetSettlementReward:Number((1-expected).toFixed(2)),
+     breakEven:expected,score:proof.margin/proof.requiredMargin,
+     askSize,bidSize});
+ }
+ sideCandidates.sort((a,b)=>b.score-a.score);
+ return sideCandidates[0]||null;
 }
 
 function decisionComplete(window,reason='No qualifying setup') {
@@ -177,11 +289,11 @@ function decisionComplete(window,reason='No qualifying setup') {
  persist(); // Save PASS immediately, even if the market feed fails next.
 }
 
-function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
+function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL',maxStakeCap=PAPER_POLICY.maxStakeIncludingFees,evidence=null) {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
  if(riskMode==='HARD')return false;
  const budget=entryBudget(state.cash,state.risk,
-   riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees);
+   Math.min(maxStakeCap,riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees));
  let qty=Math.floor(budget/price);
  while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
  if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
@@ -189,15 +301,20 @@ function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
  if(cost>state.cash)return false;
  state.cash=Number((state.cash-cost).toFixed(2));
  const bucket=priceBucketOf(price);
+ const remainingSecondsAtEntry=secondsLeft(m.close_time,now);
  const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
-   target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
+   remainingSecondsAtEntry,target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
    checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
+   strategyVersion:'V3-80C-EIGHTMIN-20261120',
+   signalFamilies:evidence?.signalFamilies??null,
+   maximumSettlementRewardPerContract:evidence?.maxNetSettlementReward??null,
+   breakEvenSettlementProbability:evidence?.breakEven??null,
    status:'OPEN',bestBid:NaN,highestProfit:0};
  state.open=position;
  state.blocked.push(m.ticker);
  // Retain one-entry-per-contract history for the whole paper journal.
  if(state.window?.ticker===m.ticker)state.window.entered=true;
- note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost),m.ticker);
+ note('PAPER BUY',strategy+' '+side+' '+qty+' contracts @ '+cents(price)+' + '+money(entryFee)+' fee; spent '+money(cost)+' · '+clockLabel(remainingSecondsAtEntry),m.ticker,{remainingSeconds:remainingSecondsAtEntry,closeTime:m.close_time});
  notice='SIMULATED BUY ('+strategy+'): '+side+' '+qty+' × '+cents(price)+' = '+money(cost)+' including fee';
  persist();return true;
 }
@@ -208,14 +325,16 @@ function closeEarly(pos,bid,why,m) {
  const sellFee=fee(bid,pos.qty);
  const received=Number((pos.qty*bid-sellFee).toFixed(2));
  if(received<0)return false;
+ const exitAt=Date.now();
+ const remainingSecondsAtExit=secondsLeft(pos.closeTime,exitAt);
  const pnl=Number((received-pos.cost).toFixed(2));
  state.cash=Number((state.cash+received).toFixed(2));
  state.realized=Number((state.realized+pnl).toFixed(2));
- const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt:Date.now(),
+ const tr={...pos,status:pnl>0?'WIN':pnl<0?'LOSS':'FLAT',exitPrice:bid,sellFee,proceeds:received,pnl,exitAt,remainingSecondsAtExit,
    confirmed:true,exitType:'EARLY SALE',reason:why};
  state.trades.unshift(tr);
  state.open=null;
- note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why,pos.ticker);
+ note('PAPER SELL','Closed '+(pnl>0?'WIN':pnl<0?'LOSS':'FLAT')+': '+pos.side+' '+pos.qty+' @ '+cents(bid)+'; received '+money(received)+'; P/L '+money(pnl)+' — '+why+' · '+clockLabel(remainingSecondsAtExit),pos.ticker,{remainingSeconds:remainingSecondsAtExit,closeTime:pos.closeTime});
  notice='PAPER SELL '+pos.side+' '+money(pnl)+' ('+why+')';
  persist();return true;
 }
@@ -273,7 +392,13 @@ function toPending(pos) {
         const targetAction=profitExitGate(bid,remaining);
         // Order of importance: hard stop > 96¢ target > confirmed structure
         // deterioration. Secondary bands/A-D and macro never force exits.
-        if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
+        // Priority above 40% regular stop, 96c profit and final-minute hold.
+        // Uses the executable BID; no fill is claimed without sufficient depth.
+        if(pos.strategy==='HONEY-POT'&&honeyStopTriggered(pos.entry,bid))
+          why='HONEY-POT stop: executable bid down 10% or more from entry price';
+        else if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
+           gain<=-PAPER_POLICY.contractStopLossFraction)
+          why='Stop loss (−40% contract-price movement; final 6 minutes only)';
         else if(targetAction==='SELL')why='96¢ bid take-profit';
         else if(targetAction==='HOLD_PENDING'){
           notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
@@ -303,14 +428,16 @@ function toPending(pos) {
     // If the marked drawdown hits the 20% hard limit, latch that halt for today.
     const dailyRisk=updateDailyRisk(Date.now());
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
-    if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
+    if(state.armed&&!state.open&&freshRemaining>1&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
       if(!dailyRisk.canEnter)notice='Daily 20% paper risk hard stop reached. No new positions today.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
         const rejected=[];
-        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
+        const c=freshRemaining<PAPER_POLICY.minEntryMinutes?
+           chooseHoney(m,one,freshRemaining,rejected,dailyRisk.mode):
+           chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
         if(c){
-          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode))state.window.entered=true;
+          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode,c.maxStakeCap,c))state.window.entered=true;
           else {
             notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
             state.window.reason=notice;
