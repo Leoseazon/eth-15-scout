@@ -11,7 +11,8 @@ export const PAPER_POLICY = Object.freeze({
   lateMaxSpread: 0.03,
   sellAtBid: 0.96,
   finalMinuteHold: 1,
-  contractStopLossFraction: 0.60, // replaces 40%; trigger on side's executable bid
+  stopLossArmedMinutes: 6,
+  contractStopLossFraction: 0.40, // active only inside final 6 minutes
   maxStakeIncludingFees: 3,
   defaultRiskPercent: 3,
   dailySoftLossFraction: 0.12, // normal entries stop at -$12 on a $100 initial bankroll
