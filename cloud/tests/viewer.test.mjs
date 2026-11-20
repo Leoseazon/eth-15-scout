@@ -52,3 +52,32 @@ test('actual paper status/history are served only through hard-coded reads',asyn
  assert.equal(typeof stub.fetch,'function');
  assert.equal(env.SCOUT.getByName('single-paper-scout'),stub);
 });
+
+test('read-only journal accepts numeric paging and rejects malformed values',async()=>{
+ const paths=[],token='a'.repeat(32);
+ const stub={fetch:async path=>{
+  paths.push(path);
+  return Response.json({paperOnly:true,readOnly:true,anchor:1795130000000,
+   offset:20,limit:30,totals:{events:320,trades:21,decisions:5},
+   events:[{id:'e1',time:1795130000000,type:'WATCH',msg:'Watching'}],
+   trades:[],decisions:[],pending:[]});
+ }};
+ const env={VIEW_TOKEN:token,SCOUT:{getByName:name=>{
+  assert.equal(name,'single-paper-scout');return stub}}};
+ const headers={Authorization:'Bearer '+token,Origin:'https://leoseazon.github.io'};
+ const url='https://viewer.example/api/v3/journal?limit=30&offset=20&anchor=1795130000000';
+ const ok=await view.fetch(new Request(url,{headers}),env);
+ assert.equal(ok.status,200);
+ const data=await ok.json();
+ assert.equal(data.readOnly,true);
+ assert.equal(data.events[0].type,'WATCH');
+ assert.equal(paths.length,1);
+ assert.match(paths[0],/\/v1\/journal\?/);
+ assert.match(paths[0],/offset=20/);
+ assert.match(paths[0],/limit=30/);
+ const bad=await view.fetch(new Request('https://viewer.example/api/v3/journal?offset=broken',{headers}),env);
+ assert.equal(bad.status,400);
+ assert.equal(paths.length,1,'invalid page must never reach private Durable Object');
+ const unauth=await view.fetch(new Request(url),env);
+ assert.equal(unauth.status,401);
+});
