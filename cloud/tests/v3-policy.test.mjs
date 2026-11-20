@@ -83,8 +83,10 @@ test('inside last 60 seconds a 96¢ bid may be held until official settlement',(
   engine.step(late,strong,slow,true);
   assert.ok(s.open);
   assert.equal(s.trades.length,0);
-  const expired=mk(-.1);
-  engine.step(expired,strong,slow,true);
+  // The held position uses the original closeTime captured at entry.
+  // Simulate that stored contract actually reaching expiration.
+  s.open.closeTime=new Date(Date.now()-1000).toISOString();
+  engine.step(null,null,null,false);
   assert.equal(s.open,null);
   assert.equal(s.pending.length,1);
   assert.equal(s.trades.length,0); // no invented Kraken settlement
