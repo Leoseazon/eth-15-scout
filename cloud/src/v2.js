@@ -4,6 +4,7 @@
  */
 import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
 import {structuralEntry, structuralExit} from './structure.js';
+import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -126,26 +127,58 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
    const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
    const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
    const learn=recentLearning(priceBucketOf(price));
-   const structure=context?.three&&context?.five?
-     structuralEntry(side,context.three,context.five):null;
-   // Hierarchy: 3m/5m structure is a veto, NOT led by 1m, bands or A/D.
-   if(structure&&!structure.ok){rejections.push(side+': '+structure.reason);continue;}
-   const regime=context?.regime;
-   const macroAgainst=regime?.status==='ready'&&
-     ((side==='UP'&&regime.regime==='RISK_OFF')||
-      (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
-   // Daily crypto regime and Bollinger/A/D can add at most ONE 1m check.
-   // They never overrule strong primary structure or become trade signals.
-   const addedConfirmation=structure?.secondaryCaution||macroAgainst?1:0;
-   const reversal=signal.turn&&signal.plausible&&signal.alignment&&
-     signal.passed>=4+learn.extra+addedConfirmation;
-   const momentum=slowTrend&&directionOk&&reachDist&&
-     signal.passed>=5+learn.extra+addedConfirmation;
-   if(!reversal&&!momentum){rejections.push(side+': insufficient reversal/momentum confirmations');continue;}
-   const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
-     plausible:signal.plausible,alignment:signal.alignment,spread});
-   if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
-   if(riskMode==='SOFT'){
+ const families=signalFamilies(signal.checks);
+ // Price, RSI and MACD are correlated; require two evidence families,
+ // not multiple copies of one price movement.
+ if(families.breadth<2){
+   rejections.push(side+': signals confined to one correlated family');continue;
+ }
+ const regime=context?.regime;
+ const macroAgainst=regime?.status==='ready'&&
+   ((side==='UP'&&regime.regime==='RISK_OFF')||
+    (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
+ const countertrendFive=['UP','DOWN'].includes(context.five.trend)&&context.five.trend!==side;
+ let early=false;
+ if(countertrendFive){
+   const budget=entryBudget(state.cash,state.risk,EARLY_POLICY.maxStakeIncludingFees);
+   const expectedQty=Math.floor(budget/price);
+   const exception=earlyCountertrendGate({side,price,remaining,spread,
+     fastChecks:signal.passed,turned:signal.turn,families,
+     threeTrend:context.three.trend,fiveTrend:context.five.trend,
+     strikePlausible:signal.plausible,directionReachable:directionOk&&reachDist,
+     sufficientDepth:expectedQty>=1&&
+       askSize>=EARLY_POLICY.minDepthMultiple*expectedQty&&
+       bidSize>=EARLY_POLICY.minDepthMultiple*expectedQty,
+     macroAgainst});
+   if(!exception.ok||signal.passed<EARLY_POLICY.minFastChecks+learn.extra||
+     riskMode!=='NORMAL'){
+     rejections.push(side+': guarded early reversal unavailable ('+
+       (exception.ok?'learning or risk restriction':exception.reason)+')');
+     continue;
+   }
+   early=true;
+ }
+ const structure=structuralEntry(side,context.three,context.five,
+   {allowOpposingFive:early});
+ // Even an early exceptional setup NEVER bypasses 3m trend or
+ // 3m/5m pivot resistance/support. A local caution also vetoes it.
+ if(!structure.ok||(early&&structure.secondaryCaution)){
+   rejections.push(side+': '+(structure.ok?'Early structural caution':structure.reason));
+   continue;
+ }
+ const addedConfirmation=structure.secondaryCaution||macroAgainst?1:0;
+ const reversal=signal.turn&&signal.plausible&&signal.alignment&&
+   signal.passed>=4+learn.extra+addedConfirmation;
+ const momentum=slowTrend&&directionOk&&reachDist&&
+   signal.passed>=5+learn.extra+addedConfirmation;
+ if(!reversal&&!momentum){
+   rejections.push(side+': insufficient diversified reversal/momentum evidence');
+   continue;
+ }
+ const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
+   plausible:signal.plausible,alignment:signal.alignment,spread});
+ if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
+ if(riskMode==='SOFT'){
      // A soft daily-loss breach does NOT block every setup, but a one-minute
      // signal, favorable Bollinger reading, or daily regime can never waive
      // higher-priority structure, liquidity, and fee limitations.
@@ -162,13 +195,19 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
        continue;
      }
    }
-   const strategy=reversal?'REVERSAL':'MOMENTUM';
-   // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
-   const grossWinningUpside=1-price-fee(price,1);
-   if(!(grossWinningUpside>0))continue;
-   const edgeQuality=(signal.passed*10)+(strategy==='REVERSAL'?3:0)-spread*130
-       +(d*(one.last-target)>=0?3:0)+Math.min(10,grossWinningUpside*10);
-   ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,breakEven:price+fee(price,1)});
+   const strategy=early?'EARLY-REVERSAL':reversal?'REVERSAL':'MOMENTUM';
+ const quality=settlementRewardQuality({price,entryFeePerContract:fee(price,1),
+   remaining});
+ if(!quality.ok){rejections.push(side+': '+quality.reason);continue;}
+ // Ranking expresses relative opportunity, NOT a calibrated probability.
+ const edgeQuality=opportunityScore({passed:signal.passed,families,
+   turned:signal.turn,strategy,spread,quality,remaining,price,
+   strikeDirectionFavorable:d*(one.last-target)>=0});
+ ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,
+   breakEven:quality.breakEvenProbability,maxNetSettlementReward:quality.reward,
+   signalFamilies:families.breadth,early,
+   maxStakeCap:early?EARLY_POLICY.maxStakeIncludingFees:
+     PAPER_POLICY.maxStakeIncludingFees});
  }
  ranked.sort((a,b)=>b.score-a.score);
  return ranked[0]||null;
@@ -183,11 +222,11 @@ function decisionComplete(window,reason='No qualifying setup') {
  persist(); // Save PASS immediately, even if the market feed fails next.
 }
 
-function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
+function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL',maxStakeCap=PAPER_POLICY.maxStakeIncludingFees,evidence=null) {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
  if(riskMode==='HARD')return false;
  const budget=entryBudget(state.cash,state.risk,
-   riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees);
+   Math.min(maxStakeCap,riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees));
  let qty=Math.floor(budget/price);
  while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
  if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
@@ -199,6 +238,9 @@ function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
  const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
    remainingSecondsAtEntry,target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
    checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
+   signalFamilies:evidence?.signalFamilies??null,
+   maximumSettlementRewardPerContract:evidence?.maxNetSettlementReward??null,
+   breakEvenSettlementProbability:evidence?.breakEven??null,
    status:'OPEN',bestBid:NaN,highestProfit:0};
  state.open=position;
  state.blocked.push(m.ticker);
@@ -321,7 +363,7 @@ function toPending(pos) {
         const rejected=[];
         const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
         if(c){
-          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode))state.window.entered=true;
+          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode,c.maxStakeCap,c))state.window.entered=true;
           else {
             notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
             state.window.reason=notice;
