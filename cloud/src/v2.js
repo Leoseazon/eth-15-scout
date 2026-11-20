@@ -6,7 +6,7 @@ import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} f
 import {structuralEntry, structuralExit} from './structure.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
-import {HONEY_POLICY,honeyPotGate,honeyStopTriggered} from './honey-pot.js';
+import {HONEY_POLICY,honeyPotGate,honeyStopTriggered,honeyAuditReason} from './honey-pot.js';
 import {MICRO_POLICY,microValueGate} from './micro-value.js';
 
 export const freshPaperState = () => ({
@@ -262,7 +262,7 @@ function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
      fastChecks:signal.passed,
      spread:price-bid,askSize,bidSize,krakenPrice:one.last,
      strike:Number(m.floor_strike),oneMinuteVolatility:one.sd,riskMode});
-   if(!proof.ok){rejections.push(side+': '+proof.reason);continue;}
+   if(!proof.ok){rejections.push(honeyAuditReason(side,price,signal.passed,proof.reason));continue;}
    const expected=price+fee(price,1);
    if(expected>HONEY_POLICY.maxAllInStake||expected>state.cash){
      rejections.push(side+': fee-inclusive honey-pot budget unavailable');
