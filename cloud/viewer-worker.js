@@ -236,6 +236,7 @@ export default {
       windowScan:{at:status.lastWindowScanAt||null,
         verifiedAt:status.lastWindowScanOkayAt||null,
         error:status.lastWindowScanError||null},
+      releaseMarkers:journalData?.releaseMarkers||status.releaseMarkers||[],
       journalTotals:journalData?.totals||null,journalAnchor:journalData?.anchor||null,
       journalAvailable:!!journalData},
     market,marketError},200,origin);
