@@ -285,6 +285,10 @@ function render(data){
  $('realized-value').style.color=n(s.realized)>0?'var(--mint)':n(s.realized)<0?'var(--red)':'var(--text)';
  txt('unrealized-value',n(s.open?.markPnl)===null?'—':money(s.open.markPnl,true));
  txt('pending-value',n(s.pending)===null?'—':s.pending);
+ const unsettled=Array.isArray(data.activity?.pending)?data.activity.pending:[];
+ const pendingCost=unsettled.reduce((sum,p)=>sum+(n(p.cost)??0),0);
+ txt('pending-stake-value',unsettled.length?money(pendingCost):
+   n(s.pending)===0?'$0.00':'Awaiting detailed journal');
  const trades=data.activity?.trades||[];
  txt('trades-value',Number.isFinite(s.trades)?s.trades:trades.length);
  const wins=trades.filter(t=>t.confirmed&&n(t.pnl)>0).length;
