@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
+import {structureFixture} from './fixtures.mjs';
 
 test('new cloud paper bot starts disarmed',()=>{
   const s=freshPaperState(); assert.equal(s.armed,false);
@@ -29,21 +30,21 @@ const one={
 const five={e21:1790,e50:1780,macd:2,signal:1,rsi:60};
 
 test('V2 paper logic remains paused unless armed, even with qualifying signals',()=>{
-  const s=freshPaperState();makeV2Engine(s).step(fakeMarket(10),one,five,true);
+  const s=freshPaperState();makeV2Engine(s).step(fakeMarket(10),one,five,true,structureFixture());
   assert.equal(s.open,null);assert.equal(s.armed,false);
 });
 test('V2 still blocks opening a position before its 12.5 minute entry gate',()=>{
   const s=freshPaperState();s.armed=true;
-  makeV2Engine(s).step(fakeMarket(14),one,five,true);
+  makeV2Engine(s).step(fakeMarket(14),one,five,true,structureFixture());
   assert.equal(s.open,null);
 });
 test('V3 permits one fee-inclusive entry within 1.5–12.5 minutes',()=>{
   const s=freshPaperState();s.armed=true;
   const market=fakeMarket(10);
-  const engine=makeV2Engine(s);engine.step(market,one,five,true);
+  const engine=makeV2Engine(s);engine.step(market,one,five,true,structureFixture());
   assert.ok(s.open);assert.equal(s.open.side,'UP');
   assert.ok(s.open.cost<=3);assert.equal(s.events.filter(e=>e.type==='PAPER BUY').length,1);
-  s.open=null;engine.step(market,one,five,true);
+  s.open=null;engine.step(market,one,five,true,structureFixture());
   assert.equal(s.open,null);
   assert.equal(s.events.filter(e=>e.type==='PAPER BUY').length,1);
 });
