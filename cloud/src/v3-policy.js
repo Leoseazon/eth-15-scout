@@ -5,7 +5,10 @@ export const PAPER_POLICY = Object.freeze({
   minEntryMinutes: 1.5,
   maxEntryMinutes: 12.5,
   expensiveThreshold: 0.80,
-  expensiveCutoffMinutes: 5, // 80c+ eligible at <=5m, NOT earlier
+  expensiveCutoffMinutes: 8, // 80-89c eligible at <=8m, not earlier
+  premiumCutoffMinutes: 5, // 90c+ still requires <=5m
+  lateValueEarlierChecks: 5, // 80-89c with 3-8m left
+  lateValueFinalChecks: 6, // 80-89c with 1.5-3m left
   maxNewEntryPrice: 0.96,
   lateMinConfirmations: 7,
   lateMaxSpread: 0.03,
@@ -63,33 +66,40 @@ export function assessDailyRisk({
       mode==='HARD'?0:PAPER_POLICY.maxStakeIncludingFees};
 }
 
-// Called AFTER baseline trend/reversal, quote-size, fee and liquidity checks.
-// Late entries are possible, but only under exceptionally strict *observable*
-// confirmations. These checks do not establish true odds or a positive edge.
-export function entryGate({price, remaining, passed, slowTrend, plausible, alignment, spread}) {
-  const fail = reason => ({ok: false, reason});
-  if (![price, remaining, spread].every(Number.isFinite) || !(price > 0) ||
-      !(spread >= 0)) return fail('Incomplete price or timing information');
-  if (remaining > PAPER_POLICY.maxEntryMinutes || remaining < PAPER_POLICY.minEntryMinutes)
+// Used after quote, liquidity, price-direction and structure validation.
+// A lateValueVerified flag MUST come from the guarded strategy-specific gate;
+// caller cannot earn this permission merely by supplying 5/7 checks.
+export function entryGate({price,remaining,passed,slowTrend,plausible,alignment,spread,
+    lateValueVerified=false}) {
+  const fail=reason=>({ok:false,reason});
+  if(![price,remaining,spread].every(Number.isFinite)||price<=0||spread<0)
+    return fail('Incomplete price or timing information');
+  if(remaining>PAPER_POLICY.maxEntryMinutes||remaining<PAPER_POLICY.minEntryMinutes)
     return fail('Outside 1.5–12.5 minute entry window');
-  if (price >= PAPER_POLICY.maxNewEntryPrice)
-    return fail('Entry at 96¢ or more leaves insufficient exit room');
-  // 80c+ is allowed starting at exactly 5:00 left, never earlier.
-  // A high price alone is NOT evidence of an edge: require strong confirmed
-  // trend/reversal input, Kalshi-strike plausibility and liquid/tight quotes.
-  if(price >= PAPER_POLICY.expensiveThreshold &&
-     remaining > PAPER_POLICY.expensiveCutoffMinutes)
-    return fail('80¢+ contract permitted only with 5 minutes or less remaining');
-  const expensiveLate=price >= PAPER_POLICY.expensiveThreshold;
-  // Retain exceptional requirements during final 3 minutes for ALL entries.
-  const veryLate=remaining < 3;
-  if((expensiveLate||veryLate) &&
-      (passed < PAPER_POLICY.lateMinConfirmations || !slowTrend ||
-       !plausible || !alignment || spread > PAPER_POLICY.lateMaxSpread))
-    return fail('80¢+ or final-3m entry requires 7/7 checks, aligned 5m trend, strike plausibility and spread ≤3¢');
-  return {ok: true, reason:expensiveLate?
-    'High-priced contract: 5 minutes or less and strong confirmations passed':
-    veryLate?'Exceptional final-3m confirmations passed':'Standard entry window'};
+  if(price>=PAPER_POLICY.maxNewEntryPrice)
+    return fail('Entry at 96c or more leaves insufficient exit room');
+  const isLateValue=price>=PAPER_POLICY.expensiveThreshold&&price<.90;
+  const premium=price>=.90;
+  const veryLate=remaining<3;
+  if(isLateValue){
+    if(remaining>PAPER_POLICY.expensiveCutoffMinutes)
+      return fail('80–89c entries require eight minutes or less');
+    const required=veryLate?PAPER_POLICY.lateValueFinalChecks:
+      PAPER_POLICY.lateValueEarlierChecks;
+    if(passed<required||!lateValueVerified||!plausible||
+       spread>PAPER_POLICY.lateMaxSpread)
+      return fail('80–89c time-sensitive setup requires guarded strike/structure, '+
+        required+'/7 checks and spread <=3c');
+    return {ok:true,reason:'Guarded 80–89c time-aware late value setup'};
+  }
+  if(premium&&remaining>PAPER_POLICY.premiumCutoffMinutes)
+    return fail('90c+ entries require five minutes or less');
+  if((premium||veryLate)&&(passed<PAPER_POLICY.lateMinConfirmations||
+      !slowTrend||!plausible||!alignment||
+      spread>PAPER_POLICY.lateMaxSpread))
+    return fail('90c+ or final-3m entry requires 7/7, slow trend, strike and <=3c spread');
+  return {ok:true,reason:premium?'Exceptional 90c+ confirmation passed':
+      veryLate?'Exceptional final-3m confirmation passed':'Standard entry window'};
 }
 
 // A bid at 96¢ or higher normally triggers a paper exit (subject to depth
