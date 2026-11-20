@@ -32,16 +32,27 @@ test('maximum entry cost includes fees and never exceeds $3',()=>{
   assert.ok(s.open.cost>2); // actually uses the new allowance when quotes permit
 });
 
-test('80¢+ quotes are blocked with 3+ minutes remaining',()=>{
-  for (const remaining of [3,5,10]){
-    assert.equal(entryGate({price:.80,remaining,passed:7,slowTrend:true,
-      plausible:true,alignment:true,spread:.01}).ok,false);
-    const s=freshPaperState();s.armed=true;
-    makeV2Engine(s).step(mk(remaining,.80),strong,slow,true,structureFixture());
-    assert.equal(s.open,null);
-  }
+test('80c+ price is forbidden above five minutes and possible at five with strong proof',()=>{
+ const strict={price:.80,passed:7,slowTrend:true,
+   plausible:true,alignment:true,spread:.01};
+ for(const remaining of [12.5,10,6,5.001])
+   assert.equal(entryGate({...strict,remaining}).ok,false,
+     'high price too early: '+remaining+' minutes');
+ for(const remaining of [5,4.99,4,3,2,1.5])
+   assert.equal(entryGate({...strict,remaining}).ok,true,
+     'high price eligible at '+remaining+' minutes');
+ for(const change of [{passed:6},{slowTrend:false},
+   {plausible:false},{alignment:false},{spread:.035}]){
+   assert.equal(entryGate({...strict,...change,remaining:5}).ok,false,
+     'weak 80c setup forbidden: '+JSON.stringify(change));
+ }
+ assert.equal(entryGate({...strict,remaining:5,price:.96}).ok,false,
+   '96c entry ceiling remains');
+ assert.equal(entryGate({...strict,remaining:1.49}).ok,false,
+   'min entry time still enforced');
+ // A less expensive contract stays eligible earlier under existing rules.
+ assert.equal(entryGate({...strict,remaining:8,price:.65,passed:5}).ok,true);
 });
-
 test('the final 1.5–3 minutes demand exceptionally strong 7/7 evidence',()=>{
   const opts={price:.83,remaining:2,passed:7,slowTrend:true,
     plausible:true,alignment:true,spread:.02};
