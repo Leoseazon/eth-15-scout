@@ -11,6 +11,8 @@ export const PAPER_POLICY = Object.freeze({
   lateValueFinalChecks: 6, // 80-89c with 1.5-3m left
   maxNewEntryPrice: 0.96,
   lateMinConfirmations: 7,
+  finalThreeLowPriceChecks: 7, // 20–69c: require all fast checks under 3m
+  finalThreeMidPriceChecks: 5, // 70–79c: require five fast checks under 3m
   lateMaxSpread: 0.03,
   sellAtBid: 0.96,
   finalMinuteHold: 1,
@@ -94,12 +96,22 @@ export function entryGate({price,remaining,passed,slowTrend,plausible,alignment,
   }
   if(premium&&remaining>PAPER_POLICY.premiumCutoffMinutes)
     return fail('90c+ entries require five minutes or less');
-  if((premium||veryLate)&&(passed<PAPER_POLICY.lateMinConfirmations||
-      !slowTrend||!plausible||!alignment||
-      spread>PAPER_POLICY.lateMaxSpread))
-    return fail('90c+ or final-3m entry requires 7/7, slow trend, strike and <=3c spread');
+  // 20–69c: preserve strict 7/7 in the final three minutes.
+  // 70–79c: allow 5/7 in the final three minutes, WITHOUT removing the
+  // slow trend, strike plausibility, 5m RSI alignment or liquidity screens.
+  // Under-20c MICRO-VALUE has a separate mandatory 7/7 guard.
+  const finalThreeRequired=veryLate&&price>=.70&&price<.80?
+    PAPER_POLICY.finalThreeMidPriceChecks:PAPER_POLICY.finalThreeLowPriceChecks;
+  if(premium||veryLate){
+    const required=premium?PAPER_POLICY.lateMinConfirmations:finalThreeRequired;
+    if(passed<required||!slowTrend||!plausible||!alignment||
+       spread>PAPER_POLICY.lateMaxSpread)
+      return fail('Final entry requires '+required+
+        '/7 checks, aligned slow trend, strike plausibility and spread <=3c');
+  }
   return {ok:true,reason:premium?'Exceptional 90c+ confirmation passed':
-      veryLate?'Exceptional final-3m confirmation passed':'Standard entry window'};
+      veryLate?'Final-3m '+finalThreeRequired+'/7 confirmations passed':
+      'Standard entry window'};
 }
 
 // A bid at 96¢ or higher normally triggers a paper exit (subject to depth
