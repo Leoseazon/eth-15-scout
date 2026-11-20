@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PAPER_POLICY,entryBudget,entryGate,profitExitGate} from '../src/v3-policy.js';
+import {PAPER_POLICY,entryBudget,entryGate,profitExitGate,assessDailyRisk} from '../src/v3-policy.js';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
 import {structureFixture} from './fixtures.mjs';
 
@@ -124,13 +124,16 @@ test('unfilled market PASS is recorded only once after expiration',()=>{
   assert.equal(s.decisions[0].status,'PASS');
 });
 
-test('daily paper realized-loss safeguard is 12% of the initial bankroll',()=>{
-  assert.equal(PAPER_POLICY.dailyRealizedLossFraction,0.12);
+test('12% is a soft threshold with strict setups and a $1.50 inclusive budget',()=>{
+  assert.equal(PAPER_POLICY.dailySoftLossFraction,0.12);
+  assert.equal(PAPER_POLICY.dailyHardLossFraction,0.20);
+  assert.equal(entryBudget(100,3,PAPER_POLICY.softMaxStakeIncludingFees),1.50);
   const atLimit=freshPaperState();atLimit.armed=true;
   atLimit.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
   makeV2Engine(atLimit).step(mk(10),strong,slow,true,structureFixture());
-  assert.equal(atLimit.open,null);
-  assert.match(atLimit.window?.reason||atLimit.events.at(-1)?.msg||'', /./);
+  assert.equal(atLimit.dailyRisk.mode,'SOFT');
+  assert.ok(atLimit.open,'strict 7/7 setup should still be eligible at soft threshold');
+  assert.ok(atLimit.open.cost<=1.5,'all paper entry fees included');
 });
 
 test('net daily loss below $12 permits a qualifying paper entry',()=>{
@@ -149,4 +152,117 @@ test('daily safeguard is based on net realized P/L, not gross losing trades',()=
   ];
   makeV2Engine(s).step(mk(10),strong,slow,true,structureFixture());
   assert.ok(s.open,'net -$11 remains above the -$12 threshold');
+});
+
+test('20% hard stop forbids new entries even on excellent signals',()=>{
+  const s=freshPaperState();s.armed=true;
+  s.trades=[{ticker:'LOSS-20',exitAt:Date.now(),pnl:-20,confirmed:true}];
+  makeV2Engine(s).step(mk(10),strong,slow,true,structureFixture());
+  assert.equal(s.dailyRisk.mode,'HARD');
+  assert.equal(s.open,null);
+  assert.ok(s.events.some(e=>/20% paper risk hard stop/i.test(e.msg)));
+});
+
+test('at -$19.99 strict paper entries remain possible at $1.50 or less',()=>{
+  const s=freshPaperState();s.armed=true;
+  s.trades=[{ticker:'LOSS-1999',exitAt:Date.now(),pnl:-19.99,confirmed:true}];
+  makeV2Engine(s).step(mk(10),strong,slow,true,structureFixture());
+  assert.equal(s.dailyRisk.mode,'SOFT');
+  assert.ok(s.open);
+  assert.ok(s.open.cost<=1.5);
+});
+
+test('soft mode rejects six-of-seven signals despite valid trend and quote',()=>{
+  const s=freshPaperState();s.armed=true;
+  s.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  // RSI9 side of 50 fails, but bullish fast signals otherwise remain strong.
+  const six={...strong,rNow:49,rPrev:40};
+  makeV2Engine(s).step(mk(10),six,slow,true,structureFixture());
+  assert.equal(s.dailyRisk.mode,'SOFT');
+  assert.equal(s.open,null);
+});
+
+test('soft mode rejects neutral 3m structure, cautious zones and thin liquidity',()=>{
+  const base=structureFixture();
+  const neutral=freshPaperState();neutral.armed=true;
+  neutral.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  makeV2Engine(neutral).step(mk(10),strong,slow,true,{
+    ...base,three:{...base.three,trend:'NEUTRAL'}
+  });
+  assert.equal(neutral.open,null);
+
+  const cautious=freshPaperState();cautious.armed=true;
+  cautious.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  makeV2Engine(cautious).step(mk(10),strong,slow,true,{
+    ...base,three:{...base.three,resistance:{
+      center:1796,lower:1795.5,upper:1796.5,touches:2
+    }}
+  });
+  assert.equal(cautious.open,null);
+
+  const thin=freshPaperState();thin.armed=true;
+  thin.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  const noDepth=mk(10);
+  noDepth.yes_bid_size_fp='1';
+  makeV2Engine(thin).step(noDepth,strong,slow,true,base);
+  assert.equal(thin.open,null);
+});
+
+test('soft mode requires tighter spreads and preserves the hard protection',()=>{
+  const s=freshPaperState();s.armed=true;
+  s.trades=[{ticker:'LOSS-12',exitAt:Date.now(),pnl:-12,confirmed:true}];
+  const wide=mk(10);
+  wide.yes_bid_dollars='0.56'; // 4c spread, still passes normal quote filter
+  makeV2Engine(s).step(wide,strong,slow,true,structureFixture());
+  assert.equal(s.open,null);
+  assert.equal(s.dailyRisk.mode,'SOFT');
+});
+
+test('open unrealized losses and unsettled exposure count towards hard risk',()=>{
+  const marked=assessDailyRisk({initial:100,realizedToday:-18,openLoss:-2});
+  assert.equal(marked.mode,'HARD');
+  const pending=assessDailyRisk({initial:100,realizedToday:-17,pendingExposure:3});
+  assert.equal(pending.mode,'HARD');
+  assert.equal(pending.realizedToday,-17,'pending paper trades are not labeled realized');
+  const neg=assessDailyRisk({initial:100,realizedToday:5,openLoss:-4});
+  assert.equal(neg.mode,'NORMAL','net P/L includes gains');
+});
+
+test('20% hard halt latches for the day even if marked losses recover',()=>{
+  const s=freshPaperState();s.armed=true;
+  s.trades=[{ticker:'LOSS-1810',exitAt:Date.now(),pnl:-18.1,confirmed:true}];
+  s.open={ticker:'KXETH15M-OTHER',cost:3,time:Date.now(),
+    closeTime:new Date(Date.now()+1200000).toISOString(),markPnl:-2};
+  const engine=makeV2Engine(s);
+  engine.step(null,null,null,false);
+  assert.equal(s.dailyRisk.mode,'HARD');
+  s.open.markPnl=-0.20;
+  engine.step(null,null,null,false);
+  assert.equal(s.dailyRisk.mode,'HARD','rebound cannot reset the day halt');
+  s.open=null;
+  engine.step(mk(10),strong,slow,true,structureFixture());
+  assert.equal(s.open,null,'no re-entry after an intraday hard risk breach');
+});
+
+test('hard halt resets when the Houston trading day changes',()=>{
+  const r=assessDailyRisk({initial:100,realizedToday:0,
+    openLoss:0,pendingExposure:0,previousMode:'NORMAL'});
+  assert.equal(r.mode,'NORMAL');
+  const sameDay=assessDailyRisk({initial:100,realizedToday:0,
+    previousMode:'HARD'});
+  assert.equal(sameDay.mode,'HARD');
+});
+
+test('existing 96c profit and hard stop logic are not altered by daily loss limits',()=>{
+  const s=freshPaperState();s.armed=true;
+  const engine=makeV2Engine(s);
+  engine.step(mk(10),strong,slow,true,structureFixture());
+  assert.ok(s.open);
+  s.dailyRisk={day:new Intl.DateTimeFormat('en-CA',{
+    timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
+  }).format(new Date()),mode:'HARD'};
+  const quote=mk(6);quote.yes_bid_dollars='0.96';
+  engine.step(quote,strong,slow,true,structureFixture());
+  assert.equal(s.open,null);
+  assert.match(s.trades[0].reason,/96¢/);
 });
