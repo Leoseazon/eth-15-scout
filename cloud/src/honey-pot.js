@@ -1,12 +1,14 @@
 /* One-contract PAPER-ONLY final-90-second honey-pot hypothesis.
  * Never infer Kalshi CF Benchmarks index settlement from Kraken spot.
- * No 1m RSI/MACD/EMA or 3m/5m trend confirmation is required.
+ * At least FOUR of the seven fresh 1m indicator checks are mandatory.
+ * Completed 3m/5m TREND ALIGNMENT is not a honey-pot requirement.
  * EXECUTION and margin-to-strike safety checks are still mandatory.
  */
 export const HONEY_POLICY=Object.freeze({
-  minSecondsRemaining:60, // NEVER enter inside official final RTI minute
-  maxSecondsRemaining:90, // only final 60-90 seconds
+  minSecondsRemaining:60, // no new buys during official final RTI minute
+  maxSecondsRemaining:90, // strictly under 1m30s, and >1m
   minAsk:.80,maxAsk:.85,
+  minFastChecks:4, // require 4/7; no universal 7/7 rule
   maxSpread:.02,minDepth:2,
   minAbsoluteStrikeMargin:2.50,
   minVolatilityMultiple:1.25,
@@ -15,17 +17,19 @@ export const HONEY_POLICY=Object.freeze({
 });
 export function honeyPotGate({
  side,price,secondsRemaining,spread,askSize,bidSize,
- krakenPrice,strike,oneMinuteVolatility,riskMode='NORMAL'
+ krakenPrice,strike,oneMinuteVolatility,fastChecks,riskMode='NORMAL'
 }){
  const p=HONEY_POLICY;
  const fail=reason=>({ok:false,reason});
  if(side!=='UP'&&side!=='DOWN')return fail('Invalid side');
  if(![price,secondsRemaining,spread,askSize,bidSize,krakenPrice,strike,
-   oneMinuteVolatility].every(Number.isFinite))
+   oneMinuteVolatility,fastChecks].every(Number.isFinite))
    return fail('Stale or incomplete price, depth, strike or volatility');
  if(secondsRemaining<=p.minSecondsRemaining||
     secondsRemaining>=p.maxSecondsRemaining)
    return fail('Honey-pot only between 60 and 90 seconds before expiry');
+ if(!Number.isInteger(fastChecks)||fastChecks<p.minFastChecks||fastChecks>7)
+   return fail('Honey-pot requires at least 4 of 7 fresh one-minute checks');
  if(price<p.minAsk||price>p.maxAsk)
    return fail('Honey-pot requires an 80–85c ask, never higher');
  if(riskMode!=='NORMAL')return fail('Honey-pot disabled in soft/hard daily risk');
@@ -38,8 +42,8 @@ export function honeyPotGate({
      p.minVolatilityMultiple*oneMinuteVolatility);
  if(margin<requiredMargin)
    return fail('Kraken price not sufficiently beyond Kalshi strike');
- return {ok:true,reason:'Paper-only late honey-pot experiment; official RTI unknown',
-   margin,requiredMargin};
+ return {ok:true,reason:'Paper-only late honey-pot; >=4/7 fast checks; official RTI unknown',
+   fastChecks,margin,requiredMargin};
 }
 
 // Stop is based on the actual executable bid, not the current asking price.
