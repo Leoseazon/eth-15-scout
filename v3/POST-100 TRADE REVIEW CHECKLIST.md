@@ -65,6 +65,22 @@ Review proposed improvements **after the first 100 qualifying completed PAPER tr
 - [ ] If data are unavailable behind the signed-in V3 viewer, explicitly request the **Export full journal JSON** or **Export trades CSV** and current performance screenshot, and avoid inventing trade counts.
 - [ ] Keep the live PAPER strategy frozen pending observation; propose changes for the post-100 trade checklist unless a verified safety/accounting defect requires correction.
 
+## November 20 candidate: tiered 80c+ late-entry confirmations — NOT ACTIVE
+
+**Trigger for study:** User observed that the current universal 7/7 one-minute indicator rule **plus** mandatory fully aligned five-minute trend may exclude worthwhile 80c+ entries in the last five minutes. Repeated WATCH/PASS messages are available for measuring which checks fail and whether a realistic trade could have been made before the price became uneconomical.
+
+**Existing deployed rule:** ask >=80c is eligible only with <=5m remaining, >=1.5m remaining, <96c ask, **7/7** 1-minute checks, strict higher-timeframe trend alignment, plausible strike, <=3c spread, enough executable quote depth and normal risk controls. Under 1m30s: no entries. It remains unchanged during the current 100-trade observation.
+
+**Proposed, unimplemented shadow-testing alternatives** (not an assertion of profitable odds):
+
+- [ ] **5:00–3:00 remaining, 80–89c:** trial **5/7** fast checks, but require an actual positive price-direction family **plus** RSI or MACD evidence, fresh Kalshi book/depth, <=3c spread, strike plausibility, and no credible nearby adverse support/resistance barrier. Neutral completed 3m may qualify; a strongly opposing 3m is disqualifying. Full five-minute EMA/MACD agreement is contextual rather than universally compulsory. This is a *candidate* rule, not an approved deployment.
+- [ ] **Under 3:00 through 1:30 remaining, 80–89c:** trial **6/7** fast checks, including actual price-direction evidence and momentum/acceleration, 3m neutral or aligned, explicit strike-margin versus volatility review, liquid executable bid/ask, <=3c spread, and no major nearby opposing barrier. Do not require every slow indicator to flip if its signal is genuinely lagged. The current 1m30s no-entry boundary remains for comparison.
+- [ ] **90–95c contracts:** keep current strict behavior in the base study; analyze separately instead of automatically relaxing this much thinner reward tier. At >=96c, existing no-entry prohibition remains.
+- [ ] **Quantify economic validity:** at 80c, maximum settlement upside is 20c gross; entry fees increase required break-even chance above 80%, and cashing out early incurs additional execution costs. A 5/7 or 6/7 indicator score is **not** a 71% or 86% win probability. Study realized net returns of both entered and historical WATCH candidates rather than inferring profits from a final UP/DOWN market alone.
+- [ ] **Rejection audit:** compare hypothetical 5/7 and 6/7 decisions against 7/7 only with full contemporaneous market snapshots and quote/depth paths. Include time to close, 3m neutral/positive/opposing, 5m trend, strike margin, winner/loser final settlement, and realistic spreads/slippage. Track potential false positives, not only missed winners.
+
+**Risk caveat:** Kalshi's actual 15m settlement uses the final-minute CF Benchmarks index average, NOT the last Kraken print, and the bot lacks verified real-time official RTI samples. Near-expiry entries remain speculative despite strong 1m momentum. Preserve the paper-only mode, $3 cap and daily risk brakes. Review proposed thresholds at the established observation milestone rather than fitting them to a handful of memorable cases.
+
 ## Running notes
 
 - **Nov 20, 2026:** Recorded proposed late-window 1m-dominant, strike/time/quote-aware alternative and deferred 40/50/60 stop study. **NO live bot changes were made from this checklist.**
