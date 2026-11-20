@@ -31,6 +31,15 @@ function getMarket(j){
 }
 const rows=j=>Object.values(j.result||{}).find(Array.isArray);
 const safeErr=e=>String(e?.message||e).slice(0,200);
+const finite=n=>Number.isFinite(n)?n:null;
+const viewStructure=o=>o?{at:o.closedAt,trend:o.trend,price:finite(o.price),
+ rsi:finite(o.rsi),e8:finite(o.e8),e21:finite(o.e21),adDelta:finite(o.adDelta),
+ bands:o.bands?{lower:finite(o.bands.lower),mid:finite(o.bands.mid),
+ upper:finite(o.bands.upper)}:null,
+ support:o.support||null,resistance:o.resistance||null}:null;
+const smallCandles=a=>(a||[]).slice(-84).map(r=>[
+ Number(r[0]),Number(r[1]),Number(r[2]),Number(r[3]),Number(r[4]),Number(r[6])
+]).filter(r=>r.every(Number.isFinite));
 function normalize(s){
   return {...freshPaperState(),...s,armed:!!s?.armed,monitoring:s?.monitoring!==false,
     // Migrate the old fixed 2% V2 default to the approved $3/3% PAPER ceiling.
@@ -139,6 +148,7 @@ export class ScoutEngine extends DurableObject {
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
+    let fiveCandles=[],oneCandles=[],tickerSpot=null;
     const today=chicagoDay(now);
     const context={strict:true,three:null,five:null,oneClosedAt:null,
       regime:s.dailyRegime?.day===today?s.dailyRegime:null};
@@ -155,6 +165,9 @@ export class ScoutEngine extends DurableObject {
       market=getMarket(kj);
       if(!market)throw Error('No open ETH 15-minute contract in market feed');
       const prices=rows(fivej)?.slice(0,-1);
+      fiveCandles=prices||[];
+      const validSpot=Object.values(tj.result||{}).find(t=>Array.isArray(t?.c));
+      tickerSpot=Number(validSpot?.c?.[0]);
       
 if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
 
@@ -170,6 +183,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
         if(onej.error?.length)throw Error('Kraken 1m API error');
         const oneRows=rows(onej)?.slice(0,-1)||[];
+        oneCandles=oneRows;
         if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
         one=engine.fastScan(oneRows);
         context.oneClosedAt=Number(oneRows.at(-1)?.[0]);
@@ -200,6 +214,29 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
+    // Chart reuses the engine's successfully fetched reference candles.
+    // This avoids a separate set of Kraken calls being a single point of
+    // failure for the user's website; never changes the trade decision.
+    if(fresh&&market&&m5&&fiveCandles.length){
+      s.marketSnapshot={
+        asOf:now,
+        source:'Same Kraken spot candles read by V3 engine (not Kalshi settlement)',
+        spot:finite(tickerSpot),
+        contract:{ticker:market.ticker,close_time:market.close_time,
+          floor_strike:market.floor_strike,
+          yes_ask_dollars:market.yes_ask_dollars,
+          no_ask_dollars:market.no_ask_dollars},
+        freshness:{one:oneCandles.length>=25,three:!!context.three,five:true},
+        primary:{five:viewStructure(context.five),three:viewStructure(context.three),
+          ema21:finite(m5.e21),ema50:finite(m5.e50),vwap:finite(m5.vwap),
+          support:finite(m5.support),resistance:finite(m5.resistance)},
+        secondary:{rsi14:finite(m5.rsi),macd:finite(m5.macd),
+          macdSignal:finite(m5.signal)},
+        candles:{m1:smallCandles(oneCandles),
+          m3:smallCandles(aggregate3m(oneCandles)),
+          m5:smallCandles(fiveCandles)}
+      };
+    }
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
       s.lastWindowScanAt=now;
       try{
@@ -248,6 +285,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         lastWindowScanAt:s.lastWindowScanAt||null,
         lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
         lastWindowScanError:s.lastWindowScanError||null,
+        marketSnapshot:s.marketSnapshot||null,
         recentWindows:this.ctx.storage.sql.exec(
          'SELECT data FROM window_outcomes ORDER BY close_at DESC LIMIT 16'
         ).toArray().map(r=>JSON.parse(r.data))});
