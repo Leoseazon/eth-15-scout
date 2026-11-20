@@ -7,6 +7,7 @@ import {structuralEntry, structuralExit} from './structure.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
 import {HONEY_POLICY,honeyPotGate,honeyStopTriggered} from './honey-pot.js';
+import {MICRO_POLICY,microValueGate} from './micro-value.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -194,6 +195,21 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
    plausible:signal.plausible||late,alignment:signal.alignment,spread,
    lateValueVerified:late});
  if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
+ // Cheap quotes are not automatically bargains. Apply strict independent
+ // three- and five-minute corroboration and a 50c all-in paper limit.
+ const micro=price<MICRO_POLICY.maxAskExclusive;
+ if(micro){
+   const budget=entryBudget(state.cash,state.risk,MICRO_POLICY.maxAllInStake);
+   let qty=Math.floor(budget/price);
+   while(qty>0&&qty*price+fee(price,qty)>budget)qty--;
+   const proof=microValueGate({price,passed:signal.passed,slowTrend,
+     plausible:signal.plausible,alignment:signal.alignment,
+     threeTrend:context.three.trend,fiveTrend:context.five.trend,side,
+     structureCaution:structure.secondaryCaution,regimeAgainst:macroAgainst,
+     strikeReachable:directionOk&&reachDist,spread,askSize,bidSize,qty,
+     riskMode});
+   if(!proof.ok){rejections.push(side+': '+proof.reason);continue;}
+ }
  if(riskMode==='SOFT'){
      // A soft daily-loss breach does NOT block every setup, but a one-minute
      // signal, favorable Bollinger reading, or daily regime can never waive
@@ -211,7 +227,7 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
        continue;
      }
    }
-   const strategy=late?'LATE-VALUE':early?'EARLY-REVERSAL':reversal?'REVERSAL':'MOMENTUM';
+   const strategy=micro?'MICRO-VALUE':late?'LATE-VALUE':early?'EARLY-REVERSAL':reversal?'REVERSAL':'MOMENTUM';
  const quality=settlementRewardQuality({price,entryFeePerContract:fee(price,1),
    remaining});
  if(!quality.ok){rejections.push(side+': '+quality.reason);continue;}
@@ -222,7 +238,8 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
  ranked.push({side,price,bid,signal,strategy,score:edgeQuality,askSize,bidSize,
    breakEven:quality.breakEvenProbability,maxNetSettlementReward:quality.reward,
    signalFamilies:families.breadth,early,
-   maxStakeCap:late?LATE_VALUE_POLICY.maxStakeWithFees:
+   maxStakeCap:micro?MICRO_POLICY.maxAllInStake:
+     late?LATE_VALUE_POLICY.maxStakeWithFees:
      early?EARLY_POLICY.maxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees});
  }
  ranked.sort((a,b)=>b.score-a.score);
