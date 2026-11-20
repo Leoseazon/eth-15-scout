@@ -21,6 +21,12 @@ export const PAPER_POLICY = Object.freeze({
   softMinimumDepthMultiple: 2,
 });
 
+// The deployment must explicitly authorize PAPER simulation; no broker
+// integration exists and a missing flag cannot inherit a previous armed state.
+export function paperEntryArmed(mode,monitoring){
+  return mode==='enabled'&&monitoring===true;
+}
+
 export function entryBudget(cash, riskPercent = PAPER_POLICY.defaultRiskPercent,
     cap = PAPER_POLICY.maxStakeIncludingFees) {
   if (![cash,riskPercent,cap].every(Number.isFinite) ||
