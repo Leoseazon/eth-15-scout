@@ -55,3 +55,7 @@ The revised strategy has a distinct release marker, V3-TIME40-6M-20261120, recor
 The next 50–100 early-sale paper exits are defined by their ENTRY time at or after the revised first tick. Held-to-official-settlement positions are tracked separately. Original cash, positions, previous results, the first release marker and all archival records must be preserved.
 
 Before deployment, perform normal Node tests, Cloudflare dry-runs and security checks; after deployment, verify first revised tick, viewer health, official outcomes, trade counters, old history and bankroll continuity. No further strategy changes during observation except documented safety/correctness repairs.
+
+## CF Benchmarks final-minute settlement safeguard
+
+KXETH15M uses the average of CF Ethereum RTI observations during the 60 seconds before close, compared against the contract's published starting reference. The last Kraken spot tick and one-minute candle are not the settlement value. The paper engine does not possess an authoritative RTI sample stream; last-minute status must be labeled UNVERIFIED. No entries are permitted with fewer than 1.5 minutes remaining. Existing positions remain subject to the executable-bid stop and the approved 96c final-minute hold exception; neither implies a guaranteed outcome. Only nonprovisional finalized Kalshi market results may resolve pending paper stakes. Keep CF RTI and Kraken fields distinct in UI and audit data. Technical indicators are directional only, never an official average calculation.
