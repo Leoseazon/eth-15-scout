@@ -4,6 +4,14 @@
 
 Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 
+## 2026-11-19 CT — Permanent username/password login instead of a viewer key
+
+- **What:** Replaced the V3 public page's manual viewing-key prompt with a private username/password sign-in form, a 30-day **Remember this device** option, a Sign out control and token restoration after normal page refresh. Credentials are never stored in website files, browser storage or Git. Only an expiring read-only signed session is remembered.
+- **Cloud gateway:** Added encrypted-secrets verification, HMAC-SHA256 signed sessions, login attempts limited with a Cloudflare rate-limit binding, method/origin validation and tests for expired/tampered sessions. Updated the one-time local PowerShell setup script to ask privately for the owner's chosen credentials and generate its session-signing secret.
+- **Why:** Owner alone uses the V3 dashboard and wants one consistent personal login without re-entering a changing key after every refresh. The username and password remain fixed until the owner chooses to change them. Saved browser sessions expire after 30 days, at which point the *same* credentials work.
+- **Validation:** Frontend JavaScript checks and username/password gateway tests passed in GitHub Actions, including malformed/expired session rejection and authenticated journal access.
+- **Deployment:** Updated **static V3 login website published via GitHub Pages** after its build; Cloudflare login gateway **still requires the one-time secret setup and deployment**. No changes were deployed to the V3 paper-trading engine or Durable Object trading history. Its records remain intact.
+
 ## 2026-11-19 CT — Reusable deployment script and assistant continuity rules
 
 - **What:** Added a safe cloud/deploy-viewer.ps1 script on development branch v3-dashboard-gateway-20261119, which deploys only the separate read-only V3 viewer and creates a private viewing key locally in Windows PowerShell; added repository-wide [AGENTS.md](../AGENTS.md) to require reuse of the approved design and a log entry on every future change.
@@ -57,7 +65,7 @@ Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 
 1. CI-check the new Cloudflare viewer gateway branch and read-only API.
 2. Deploy eth-15-scout-v3-view as a separate Worker without changing the V3 trading script or its database.
-3. Configure its encrypted VIEW_TOKEN secret through Cloudflare; never commit the secret.
+3. Configure encrypted Cloudflare secrets `SCOUT_LOGIN_USER`, `SCOUT_LOGIN_PASSWORD` and `SCOUT_SESSION_SECRET` using the local `cloud/deploy-viewer.ps1` script; never commit or share credentials.
 4. Safely release the journal endpoint to the existing V3 Worker while retaining the exact existing Durable Object binding, instance name, and paper trading mode.
 5. Verify private V3 data, historical event pagination, accurate open/pending balances, exports, CORS/security, and sound alerts.
 6. Record every actual deploy date, its tests, result and limitations in this file.
