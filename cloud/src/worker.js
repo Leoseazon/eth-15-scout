@@ -3,8 +3,14 @@
  */
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
+import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
+import {paperEntryArmed} from './v3-policy.js';
 
 const INTERVAL_MS=30000;
+const REGIME_RETRY_MS=30*60000;
+const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
+  timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
+}).format(new Date(ts));
 const API='https://api.kraken.com/0/public/';
 const json=(obj,status=200)=>new Response(JSON.stringify(obj),{
   status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',
@@ -26,6 +32,8 @@ const rows=j=>Object.values(j.result||{}).find(Array.isArray);
 const safeErr=e=>String(e?.message||e).slice(0,200);
 function normalize(s){
   return {...freshPaperState(),...s,armed:!!s?.armed,monitoring:s?.monitoring!==false,
+    // Migrate the old fixed 2% V2 default to the approved $3/3% PAPER ceiling.
+    risk:s?.risk===2?3:(s?.risk??3),
     pending:Array.isArray(s?.pending)?s.pending:[],
     blocked:Array.isArray(s?.blocked)?s.blocked:[],
     trades:[],decisions:[],events:[]};
@@ -38,10 +46,18 @@ export class ScoutEngine extends DurableObject {
       CREATE TABLE IF NOT EXISTS decisions(
       ticker TEXT PRIMARY KEY, decided_at INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS events(
-      key TEXT PRIMARY KEY, happened_at INTEGER NOT NULL, data TEXT NOT NULL);`);
+      key TEXT PRIMARY KEY, happened_at INTEGER NOT NULL, data TEXT NOT NULL);
+       CREATE TABLE IF NOT EXISTS runtime_status(
+         id INTEGER PRIMARY KEY CHECK(id=1), armed INTEGER NOT NULL,
+         monitoring INTEGER NOT NULL, observed_at INTEGER NOT NULL,
+         last_market TEXT, last_error TEXT);`);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
+    // Deployment-controlled activation. No public arm endpoint is needed.
+    // Disabled/missing flag ALWAYS overrides old persisted armed state.
+    // 'enabled' authorizes PAPER simulated entries only; no broker API exists.
+    s.armed=paperEntryArmed(this.env.SCOUT_PAPER_MODE,s.monitoring);
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
     this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
@@ -63,6 +79,13 @@ export class ScoutEngine extends DurableObject {
       }
       const runtime={...s,...meta,trades:[],decisions:[],events:[],
         blocked:s.blocked.slice(-200)};
+      // Read-only production safety check from Data Studio, no public URL required.
+      sql.exec(`INSERT INTO runtime_status(id,armed,monitoring,observed_at,last_market,last_error)
+        VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+        armed=excluded.armed,monitoring=excluded.monitoring,
+        observed_at=excluded.observed_at,last_market=excluded.last_market,
+        last_error=excluded.last_error`,s.armed?1:0,s.monitoring?1:0,
+        meta.lastTick||Date.now(),meta.lastMarket??null,meta.lastError??null);
       this.ctx.storage.kv.put('runtime',runtime);
     });
   }
@@ -76,6 +99,9 @@ export class ScoutEngine extends DurableObject {
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
+    const today=chicagoDay(now);
+    const context={strict:true,three:null,five:null,oneClosedAt:null,
+      regime:s.dailyRegime?.day===today?s.dailyRegime:null};
     try{
       const [kj,tj,fivej]=await Promise.all([
         remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
@@ -93,19 +119,44 @@ export class ScoutEngine extends DurableObject {
 if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
 
         throw Error('Kraken 5m candles or ticker missing');
-      // Calculate from completed candles only; allow protective exits without 1m data.
+      // Never evaluate new entries with missing/stale completed 5m candles.
+      if(!completedFresh(prices,5))throw Error('Kraken 5m completed candles stale');
       m5=indicators(prices);
-      if(!Number.isFinite(m5?.e50))throw Error('Kraken 5m indicators incomplete');
+      context.five=analyzeStructure(prices);
+      if(!Number.isFinite(m5?.e50)||!context.five)
+        throw Error('Kraken 5m indicators/structure incomplete');
       fresh=true;
       try {
         const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
         if(onej.error?.length)throw Error('Kraken 1m API error');
-        one=engine.fastScan(rows(onej)?.slice(0,-1)||[]);
-        if(!one)throw Error('Kraken 1m indicators incomplete');
+        const oneRows=rows(onej)?.slice(0,-1)||[];
+        if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
+        one=engine.fastScan(oneRows);
+        context.oneClosedAt=Number(oneRows.at(-1)?.[0]);
+        context.three=analyzeStructure(aggregate3m(oneRows));
+        if(!one||!context.three)throw Error('Kraken 1m/3m indicators incomplete');
       } catch(e) { error='1m indicator unavailable: '+safeErr(e) }
     }catch(e){error=safeErr(e)}
+    // ONE light context refresh per Houston day (retry at most each 30m
+    // on failure). This is crypto price/volume context, NOT verified macro
+    // event news, ETF flows or a calibrated probability forecast.
+    if((s.dailyRegime?.day!==today||s.dailyRegime?.status!=='ready') &&
+       now-(s.lastRegimeAttemptAt||0)>REGIME_RETRY_MS){
+      s.lastRegimeAttemptAt=now;
+      try{
+        const [eh,bh]=await Promise.all([
+          remote(API+'OHLC?pair=ETHUSD&interval=60'),
+          remote(API+'OHLC?pair=XBTUSD&interval=60')
+        ]);
+        if(eh.error?.length||bh.error?.length)throw Error('Hourly Kraken request rejected');
+        s.dailyRegime=buildDailyRegime(rows(eh)?.slice(0,-1)||[],
+          rows(bh)?.slice(0,-1)||[],today,now);
+      }catch(e){s.dailyRegime={day:today,at:now,status:'unavailable',
+        regime:'UNKNOWN',eventRisk:'unverified',reason:safeErr(e)};}
+    }
+    context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    try{report=engine.step(market,one,m5,fresh)}
+    try{report=engine.step(market,one,m5,fresh,context)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
     this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
       lastNotice:report.notice||'',lastFeedOkay:fresh});
@@ -132,10 +183,15 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
       const counts=this.ctx.storage.sql.exec(
         'SELECT (SELECT count(*) FROM trades) as trades,(SELECT count(*) FROM decisions) as passes'
       ).toArray()[0];
-      return json({monitoring:s.monitoring,armed:s.armed,initial:s.initial,cash:s.cash,
+      return json({monitoring:s.monitoring,armed:s.armed,paperOnly:true,
+        paperMode:this.env.SCOUT_PAPER_MODE==='enabled'?'enabled':'disabled',
+        initial:s.initial,cash:s.cash,
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
+        lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
+        dailyRisk:s.dailyRisk||null,
+        dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10)});
     }
     if(path==='/v1/history'&&req.method==='GET'){
@@ -151,9 +207,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     const s=this.record();
     if(path==='/v1/start'){s.monitoring=true;this.save(s);
       await this.ctx.storage.setAlarm(Date.now()+1000)}
-    else if(path==='/v1/arm'){s.monitoring=true;s.armed=true;this.save(s);
-      await this.ctx.storage.setAlarm(Date.now()+1000)}
-    else if(path==='/v1/pause'){s.armed=false;this.save(s)}
+    else if(path==='/v1/arm'||path==='/v1/pause')
+      return json({error:'Paper entry state is controlled only by SCOUT_PAPER_MODE in Worker settings',
+        paperOnly:true,armed:s.armed},409);
     else if(path==='/v1/stop'){s.monitoring=false;s.armed=false;this.save(s);
       await this.ctx.storage.deleteAlarm()}
     else return json({error:'Not found'},404);

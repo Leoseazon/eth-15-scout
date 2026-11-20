@@ -2,8 +2,11 @@
  * Deliberately unchanged trading logic; no live Kalshi account or orders.
  * The surrounding cloud scheduler and storage are new. See README.
  */
+import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
+import {structuralEntry, structuralExit} from './structure.js';
+
 export const freshPaperState = () => ({
-  initial:100,cash:100,realized:0,armed:false,risk:2,open:null,pending:[],
+  initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
   trades:[],decisions:[],events:[],window:null,blocked:[]
 });
 const fee = (price, qty) => Math.ceil(Math.max(0, 0.07 * qty * price * (1 - price)) * 100 - 1e-8) / 100;
@@ -95,9 +98,13 @@ function recentLearning(priceBucket) {
  return {n,net,extra:(n>=8&&net<0)?1:0};
 }
 
-function chooseCandidate(m,one,m5,remaining){
+function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode='NORMAL'){
  const target=Number(m.floor_strike);
  if(!Number.isFinite(target)||!one||!m5)return null;
+ // FAIL CLOSED in V3: direct calls cannot skip higher-priority structure.
+ if(!context?.three||!context?.five||!Number.isFinite(context?.oneClosedAt)){
+   rejections.push('Incomplete fresh 1m/3m/5m structure');return null;
+ }
  const ranked=[];
  for(const side of ['UP','DOWN']){
    const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
@@ -113,9 +120,42 @@ function chooseCandidate(m,one,m5,remaining){
    const directionOk=d*(one.last-target)>=-Math.max(2,one.sd*2.5);
    const reachDist=Math.abs(one.last-target)<=Math.max(10,6*one.sd*Math.sqrt(Math.max(remaining,1)));
    const learn=recentLearning(priceBucketOf(price));
-   const reversal=signal.turn&&signal.plausible&&signal.alignment&&signal.passed>=4+learn.extra;
-   const momentum=slowTrend&&directionOk&&reachDist&&signal.passed>=5+learn.extra;
-   if(!reversal&&!momentum)continue;
+   const structure=context?.three&&context?.five?
+     structuralEntry(side,context.three,context.five):null;
+   // Hierarchy: 3m/5m structure is a veto, NOT led by 1m, bands or A/D.
+   if(structure&&!structure.ok){rejections.push(side+': '+structure.reason);continue;}
+   const regime=context?.regime;
+   const macroAgainst=regime?.status==='ready'&&
+     ((side==='UP'&&regime.regime==='RISK_OFF')||
+      (side==='DOWN'&&regime.regime==='RISK_ON')||regime.volatility==='HIGH');
+   // Daily crypto regime and Bollinger/A/D can add at most ONE 1m check.
+   // They never overrule strong primary structure or become trade signals.
+   const addedConfirmation=structure?.secondaryCaution||macroAgainst?1:0;
+   const reversal=signal.turn&&signal.plausible&&signal.alignment&&
+     signal.passed>=4+learn.extra+addedConfirmation;
+   const momentum=slowTrend&&directionOk&&reachDist&&
+     signal.passed>=5+learn.extra+addedConfirmation;
+   if(!reversal&&!momentum){rejections.push(side+': insufficient reversal/momentum confirmations');continue;}
+   const gate=entryGate({price,remaining,passed:signal.passed,slowTrend,
+     plausible:signal.plausible,alignment:signal.alignment,spread});
+   if(!gate.ok){rejections.push(side+': '+gate.reason);continue;}
+   if(riskMode==='SOFT'){
+     // A soft daily-loss breach does NOT block every setup, but a one-minute
+     // signal, favorable Bollinger reading, or daily regime can never waive
+     // higher-priority structure, liquidity, and fee limitations.
+     const aligned=context.three.trend===side&&context.five.trend===side;
+     const budget=entryBudget(state.cash,state.risk,PAPER_POLICY.softMaxStakeIncludingFees);
+     const expectedQty=Math.floor(budget/price);
+     const minDepth=Math.max(2,PAPER_POLICY.softMinimumDepthMultiple*expectedQty);
+     if(signal.passed<PAPER_POLICY.softRequiredChecks||!slowTrend||
+        !aligned||!signal.plausible||!signal.alignment||
+        structure?.secondaryCaution||!Number.isFinite(spread)||
+        spread>PAPER_POLICY.softMaxSpread||
+        expectedQty<1||askSize<minDepth||bidSize<minDepth){
+       rejections.push(side+': 12% soft-loss mode requires 7/7 checks, fully aligned 3m/5m, no structural caution, spread <=3c and 2x book depth');
+       continue;
+     }
+   }
    const strategy=reversal?'REVERSAL':'MOMENTUM';
    // Realized upside from a winning settlement relative to entry, net of general estimated entry fee.
    const grossWinningUpside=1-price-fee(price,1);
@@ -137,9 +177,11 @@ function decisionComplete(window,reason='No qualifying setup') {
  persist(); // Save PASS immediately, even if the market feed fails next.
 }
 
-function enter(m,side,signal,now,price,strategy='REVERSAL') {
+function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL') {
  if(state.open || state.pending.length>=4 || state.blocked.includes(m.ticker)) return false;
- const budget=Math.min(state.cash*state.risk/100,state.initial*0.02);
+ if(riskMode==='HARD')return false;
+ const budget=entryBudget(state.cash,state.risk,
+   riskMode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:PAPER_POLICY.maxStakeIncludingFees);
  let qty=Math.floor(budget/price);
  while(qty>0 && qty*price+fee(price,qty)>budget)qty--;
  if(qty<1 || !Number.isFinite(depth(m,side,'ask')) || depth(m,side,'ask')<qty) return false;
@@ -187,12 +229,32 @@ function toPending(pos) {
  persist();
 }
 
-  function step(m,one,m5,fresh=true) {
+  function updateDailyRisk(now=Date.now()) {
+    const day=chicagoDay(now);
+    const realizedToday=state.trades.filter(t=>
+      Number.isFinite(t.exitAt)&&chicagoDay(t.exitAt)===day&&Number.isFinite(t.pnl)
+    ).reduce((total,t)=>total+t.pnl,0);
+    const openLoss=state.open?(Number.isFinite(state.open.markPnl)?
+      Math.min(0,state.open.markPnl):-Number(state.open.cost||0)):0;
+    // Pending positions are NOT assumed settled. Account for potential loss
+    // of their existing stake until official settlement verifies the result.
+    const pendingExposure=state.pending.filter(p=>
+      Number.isFinite(p.time)&&chicagoDay(p.time)===day
+    ).reduce((total,p)=>total+Number(p.cost||0),0);
+    const previousMode=state.dailyRisk?.day===day?state.dailyRisk.mode:'NORMAL';
+    const next=assessDailyRisk({initial:state.initial,realizedToday,openLoss,
+      pendingExposure,previousMode});
+    state.dailyRisk={day,...next};
+    return state.dailyRisk;
+  }
+
+  function step(m,one,m5,fresh=true,context=null) {
     const now=Date.now();
     if(state.window && ((m && state.window.ticker!==m.ticker) || now>state.window.end)){
       decisionComplete(state.window); state.window=null;
     }
     if(state.open && now>=new Date(state.open.closeTime).getTime()) toPending(state.open);
+    updateDailyRisk(now);
     if(!m || !m5 || !fresh){
       return {notice:'Waiting for fresh Kalshi and Kraken data; no simulated entry.'};
     }
@@ -208,36 +270,65 @@ function toPending(pos) {
       if(Number.isFinite(proceeds)){
         const gain=(bid-pos.entry)/pos.entry;
         let why=null;
-        if(gain>=0.55&&pos.markPnl>0)why='Profit target (+55% contract-price movement)';
-        else if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
-        else if(remaining<1.25)why='Market close approaching';
-        else if(one&&remaining<7){
+        const targetAction=profitExitGate(bid,remaining);
+        // Order of importance: hard stop > 96¢ target > confirmed structure
+        // deterioration. Secondary bands/A-D and macro never force exits.
+        if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
+        else if(targetAction==='SELL')why='96¢ bid take-profit';
+        else if(targetAction==='HOLD_PENDING'){
+          notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
+          pos.reversalConfirmations=0;
+        }else if(one&&remaining<7&&context?.three&&context?.five&&
+          Number.isFinite(context?.oneClosedAt)){
           const q=judge(pos.side,one,m5,m,remaining);
-          if(q.passed<=1)why='Reversal invalidated by current momentum';
+          const structural=structuralExit(pos.side,context.three,context.five);
+          if(q.passed<=1&&structural.confirm){
+            // Two distinct CLOSED one-minute candles; repeated 30-second
+            // observations of one candle cannot trigger a panic exit.
+            if(pos.lastReversalCandleTs!==context.oneClosedAt){
+              pos.reversalConfirmations=(pos.reversalConfirmations||0)+1;
+              pos.lastReversalCandleTs=context.oneClosedAt;
+            }
+            if(pos.reversalConfirmations>=2)
+              why='Confirmed two-candle reversal and 3m/5m structure failure';
+          }else{
+            pos.reversalConfirmations=0;
+            pos.lastReversalCandleTs=null;
+          }
         }
         if(why)closeEarly(pos,bid,why,m);
       }else if(remaining<=0)toPending(pos);
     }
+    // Refresh risk AFTER marking an open position or recording its exit.
+    // If the marked drawdown hits the 20% hard limit, latch that halt for today.
+    const dailyRisk=updateDailyRisk(Date.now());
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
-    if(state.armed&&!state.open&&freshRemaining>=2.5&&freshRemaining<=12.5&&one){
-      const today=chicagoDay(Date.now());
-      const daily=state.trades.filter(t=>chicagoDay(t.exitAt)===today).reduce((a,t)=>a+t.pnl,0);
-      if(daily<=-state.initial*0.04)notice='Daily 4% paper loss cap reached. No new entries.';
+    if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
+      if(!dailyRisk.canEnter)notice='Daily 20% paper risk hard stop reached. No new positions today.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
-        const c=chooseCandidate(m,one,m5,freshRemaining);
+        const rejected=[];
+        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
         if(c){
-          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy))state.window.entered=true;
+          if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode))state.window.entered=true;
           else {
             notice='Qualified '+c.strategy+' setup, but quote depth or fee-adjusted bankroll prevented a simulated fill.';
             state.window.reason=notice;
           }
         }else{
-          notice='PASS / WATCH: no contract at any price meets reversal/trend, target-reachability, liquidity and quote-quality requirements.';
+          notice='PASS / WATCH: '+(rejected.length?rejected.join('; ').slice(0,300):'no contract meets reversal/trend, target-reachability, liquidity and quote-quality requirements.');
           state.window.reason=notice;
         }
       }
     }else if(!state.armed&&!state.open)notice='Paper bot paused. No new purchases.';
+    // PASS is final only when the market expires. While it remains active,
+    // WATCH records a change in rejection reason and the engine keeps scanning.
+    if(state.armed && state.window && !state.window.entered && !state.open &&
+       notice && !notice.startsWith('Paper bot paused') && state.window.lastWatch!==notice){
+      note('WATCH',notice,m.ticker);
+      state.window.lastWatch=notice;
+      state.window.reason=notice;
+    }
     return {notice,remaining,marketTicker:m.ticker};
   }
   return {step,fastScan};

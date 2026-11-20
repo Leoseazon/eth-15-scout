@@ -1,0 +1,25 @@
+# Isolated V3 PAPER test Worker. Does NOT replace eth-15-scout-cloud-v2.
+# Use explicitly: npx wrangler deploy --config wrangler.v3test.toml
+name = "eth-15-scout-cloud-v3test"
+main = "src/worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = false
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+# Deliberately starts with simulated entries disabled.
+# After observing a healthy disarmed deployment, change this variable
+# to "enabled" in Cloudflare Dashboard > Worker > Settings > Variables.
+# No real orders exist in this project.
+SCOUT_PAPER_MODE = "disabled"
+
+[[durable_objects.bindings]]
+name = "SCOUT"
+class_name = "ScoutEngine"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ScoutEngine"]
+
+[triggers]
+crons = ["* * * * *"]
