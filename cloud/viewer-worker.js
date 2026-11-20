@@ -3,15 +3,13 @@
 // No Kalshi user token, broker session, trading order API or telemetry storage.
 import {indicators} from './src/v2.js';
 import {aggregate3m,analyzeStructure,completedFresh} from './src/structure.js';
+import {credentialsConfigured,checkCredentials,newSession,sessionValid} from './viewer-auth.js';
 
 const ALLOWED_ORIGIN='https://leoseazon.github.io';
 const KRAKEN='https://api.kraken.com/0/public/';
 const defaults={'Content-Type':'application/json; charset=utf-8',
  'Cache-Control':'no-store, max-age=0','X-Content-Type-Options':'nosniff',
  'Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'};
-export function authorized(value,secret){
- return typeof secret==='string'&&secret.length>=24&&value==='Bearer '+secret;
-}
 function respond(data,status=200,origin=''){
  const h={...defaults};
  if(origin===ALLOWED_ORIGIN){h['Access-Control-Allow-Origin']=ALLOWED_ORIGIN;h['Vary']='Origin';}
@@ -84,19 +82,44 @@ export default {
   if(req.method==='OPTIONS'){
    return new Response(null,{status:204,headers:{
     'Access-Control-Allow-Origin':ALLOWED_ORIGIN,
-    'Access-Control-Allow-Methods':'GET,OPTIONS',
+    'Access-Control-Allow-Methods':'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers':'Authorization,Content-Type',
     'Access-Control-Max-Age':'600','Vary':'Origin'
    }});
   }
   if(path==='/health'&&req.method==='GET')
    return respond({ok:true,service:'V3 read-only dashboard bridge',paperOnly:true},200,origin);
+  if(path==='/api/v3/login'){
+   if(req.method!=='POST')return respond({error:'Method not allowed'},405,origin);
+   if(!credentialsConfigured(env)||!env.LOGIN_RATE_LIMIT)
+    return respond({error:'Viewer sign-in not configured'},503,origin);
+   // Approximate per-IP Cloudflare regional rate limit. The encrypted,
+   // high-entropy password remains the primary protection.
+   const ip=req.headers.get('CF-Connecting-IP')||'unknown';
+   const limited=await env.LOGIN_RATE_LIMIT.limit({key:'v3-login:'+ip});
+   if(!limited.success)return respond({error:'Too many login attempts. Try later.'},429,origin);
+   if(!(req.headers.get('Content-Type')||'').startsWith('application/json'))
+    return respond({error:'Expected JSON login'},415,origin);
+   if(Number(req.headers.get('Content-Length')||0)>1024)
+    return respond({error:'Login request too large'},413,origin);
+   let form;
+   try{
+     const raw=await req.text();
+     if(raw.length>1024)return respond({error:'Login request too large'},413,origin);
+     form=JSON.parse(raw);
+   }catch{return respond({error:'Invalid login request'},400,origin)}
+   const ok=await checkCredentials(env,form?.username,form?.password);
+   if(!ok)return respond({error:'Incorrect username or password'},401,origin);
+   const session=await newSession(env.SCOUT_SESSION_SECRET,form?.remember===true);
+   return respond({ok:true,readOnly:true,paperOnly:true,
+     token:session.token,expiresAt:session.expiresAt},200,origin);
+  }
   if(!['/api/v3/dashboard','/api/v3/journal'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
-  if(!env.SCOUT||!env.VIEW_TOKEN)
+  if(!env.SCOUT||!credentialsConfigured(env))
    return respond({error:'Viewer not configured'},503,origin);
-  if(!authorized(req.headers.get('Authorization'),env.VIEW_TOKEN))
-   return respond({error:'Incorrect viewer access key'},401,origin);
+  if(!await sessionValid(req.headers.get('Authorization'),env.SCOUT_SESSION_SECRET))
+   return respond({error:'Sign in required or session expired'},401,origin);
   try{
    // Only hard-coded read-only Durable Object paths. NEVER proxy arbitrary
    // paths or expose /bootstrap,/arm,/stop to website users.
