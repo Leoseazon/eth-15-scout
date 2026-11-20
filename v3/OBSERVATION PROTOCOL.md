@@ -86,3 +86,7 @@ Existing conditions remain: 80c+ entries can only occur within five minutes and 
 **Scientific verification**: Track by entry-price band and time-left band the realized fee-adjusted net P/L, actual cash-out wins/losses, later exchange outcomes, realized reward versus possible full loss, and how frequently the early exception beats versus harms the strict old logic. Historical screenshots and a small sample cannot establish calibrated profitability. Preserve all state, controls and previous observations and freeze strategy modifications after this deployment, except documented safety/correctness repairs.
 
 Reference research: Kalshi Crypto Markets Help Center (October 2026); Kalshi 15-minute Pro Help; Kalshi published fee schedule; CFA Institute 'Which Trend Is Your Friend?' (2016) and 'How Data Can Lead Investment Managers Astray'; NBER 'Backtesting Strategies Based on Multiple Signals' (2015). 
+
+## Deferred ideas and 100-trade review tracking
+
+For the standing list of unimplemented strategy ideas, observed missed opportunities, time-to-expiry/strike experiments and the planned first-100-trade audit, see [POST-100 TRADE REVIEW CHECKLIST.md](./POST-100%20TRADE%20REVIEW%20CHECKLIST.md). Update the checklist with new observations rather than modifying the live PAPER strategy during the study. The new-rule cohort is defined by trade entry timestamps after the revised first live tick; compare held-to-official-settlement contracts separately from early exits.
