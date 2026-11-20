@@ -82,6 +82,10 @@ test('5m resistance can veto UP entry, 5m support can veto DOWN entry',()=>{
   assert.equal(structuralEntry('UP',three,barrier).ok,false);
   assert.match(structuralEntry('UP',three,barrier).reason,/resistance/);
   assert.equal(structuralEntry('UP',three,five).ok,true);
+  const minor={...three,resistance:{center:1796,lower:1795.5,upper:1796.5,touches:2}};
+  const local=structuralEntry('UP',minor,five);
+  assert.equal(local.ok,true,'3m zone cannot veto a primary 5m-approved setup');
+  assert.equal(local.secondaryCaution,true,'3m barrier requires extra confirmation');
 });
 
 test('Bollinger and A/D only add a secondary caution, never authorize an entry',()=>{
