@@ -42,10 +42,20 @@ test('market quotes and current decision have explicit stale defenses',()=>{
  assert.match(js,/txt\('down-bid'/);
  assert.match(js,/renderLiveAction\(data\)/);
 });
-test('50–100 observation sample uses first LIVE tick and excludes old trade entries',()=>{
- assert.match(js,/x\.tag==='V3-OBSERVATION-50-100-20261119'/);
- assert.match(js,/Number\(t\.time\)>=firstTick/);
+test('original release and revised 50–100 observation remain separately marked',()=>{
+ assert.match(js,/V3-OBSERVATION-50-100-20261119/);
+ assert.match(js,/V3-TIME40-6M-20261120/);
+ assert.match(js,/revisedCohort/);
  assert.match(html,/Nov 19, 2026 · approx\. 11:40 PM CT/);
+ assert.match(html,/id="release-first-tick"/);
+ assert.match(html,/id="revised-first-tick"/);
+});
+test('realized trade counters and official settlement phase have DOM targets',()=>{
+ for(const id of ['wins-count','losses-count','settlement-phase'])
+   assert.ok(ids.includes(id),'missing new audit display '+id);
+ assert.match(js,/paperResults/);
+ assert.match(js,/RTI_60_SECOND_AVERAGING_UNVERIFIED/);
+ assert.match(html,/Rolling volume-weighted price/);
 });
 test('night mode and mobile breakpoints preserved',()=>{
  assert.match(css,/--bg:#0b121e/);
