@@ -6,6 +6,7 @@ import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} f
 import {structuralEntry, structuralExit} from './structure.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
+import {HONEY_POLICY,honeyPotGate} from './honey-pot.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -228,6 +229,36 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
  return ranked[0]||null;
 }
 
+// Isolated paper experiment: no RSI, MACD or slow trend agreement required.
+// Still risk/cash/fee/depth/strike verified; never enter final RTI minute.
+function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
+ const sideCandidates=[];
+ for(const side of ['UP','DOWN']){
+   const price=quote(m,side,'ask'),bid=quote(m,side,'bid');
+   if(!Number.isFinite(price)||!Number.isFinite(bid)){
+     rejections.push(side+': honey-pot quote unavailable');continue;
+   }
+   const askSize=depth(m,side,'ask'),bidSize=depth(m,side,'bid');
+   const proof=honeyPotGate({side,price,secondsRemaining:remaining*60,
+     spread:price-bid,askSize,bidSize,krakenPrice:one.last,
+     strike:Number(m.floor_strike),oneMinuteVolatility:one.sd,riskMode});
+   if(!proof.ok){rejections.push(side+': '+proof.reason);continue;}
+   const expected=price+fee(price,1);
+   if(expected>HONEY_POLICY.maxAllInStake||expected>state.cash){
+     rejections.push(side+': fee-inclusive honey-pot budget unavailable');
+     continue;
+   }
+   sideCandidates.push({side,price,bid,
+     signal:{passed:0,checks:[],turn:false,plausible:false,alignment:false},
+     strategy:'HONEY-POT',maxStakeCap:HONEY_POLICY.maxAllInStake,
+     signalFamilies:0,maxNetSettlementReward:Number((1-expected).toFixed(2)),
+     breakEven:expected,score:proof.margin/proof.requiredMargin,
+     askSize,bidSize});
+ }
+ sideCandidates.sort((a,b)=>b.score-a.score);
+ return sideCandidates[0]||null;
+}
+
 function decisionComplete(window,reason='No qualifying setup') {
  if (!window || window.entered || window.finished || !window.seenArmed) return;
  window.finished=true;
@@ -372,12 +403,14 @@ function toPending(pos) {
     // If the marked drawdown hits the 20% hard limit, latch that halt for today.
     const dailyRisk=updateDailyRisk(Date.now());
     const freshRemaining=(new Date(m.close_time).getTime()-Date.now())/60000;
-    if(state.armed&&!state.open&&freshRemaining>=PAPER_POLICY.minEntryMinutes&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
+    if(state.armed&&!state.open&&freshRemaining>1&&freshRemaining<=PAPER_POLICY.maxEntryMinutes&&one){
       if(!dailyRisk.canEnter)notice='Daily 20% paper risk hard stop reached. No new positions today.';
       else if(state.blocked.includes(m.ticker))notice='No repeat entry for this 15-minute contract.';
       else {
         const rejected=[];
-        const c=chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
+        const c=freshRemaining<PAPER_POLICY.minEntryMinutes?
+           chooseHoney(m,one,freshRemaining,rejected,dailyRisk.mode):
+           chooseCandidate(m,one,m5,freshRemaining,rejected,context,dailyRisk.mode);
         if(c){
           if(enter(m,c.side,c.signal,Date.now(),c.price,c.strategy,dailyRisk.mode,c.maxStakeCap,c))state.window.entered=true;
           else {
