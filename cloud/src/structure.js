@@ -118,7 +118,7 @@ export function analyzeStructure(rows){
     support:level.support,resistance:level.resistance,tolerance:level.tolerance,
     prevClose:cs.at(-2),prevPrevClose:cs.at(-3)};
 }
-export function structuralEntry(side,three,five,{allowOpposingFive=false}={}){
+export function structuralEntry(side,three,five,{allowOpposingFive=false,allowSingleBreakout=false}={}){
   if(!three||!five)return {ok:false,reason:'3m/5m structure unavailable'};
   // Primary trend veto; a 1m signal cannot overrule the completed 3m trend.
   if(three.trend!=='NEUTRAL'&&three.trend!==side)
@@ -134,8 +134,15 @@ export function structuralEntry(side,three,five,{allowOpposingFive=false}={}){
     const near=side==='UP'?
       price>=level.lower-tol&&price<=level.upper+2*tol:
       price<=level.upper+tol&&price>=level.lower-2*tol;
-    const breakout=side==='UP'?three.price>level.upper&&three.prevClose>level.upper
-      :three.price<level.lower&&three.prevClose<level.lower;
+    // Near expiry, a sufficiently decisive ONE *completed* 3m close beyond
+    // the barrier can qualify only under the separately verified 80–89c gate.
+    // Never bypass resistance/support while price remains inside its zone.
+    const decisiveOne=allowSingleBreakout&&
+      (side==='UP'?three.price>level.upper+tol*.5:
+       three.price<level.lower-tol*.5);
+    const breakout=decisiveOne||(side==='UP'?
+      three.price>level.upper&&three.prevClose>level.upper:
+      three.price<level.lower&&three.prevClose<level.lower);
     if(near&&!breakout)return {ok:false,reason:'Nearby 5m support/resistance barrier'};
   }
   const local=side==='UP'?three.resistance:three.support;
