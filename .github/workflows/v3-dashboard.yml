@@ -1,0 +1,22 @@
+name: Validate V3 dashboard and paper-trade audio
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'v3/**'
+      - '.github/workflows/v3-dashboard.yml'
+  pull_request:
+    paths:
+      - 'v3/**'
+      - '.github/workflows/v3-dashboard.yml'
+jobs:
+  verify-dashboard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check v3/app.js
+      - run: node --check v3/sounds.js
+      - run: node --test v3/test-sounds.mjs
