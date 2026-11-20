@@ -183,6 +183,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
         lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
+        dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10)});
     }
