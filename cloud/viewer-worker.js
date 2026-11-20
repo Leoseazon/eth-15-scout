@@ -91,22 +91,40 @@ export default {
   }
   if(path==='/health'&&req.method==='GET')
    return respond({ok:true,service:'V3 read-only dashboard bridge',paperOnly:true},200,origin);
-  if(path!=='/api/v3/dashboard'||req.method!=='GET')
+  if(!['/api/v3/dashboard','/api/v3/journal'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
   if(!env.SCOUT||!env.VIEW_TOKEN)
    return respond({error:'Viewer not configured'},503,origin);
   if(!authorized(req.headers.get('Authorization'),env.VIEW_TOKEN))
    return respond({error:'Incorrect viewer access key'},401,origin);
   try{
-   // Only two hard-coded, read-only Durable Object paths. NEVER proxy
-   // arbitrary paths or expose /bootstrap,/arm,/stop to website users.
+   // Only hard-coded read-only Durable Object paths. NEVER proxy arbitrary
+   // paths or expose /bootstrap,/arm,/stop to website users.
    const stub=env.SCOUT.getByName('single-paper-scout');
-   const [st,history]=await Promise.all([
-    stub.fetch('https://internal/v1/status'),stub.fetch('https://internal/v1/history')
+   if(path==='/api/v3/journal'){
+     const query=new URL(req.url).searchParams;
+     const offset=query.get('offset')||'0';
+     const limit=query.get('limit')||'100';
+     const anchor=query.get('anchor');
+     const validInt=v=>/^\\d{1,16}$/.test(v);
+     if(!validInt(offset)||!validInt(limit)||(anchor&&!validInt(anchor))||
+        Number(offset)>1000000||Number(limit)<1||Number(limit)>100)
+       return respond({error:'Invalid journal pagination'},400,origin);
+     const pathParams=new URLSearchParams({offset,limit});
+     if(anchor)pathParams.set('anchor',anchor);
+     const result=await stub.fetch('https://internal/v1/journal?'+pathParams.toString());
+     if(!result.ok)return respond({error:'Journal endpoint is not yet active on V3'},502,origin);
+     const data=await result.json();
+     return respond({...data,version:'V3',source:'Durable Object append-only journal'},200,origin);
+   }
+   const [st,history,journal]=await Promise.all([
+    stub.fetch('https://internal/v1/status'),stub.fetch('https://internal/v1/history'),
+    stub.fetch('https://internal/v1/journal?limit=70&offset=0')
    ]);
    if(!st.ok||!history.ok)
     throw new Error('Private paper engine read unavailable');
    const [status,records]=await Promise.all([st.json(),history.json()]);
+   const journalData=journal.ok?await journal.json():null;
    // Market context is independent of the bot tick: errors do not prevent
    // account and paper history from loading.
    let market=null,marketError=null;
@@ -125,7 +143,10 @@ export default {
    // technical stack traces through the JSON payload.
    return respond({paperOnly:true,readOnly:true,version:'V3',
     receivedAt:Date.now(),status,
-    activity:{trades:records.trades||[],decisions:records.decisions||[]},
+    activity:{trades:records.trades||[],decisions:records.decisions||[],
+      events:journalData?.events||[],pending:journalData?.pending||[],
+      journalTotals:journalData?.totals||null,journalAnchor:journalData?.anchor||null,
+      journalAvailable:!!journalData},
     market,marketError},200,origin);
   }catch(e){
    return respond({error:'V3 paper feed temporarily unavailable'},502,origin);
