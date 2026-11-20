@@ -45,7 +45,7 @@ ETH-15 Scout V3 is a **paper-only research dashboard** for Kalshi ETH 15-minute 
 
 ## Privacy and correctness rules
 
-- Viewer is read-only, authenticated by a private key held only in session/browser and encrypted backend secret. Never put access tokens in website source, GitHub, screenshots or documentation.
+- Viewer is read-only, authenticated with a **single permanent username and password** configured as encrypted Cloudflare secrets. The server issues a signed, expiring session token; the password is **never saved in the site's JavaScript or web storage**. `Remember this device` saves only the read-only session token locally for up to 30 days and survives refresh/reopening; otherwise the session is tab-scoped. Re-signing in after expiration uses the **same unchanged credentials**. Users can sign out at any time. Never place credentials or signing secrets in GitHub, screenshots or chat.
 - No real broker/Kalshi API credentials or order-submission functionality.
 - Unavailable/stale indicators show unavailable, not invented numbers. Kraken spot is not official Kalshi settlement reference.
 - Pending positions do not count as verified wins, final profit or settled outcomes.
