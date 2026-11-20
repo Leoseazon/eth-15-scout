@@ -245,8 +245,10 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     // The read-only viewer sees this tick without waiting for archival IO.
     s.lastMarketDataAt=fresh?now:null;
     s.lastDecisionProcessingMs=Date.now()-now;
-    this.save(s,{lastTick:Date.now(),lastError:error,lastMarket:market?.ticker||null,
-      lastNotice:report.notice||'',lastFeedOkay:fresh});
+    const tickMeta={lastTick:Date.now(),lastError:error,
+      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
+      lastFeedOkay:fresh};
+    this.save(s,tickMeta);
     // Archiving is noncritical. It does not change the strategy or P&L.
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
       s.lastWindowScanAt=now;
@@ -257,8 +259,8 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
       }catch(e){
         s.lastWindowScanError=safeErr(e);
       }
-      this.save(s,{lastTick:s.lastTick,lastError:s.lastError,
-        lastMarket:s.lastMarket,lastNotice:s.lastNotice,lastFeedOkay:s.lastFeedOkay});
+      // Re-save with the same CURRENT tick metadata, not stale runtime fields.
+      this.save(s,tickMeta);
     }
   }
   async alarm(){
