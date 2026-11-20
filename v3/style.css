@@ -182,3 +182,20 @@ footer span{margin:0 5px}
 .journal-actions button:disabled{opacity:.43}
 @media(max-width:1070px){.journal-tools{align-items:flex-start;flex-direction:column}.journal-actions{justify-content:flex-start}}
 @media(max-width:620px){.header-side{margin-left:auto}.sound-panel{width:min(285px,calc(100vw - 35px))}.journal-tools{padding:13px}.journal-actions{width:100%}.journal-actions button{flex-grow:1}}
+
+/* Sign-in: consistent low-glare forms and persistently authenticated viewer */
+body.unauthenticated #overview,body.unauthenticated .main-grid,body.unauthenticated #activity{display:none}
+body.unauthenticated #sign-out{display:none}
+.connect-panel{max-width:1020px;margin:34px auto 24px;align-items:center}
+.connect-form{display:flex;flex-direction:column;gap:5px;width:min(370px,100%)}
+.connect-form>label:not(.remember-row){margin:7px 0 3px;font-size:12px}
+.connect-form>input{border-radius:9px;background:#0b1725;border:1px solid #3a4c60;color:var(--text);padding:12px;font-size:13px;width:100%;min-width:0}
+.connect-form>input::placeholder{color:#758ba0}
+.remember-row{display:flex;align-items:center;gap:9px;margin:9px 0 10px;color:var(--sub);font-size:12px;cursor:pointer}
+.remember-row input{accent-color:#5cbba7;width:16px;height:16px}
+.login-submit{width:100%;font-size:13px;padding:12px}
+.sign-out{border:1px solid #3c5368;background:#213249;border-radius:9px;color:#c9d8e5;font-size:11px;padding:8px 11px;white-space:nowrap}
+.sign-out:hover{background:#344a60}
+.sign-out[hidden]{display:none}
+body.unauthenticated .intro{padding-bottom:4px}
+@media(max-width:840px){.connect-panel{margin:16px 0}.connect-form{width:100%}}
