@@ -229,8 +229,9 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
  return ranked[0]||null;
 }
 
-// Isolated paper experiment: no RSI, MACD or slow trend agreement required.
-// Still risk/cash/fee/depth/strike verified; never enter final RTI minute.
+// Isolated paper experiment: require 4 of 7 fresh 1m checks; 3m/5m
+// TREND agreement is not required. Retain strict quote/risk/strike checks.
+// Never start a position inside the official final RTI averaging minute.
 function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
  const sideCandidates=[];
  for(const side of ['UP','DOWN']){
@@ -239,7 +240,9 @@ function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
      rejections.push(side+': honey-pot quote unavailable');continue;
    }
    const askSize=depth(m,side,'ask'),bidSize=depth(m,side,'bid');
+   const signal=judge(side,one,null,m,remaining);
    const proof=honeyPotGate({side,price,secondsRemaining:remaining*60,
+     fastChecks:signal.passed,
      spread:price-bid,askSize,bidSize,krakenPrice:one.last,
      strike:Number(m.floor_strike),oneMinuteVolatility:one.sd,riskMode});
    if(!proof.ok){rejections.push(side+': '+proof.reason);continue;}
@@ -249,9 +252,10 @@ function chooseHoney(m,one,remaining,rejections=[],riskMode='NORMAL'){
      continue;
    }
    sideCandidates.push({side,price,bid,
-     signal:{passed:0,checks:[],turn:false,plausible:false,alignment:false},
+     signal,
      strategy:'HONEY-POT',maxStakeCap:HONEY_POLICY.maxAllInStake,
-     signalFamilies:0,maxNetSettlementReward:Number((1-expected).toFixed(2)),
+     signalFamilies:signalFamilies(signal.checks).breadth,
+     maxNetSettlementReward:Number((1-expected).toFixed(2)),
      breakEven:expected,score:proof.margin/proof.requiredMargin,
      askSize,bidSize});
  }
