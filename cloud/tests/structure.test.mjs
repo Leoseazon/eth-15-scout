@@ -51,7 +51,8 @@ test('3-minute candles aggregate only three consecutive CLOSED UTC-aligned one-m
 });
 
 test('3m structure computes completed trend, Bollinger, A/D without creating trade signals',()=>{
-  const a=bars(75,180,floor3-75*180,100,.15);
+  const a=bars(75,180,floor3-75*180,100,.15)
+    .map(r=>{r[4]=r[2]-.05;return r;});
   const s=analyzeStructure(a);
   assert.ok(s);assert.equal(s.trend,'UP');
   assert.ok(s.bands.upper>s.bands.mid&&s.bands.mid>s.bands.lower);
@@ -89,11 +90,15 @@ test('Bollinger and A/D only add a secondary caution, never authorize an entry',
   assert.equal(z.ok,true);
   assert.equal(z.secondaryCaution,true);
   assert.equal(structuralEntry('UP',{...stretched,adDelta:10},five).secondaryCaution,false);
-  const s=freshPaperState();s.armed=true;
+  const borderline={...oneSignal,rNow:48,rPrev:45,e8:1791,e21:1792,three:-1};
+  const normal=freshPaperState();normal.armed=true;
+  makeV2Engine(normal).step(m(),borderline,slow,true,ctx(1200,three,five));
+  assert.ok(normal.open,'4 confirmations permit the otherwise qualifying reversal');
+  const cautious=freshPaperState();cautious.armed=true;
   const caution={...three,bands:{...three.bands,upper:1794},adDelta:-10};
-  makeV2Engine(s).step(m(),{...oneSignal,rNow:48,rPrev:45},slow,true,ctx(1200,caution,five));
-  // A/D cannot itself produce a buy, even with a high score elsewhere.
-  assert.equal(s.open,null);
+  makeV2Engine(cautious).step(m(),borderline,slow,true,ctx(1200,caution,five));
+  // Secondary warning raises the confirmation requirement but cannot lead a buy.
+  assert.equal(cautious.open,null);
 });
 
 test('no fresh 3m/5m context means NO NEW PAPER ENTRY even with strong 1m signals',()=>{
