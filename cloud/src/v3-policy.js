@@ -13,14 +13,46 @@ export const PAPER_POLICY = Object.freeze({
   finalMinuteHold: 1,
   maxStakeIncludingFees: 3,
   defaultRiskPercent: 3,
-  dailyRealizedLossFraction: 0.12, // $12 of net realized P/L for a $100 initial paper bankroll
+  dailySoftLossFraction: 0.12, // normal entries stop at -$12 on a $100 initial bankroll
+  dailyHardLossFraction: 0.20, // ALL new entries stop at -$20
+  softMaxStakeIncludingFees: 1.50,
+  softRequiredChecks: 7,
+  softMaxSpread: 0.03,
+  softMinimumDepthMultiple: 2,
 });
 
-export function entryBudget(cash, riskPercent = PAPER_POLICY.defaultRiskPercent) {
-  if (!Number.isFinite(cash) || !Number.isFinite(riskPercent) ||
-      cash <= 0 || riskPercent <= 0) return 0;
-  return Math.max(0, Math.floor((Math.min(PAPER_POLICY.maxStakeIncludingFees,
+export function entryBudget(cash, riskPercent = PAPER_POLICY.defaultRiskPercent,
+    cap = PAPER_POLICY.maxStakeIncludingFees) {
+  if (![cash,riskPercent,cap].every(Number.isFinite) ||
+      cash <= 0 || riskPercent <= 0 || cap <= 0) return 0;
+  return Math.max(0, Math.floor((Math.min(PAPER_POLICY.maxStakeIncludingFees,cap,
       cash * riskPercent / 100) + 1e-9) * 100) / 100);
+}
+
+// This is an entry-risk brake, not a stop order and not a calibrated trading edge.
+// Both soft and hard thresholds are latched for the Houston trading day: a
+// temporary rebound in a marked/open position cannot re-enable risky entries.
+// Worst-case unresolved pending losses are included in risk EXPOSURE, not
+// misrepresented as realized outcomes.
+export function assessDailyRisk({
+  initial, realizedToday=0, openLoss=0, pendingExposure=0, previousMode='NORMAL'
+}) {
+  if (![initial,realizedToday,openLoss,pendingExposure].every(Number.isFinite) ||
+      initial <= 0 || pendingExposure < 0)
+    return {mode:'HARD',canEnter:false,netRiskPnl:null,reason:'Risk data unavailable'};
+  const negativeOpen=Math.min(0,openLoss);
+  const netRiskPnl=realizedToday+negativeOpen-pendingExposure;
+  const hard=netRiskPnl<=-initial*PAPER_POLICY.dailyHardLossFraction||
+    previousMode==='HARD';
+  const soft=hard||netRiskPnl<=-initial*PAPER_POLICY.dailySoftLossFraction||
+    previousMode==='SOFT';
+  const mode=hard?'HARD':soft?'SOFT':'NORMAL';
+  return {mode,canEnter:mode!=='HARD',netRiskPnl,
+    realizedToday,openLoss:negativeOpen,pendingExposure,
+    softLoss:initial*PAPER_POLICY.dailySoftLossFraction,
+    hardLoss:initial*PAPER_POLICY.dailyHardLossFraction,
+    maxStake:mode==='SOFT'?PAPER_POLICY.softMaxStakeIncludingFees:
+      mode==='HARD'?0:PAPER_POLICY.maxStakeIncludingFees};
 }
 
 // Called AFTER baseline trend/reversal, quote-size, fee and liquidity checks.
