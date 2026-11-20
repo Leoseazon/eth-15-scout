@@ -233,7 +233,11 @@ export class ScoutEngine extends DurableObject {
     // ONE light context refresh per Houston day (retry at most each 30m
     // on failure). This is crypto price/volume context, NOT verified macro
     // event news, ETF flows or a calibrated probability forecast.
-    if((s.dailyRegime?.day!==today||s.dailyRegime?.status!=='ready') &&
+    // A nonessential hourly Kraken/BTC refresh may take up to 12 seconds.
+    // While a paper position is open, prioritize executable exit quotes
+    // instead of delaying its stop for auxiliary macro context.
+    if(!s.open &&
+       (s.dailyRegime?.day!==today||s.dailyRegime?.status!=='ready') &&
        now-(s.lastRegimeAttemptAt||0)>REGIME_RETRY_MS){
       s.lastRegimeAttemptAt=now;
       try{
