@@ -6,7 +6,7 @@ import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} f
 import {structuralEntry, structuralExit} from './structure.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
-import {HONEY_POLICY,honeyPotGate} from './honey-pot.js';
+import {HONEY_POLICY,honeyPotGate,honeyStopTriggered} from './honey-pot.js';
 
 export const freshPaperState = () => ({
   initial:100,cash:100,realized:0,armed:false,risk:PAPER_POLICY.defaultRiskPercent,open:null,pending:[],
@@ -371,7 +371,11 @@ function toPending(pos) {
         const targetAction=profitExitGate(bid,remaining);
         // Order of importance: hard stop > 96¢ target > confirmed structure
         // deterioration. Secondary bands/A-D and macro never force exits.
-        if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
+        // Priority above 40% regular stop, 96c profit and final-minute hold.
+        // Uses the executable BID; no fill is claimed without sufficient depth.
+        if(pos.strategy==='HONEY-POT'&&honeyStopTriggered(pos.entry,bid))
+          why='HONEY-POT stop: executable bid >10c below purchase price';
+        else if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
            gain<=-PAPER_POLICY.contractStopLossFraction)
           why='Stop loss (−40% contract-price movement; final 6 minutes only)';
         else if(targetAction==='SELL')why='96¢ bid take-profit';
