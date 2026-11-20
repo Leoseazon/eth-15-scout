@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/worker.js && node --check src/v2.js && node --check src/v3-policy.js",
+    "check": "node --check src/worker.js && node --check src/v2.js && node --check src/v3-policy.js && node --check src/structure.js",
     "test": "node --test tests/*.test.mjs"
   },
   "devDependencies": {
