@@ -238,6 +238,7 @@ function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL',max
  const position={ticker:m.ticker,side,qty,entry:price,entryFee,cost,time:now,
    remainingSecondsAtEntry,target:Number(m.floor_strike),closeTime:m.close_time,priceBucket:bucket,bucket,
    checks:signal.checks.map(c=>[c.name,c.ok]),score:signal.passed,strategy,
+   strategyVersion:'V3-TIME40-6M-20261120',
    signalFamilies:evidence?.signalFamilies??null,
    maximumSettlementRewardPerContract:evidence?.maxNetSettlementReward??null,
    breakEvenSettlementProbability:evidence?.breakEven??null,
