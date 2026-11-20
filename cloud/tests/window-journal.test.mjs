@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import {parseOfficialWindow,windowEndpointUrl,parseList,LOOKBACK_MS} from '../src/window-journal.js';
 const now=Date.parse('2026-11-20T05:15:00Z');
 const mk=(p={})=>({ticker:'KXETH15M-26NOV200500-00',close_time:'2026-11-20T05:00:00Z',
-  status:'settled',result:'yes',floor_strike:1800,settlement_ts:'2026-11-20T05:03:00Z',
+  status:'finalized',result:'yes',floor_strike:1800,settlement_ts:'2026-11-20T05:03:00Z',
   ...p});
-test('official settled Kalshi yes is UP and no is DOWN, regardless of V3 activity',()=>{
+test('official finalized Kalshi yes is UP and no is DOWN, regardless of V3 activity',()=>{
  const up=parseOfficialWindow(mk(),now);
  const down=parseOfficialWindow(mk({ticker:'KXETH15M-26NOV200515-15',result:'no'}),now);
  assert.equal(up.outcome,'UP');assert.equal(up.status,'OFFICIAL_RESULT');
@@ -14,7 +14,7 @@ test('official settled Kalshi yes is UP and no is DOWN, regardless of V3 activit
  assert.equal(up.closeAt,Date.parse('2026-11-20T05:00:00Z'));
 });
 test('result never becomes OFFICIAL before exchange settlement',()=>{
- for(const status of ['closed','open','paused','unopened']){
+ for(const status of ['closed','open','paused','unopened','determined','disputed','settled']){
   const item=parseOfficialWindow(mk({status}),now);
   assert.equal(item.outcome,null);
   assert.equal(item.status,'REPORTED');
