@@ -57,6 +57,13 @@ test('realized trade counters and official settlement phase have DOM targets',()
  assert.match(js,/RTI_60_SECOND_AVERAGING_UNVERIFIED/);
  assert.match(html,/Rolling volume-weighted price/);
 });
+test('Official Kalshi outcome journal is shown ONLY when a finalized result is verified',()=>{
+ assert.match(html,/<section class="outcome-section"[^>]*hidden>/);
+ assert.match(css,/\.outcome-section\[hidden\]\{display:none!important\}/);
+ assert.match(js,/officialPanel\.hidden=!\(Number\.isSafeInteger\(allOfficial\)&&allOfficial>0\)/);
+ assert.match(js,/data\.activity\?\.journalTotals\?\.officialWindows/);
+ assert.match(html,/id="pending-stake-value"/);
+});
 test('night mode and mobile breakpoints preserved',()=>{
  assert.match(css,/--bg:#0b121e/);
  for(const width of [380,480,600,770,840,1160])
