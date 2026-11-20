@@ -4,7 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
-import {paperEntryArmed} from './v3-policy.js';
+import {paperEntryArmed,settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 import {TIMESTOP_TAG,paperResults,reconcilePending} from './paper-ledger.js';
 
@@ -325,6 +325,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
         lastWindowScanError:s.lastWindowScanError||null,
         marketSnapshot:s.marketSnapshot||null,
+        settlementPhase:settlementClockPhase(
+          s.marketSnapshot?.contract?.close_time||s.open?.closeTime||'',Date.now()),
+        officialSettlementIndexAvailable:false,
         releaseMarkers:this.ctx.storage.sql.exec(
           'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
