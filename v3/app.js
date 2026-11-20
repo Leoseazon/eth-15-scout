@@ -191,6 +191,12 @@ function renderLiveAction(data){
  txt('live-freshness',isLive?'● LIVE BOT FEED':s.monitoring?'● STALE':'● OFFLINE');
  cls('live-freshness',isLive?'success':'warning');
  txt('live-asof',s.lastTick?'Last tick '+ago(s.lastTick):'No engine timestamp');
+ const quoteAt=n(s.lastQuoteRetrievedAt);
+ const quoteAge=quoteAt!==null?Date.now()-quoteAt:null;
+ txt('live-proxy-age',quoteAge!==null&&quoteAge>=0?
+  'Bot Kalshi quote '+ago(quoteAt):'Bot quote age unavailable');
+ $('live-proxy-age').style.color=quoteAge!==null&&quoteAge>45000?
+  'var(--amber)':'var(--sub)';
  if(open){
   txt('live-position-state',String(open.side||'')+' · '+String(open.qty||'—')+' contracts');
   txt('live-position-detail','Simulated entry '+ct(open.time)+' CT · '+String(open.ticker||''));
