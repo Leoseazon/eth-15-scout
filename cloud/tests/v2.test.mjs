@@ -4,7 +4,7 @@ import {freshPaperState,makeV2Engine} from '../src/v2.js';
 
 test('new cloud paper bot starts disarmed',()=>{
   const s=freshPaperState(); assert.equal(s.armed,false);
-  assert.equal(s.cash,100); assert.equal(s.risk,2);
+  assert.equal(s.cash,100); assert.equal(s.risk,3);
   assert.equal(s.trades.length,0); assert.equal(s.open,null);
 });
 test('no trade without fresh market data',()=>{
@@ -37,12 +37,12 @@ test('V2 still blocks opening a position before its 12.5 minute entry gate',()=>
   makeV2Engine(s).step(fakeMarket(14),one,five,true);
   assert.equal(s.open,null);
 });
-test('V2 permits a single qualified simulated entry within 2.5–12.5 minutes',()=>{
+test('V3 permits one fee-inclusive entry within 1.5–12.5 minutes',()=>{
   const s=freshPaperState();s.armed=true;
   const market=fakeMarket(10);
   const engine=makeV2Engine(s);engine.step(market,one,five,true);
   assert.ok(s.open);assert.equal(s.open.side,'UP');
-  assert.ok(s.open.cost<=2);assert.equal(s.events.filter(e=>e.type==='PAPER BUY').length,1);
+  assert.ok(s.open.cost<=3);assert.equal(s.events.filter(e=>e.type==='PAPER BUY').length,1);
   s.open=null;engine.step(market,one,five,true);
   assert.equal(s.open,null);
   assert.equal(s.events.filter(e=>e.type==='PAPER BUY').length,1);
