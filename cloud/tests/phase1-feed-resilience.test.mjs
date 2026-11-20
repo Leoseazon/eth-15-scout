@@ -49,6 +49,17 @@ test('Kraken transport failure preserves usable Kalshi market as independent res
  assert.equal(fetched.checks.kraken1m.ok,true);
  assert.equal(fetched.failures.length,2);
 });
+test('a synchronous individual fetcher throw does not erase valid Kalshi response',async()=>{
+ const source={worker_retrieved_at:new Date().toISOString(),markets:[mk(5)]};
+ const r=await collectMarketFeeds(url=>{
+   if(url.includes('markets'))return source;
+   if(url.includes('Ticker'))throw Error('synchronous network setup failure');
+   return {result:{ETHUSD:[]},error:[]};
+ },'https://market.test/markets','https://kraken.test/',Date.now());
+ assert.equal(r.payloads.kalshi,source);
+ assert.equal(r.checks.krakenTicker.ok,false);
+ assert.match(r.checks.krakenTicker.error,/synchronous network setup failure/);
+});
 test('Kalshi quote timestamps fail closed when missing, old or future-dated',()=>{
  const now=Date.now();
  assert.equal(validateKalshiSnapshot({worker_retrieved_at:new Date(now-89000).toISOString()},now).ok,true);
