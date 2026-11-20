@@ -100,3 +100,15 @@ export function profitExitGate(bid, remaining) {
       bid < PAPER_POLICY.sellAtBid) return 'NONE';
   return remaining <= PAPER_POLICY.finalMinuteHold ? 'HOLD_PENDING' : 'SELL';
 }
+
+// Kalshi ETH15m final price is the 60-second CF Benchmarks RTI average.
+// This classifies CLOCK PHASE ONLY. It never computes a Kalshi result from
+// Kraken, and never treats a last traded tick as the official settlement.
+export function settlementClockPhase(closeTime,now=Date.now()){
+  const end=Date.parse(closeTime);
+  if(!Number.isFinite(end)||!Number.isFinite(now))return 'UNKNOWN';
+  const remaining=(end-now)/1000;
+  if(remaining<=0)return 'AWAITING_OFFICIAL_RESULT';
+  if(remaining<=60)return 'RTI_60_SECOND_AVERAGING_UNVERIFIED';
+  return 'PRE_SETTLEMENT_AVERAGING';
+}
