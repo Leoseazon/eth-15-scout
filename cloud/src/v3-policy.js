@@ -66,9 +66,11 @@ export function entryGate({price, remaining, passed, slowTrend, plausible, align
     return fail('Outside 1.5–12.5 minute entry window');
   if (price >= PAPER_POLICY.maxNewEntryPrice)
     return fail('Entry at 96¢ or more leaves insufficient exit room');
+  // One-second conservative guard prevents scheduling jitter from
+  // slipping a quote through the precise three-minute boundary.
   if (price >= PAPER_POLICY.expensiveThreshold &&
-      remaining >= PAPER_POLICY.expensiveCutoffMinutes)
-    return fail('80¢+ contract prohibited with 3+ minutes left');
+      remaining >= PAPER_POLICY.expensiveCutoffMinutes - 1/60)
+    return fail('80¢+ contract prohibited at/near the 3-minute cutoff');
   if (remaining < PAPER_POLICY.expensiveCutoffMinutes &&
       (passed < PAPER_POLICY.lateMinConfirmations || !slowTrend ||
        !plausible || !alignment || spread > PAPER_POLICY.lateMaxSpread))
