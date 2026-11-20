@@ -109,6 +109,89 @@ async function load(){
 }
 function markTrend(id,t){txt(id,t==='UP'?'Uptrend':t==='DOWN'?'Downtrend':t==='NEUTRAL'?'Neutral':'Unavailable');cls(id,trendStyle(t))}
 function quote(v){const a=n(Number(v));return a===null||a<=0?'—':fmt(a*100,1)+'¢'}
+function latestPaperExecution(data){
+ const s=data.status||{},candidates=[];
+ const evs=Array.isArray(data.activity?.events)?data.activity.events:[];
+ for(const e of evs){
+  if(!['PAPER BUY','PAPER SELL'].includes(e.type))continue;
+  const at=n(e.time)??n(e.at);
+  if(at!==null)candidates.push({at,type:e.type,
+   side:typeof e.msg==='string'?e.msg.match(/\b(UP|DOWN)\b/)?.[1]||'':null,
+   ticker:e.ticker||'',message:e.msg||''});
+ }
+ const trades=Array.isArray(data.activity?.trades)?data.activity.trades:[];
+ for(const t of trades){
+  if(n(t.time)!==null)candidates.push({at:t.time,type:'PAPER BUY',
+   side:t.side,ticker:t.ticker,message:'Entry '+quote(t.entry)+' · '+money(t.cost)+' spent'});
+  if(n(t.exitAt)!==null)candidates.push({at:t.exitAt,type:'PAPER SELL',
+   side:t.side,ticker:t.ticker,message:'Exit '+quote(t.exitPrice)+' · '+money(t.pnl,true)});
+ }
+ if(s.open&&n(s.open.time)!==null)candidates.push({at:s.open.time,type:'PAPER BUY',
+   side:s.open.side,ticker:s.open.ticker,
+   message:'Entry '+quote(s.open.entry)+' · '+money(s.open.cost)+' spent'});
+ candidates.sort((a,b)=>b.at-a.at);
+ return candidates[0]||null;
+}
+function renderLiveAction(data){
+ const s=data?.status||{},m=data?.market||{},open=s.open||null;
+ const tickAge=Date.now()-Number(s.lastTick);
+ const fresh=Number.isFinite(tickAge)&&tickAge>=0&&tickAge<=110000;
+ const ticker=open?.ticker||s.lastMarket||m.contract?.ticker||null;
+ const closeTime=open?.closeTime||
+  (ticker===m.contract?.ticker?m.contract?.close_time:null);
+ const last=latestPaperExecution(data),isLive=!!s.monitoring&&fresh;
+ const riskMode=s.dailyRisk?.mode;
+ let title='WATCHING FOR SETUP',side=null,state='watch';
+ let desc=s.lastNotice||'Waiting for a qualifying V3 paper-trade setup.';
+ if(!isLive){
+  title='DATA NOT LIVE';state='stale';
+  desc=s.monitoring?'Last bot report is stale. Do not treat an old signal as current.':
+   'Bot monitoring is stopped. No new paper signals are being evaluated.';
+ }else if(open){
+  title='PAPER POSITION OPEN';side=open.side||null;state='buy';
+  desc=s.lastNotice||'An actual V3 simulated position is open. Watch the close and bid quotes.';
+ }else if(riskMode==='HARD'){
+  title='NEW ENTRIES HALTED';state='stale';
+  desc='Daily hard risk limit reached. Existing paper positions are still managed.';
+ }else if(!s.armed){
+  title='PAPER ENTRIES PAUSED';state='stale';
+  desc='Monitoring is on but the V3 paper bot is not armed for simulated buys.';
+ }else if(/^PAPER SELL\b/.test(s.lastNotice||'')){
+  title='PAPER SELL RECORDED';state='sell';
+ }else if(/^PASS\b(?!\s*\/\s*WATCH)/.test(s.lastNotice||'')){
+  title='PASS — NO ENTRY';state='watch';
+ }
+ const target=$('live-action');
+ target.dataset.state=state;
+ txt('live-primary',title);
+ txt('live-side',side||'—');
+ $('live-side').hidden=!side;
+ if(side)cls('live-side',side==='UP'?'success':'danger');
+ txt('live-decision',desc);
+ txt('live-contract-id',ticker||'No market reported');
+ txt('live-freshness',isLive?'● LIVE BOT FEED':s.monitoring?'● STALE':'● OFFLINE');
+ cls('live-freshness',isLive?'success':'warning');
+ txt('live-asof',s.lastTick?'Last tick '+ago(s.lastTick):'No engine timestamp');
+ if(open){
+  txt('live-position-state',String(open.side||'')+' · '+String(open.qty||'—')+' contracts');
+  txt('live-position-detail','Simulated entry '+ct(open.time)+' CT · '+String(open.ticker||''));
+  txt('live-entry',quote(open.entry)+' / '+money(open.cost));
+  txt('live-mark-pnl',n(open.markPnl)!==null?money(open.markPnl,true):'Not quotable');
+  $('live-mark-pnl').style.color=n(open.markPnl)>0?'var(--mint)':
+    n(open.markPnl)<0?'var(--red)':'var(--text)';
+ }else{
+  txt('live-position-state','NONE');
+  txt('live-position-detail','No active simulated position on the bot');
+  txt('live-entry','—');
+  txt('live-mark-pnl','—');
+  $('live-mark-pnl').style.color='var(--text)';
+ }
+ txt('live-countdown',closeTime?remaining(closeTime):'—');
+ txt('live-close-label',closeTime?'Ends '+ct(closeTime)+' CT':'Close time unavailable');
+ txt('live-last-trade',last?(last.type==='PAPER BUY'?'BUY':'SELL')+
+  ' '+String(last.side||'').trim()+' · '+String(last.ticker||''):'No paper trade recorded');
+ txt('live-last-trade-at',last?ct(last.at)+' CT · '+last.message:'—');
+}
 function render(data){
  const s=data.status||{},m=data.market||{},c=m.contract||{},pr=m.primary||{},
   sec=m.secondary||{},three=pr.three,five=pr.five,now=Date.now();
@@ -184,7 +267,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderFeed(data);updateJournalControls(data);drawChart();
+ renderLiveAction(data);renderFeed(data);updateJournalControls(data);drawChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -470,7 +553,7 @@ document.querySelectorAll('[data-tf]').forEach(b=>b.addEventListener('click',()=
 }));
 window.addEventListener('resize',()=>{if(lastPayload)drawChart()});
 setInterval(()=>{if(token&&!document.hidden)load()},30000);
-setInterval(()=>{if(lastPayload){txt('metric-age',ago(lastPayload.status?.lastTick));
+setInterval(()=>{if(lastPayload){renderLiveAction(lastPayload);txt('metric-age',ago(lastPayload.status?.lastTick));
  txt('contract-time',lastPayload.market?.contract?.close_time?
  'Closes '+ct(lastPayload.market.contract.close_time)+' CT · '+remaining(lastPayload.market.contract.close_time):'Latest engine contract')}},15000);
 if(token&&expiresAt>Date.now()){connectionVisible(false);load()}
