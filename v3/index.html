@@ -63,6 +63,12 @@
    <div><p class="eyebrow">TOP PRIORITY · LIVE V3 PAPER BOT</p><h2 id="live-action-title">Current bot activity</h2></div>
    <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span></div>
   </div>
+  <div class="contract-box live-contract-board" aria-label="Current Kalshi contract and latest publicly available prices">
+   <div class="board-market"><p class="mini-label">CURRENT KALSHI 15-MINUTE CONTRACT</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span></div>
+   <div class="board-target"><span class="mini-label">ETH TARGET / STRIKE</span><strong id="contract-strike">Target unavailable</strong><small>Official contract reference, not Kraken settlement</small></div>
+   <div class="board-price up"><span class="mini-label">UP / YES · BUY PRICE</span><strong id="up-quote">—</strong><small>Best ask · <span id="up-bid">Bid —</span></small></div>
+   <div class="board-price down"><span class="mini-label">DOWN / NO · BUY PRICE</span><strong id="down-quote">—</strong><small>Best ask · <span id="down-bid">Bid —</span></small></div>
+  </div>
   <div class="live-action-body">
    <div class="live-action-main">
     <span class="mini-label">CURRENT STATUS</span>
@@ -85,6 +91,20 @@
   </div>
   <p class="live-action-footnote">This is a **simulated** signal monitor. It never places an actual Kalshi order. Data becomes stale if the engine stops reporting.</p>
  </section>
+ <section id="performance" class="card account-card" aria-labelledby="account-title">
+  <div class="card-heading"><div><p class="eyebrow">SIMULATED ACCOUNT · V3 ONLY</p><h2 id="account-title">Paper performance</h2></div><span class="badge subtle">Paper only</span></div>
+  <div class="account-summary-body">
+   <div class="balance-main"><span class="mini-label">AVAILABLE PAPER CASH</span><strong id="cash-value">—</strong><span class="fine">Excludes open stake and pending settlements</span></div>
+   <div class="account-summary-stats">
+    <div class="account-row"><span>Starting bankroll</span><strong id="starting-value">—</strong></div>
+    <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
+    <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
+    <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
+    <div class="stat-tiles"><div><span>Completed exits</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div></div>
+   </div>
+   <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
+  </div>
+ </section>
  <section id="overview" class="overview">
   <div class="metric-grid">
    <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
@@ -103,10 +123,7 @@
     </div>
     <div class="chart-box"><canvas id="price-chart" role="img" aria-label="Recent Kraken ETH candles with EMA 21 and EMA 50 reference lines"></canvas><div class="chart-empty" id="chart-empty">Connect to display live reference candles</div></div>
     <div class="chart-legend"><span><i class="key key-up"></i>Positive candle</span><span><i class="key key-down"></i>Negative candle</span><span><i class="key key-ema21"></i>EMA 21</span><span><i class="key key-ema50"></i>EMA 50</span></div>
-    <div class="contract-box">
-      <div><div class="mini-label">CURRENT KALSHI CONTRACT</div><strong id="contract-id">—</strong><span class="contract-small" id="contract-time">Close time unavailable</span></div>
-      <div class="contract-right"><span id="contract-strike" class="contract-strike">Target —</span><div class="quote-list"><span id="up-quote">UP ask —</span><span id="down-quote">DOWN ask —</span></div></div>
-    </div>
+
     <div class="decision-banner chart-decision"><span class="decision-dot">◎</span><div><strong>Bot market note</strong><p id="current-notice">Awaiting V3 engine activity</p></div><span id="notice-time" class="micro">—</span></div>
   </section>
   <section id="signals" class="card signals-card" aria-labelledby="signals-title">
@@ -128,16 +145,6 @@
    <p class="signal-footer">Computed reference ≠ a recommendation or guaranteed Kalshi outcome. No standalone indicator creates a paper trade.</p>
   </section>
   <aside class="right-column">
-   <section id="performance" class="card account-card" aria-labelledby="account-title">
-    <div class="card-heading"><div><p class="eyebrow">SIMULATED ACCOUNT</p><h2 id="account-title">Paper performance</h2></div><span class="badge subtle">V3 only</span></div>
-    <div class="balance-main"><span class="mini-label">Available paper cash</span><strong id="cash-value">—</strong><span class="fine">Pending settlements and open stake excluded</span></div>
-    <div class="account-row"><span>Starting bankroll</span><strong id="starting-value">—</strong></div>
-    <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
-    <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
-    <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
-    <div class="stat-tiles"><div><span>Completed exits</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div></div>
-    <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div></div>
-   </section>
    <section class="card risk-card" aria-labelledby="risk-title">
     <div class="card-heading"><div><p class="eyebrow">RISK ENGINE</p><h2 id="risk-title">Daily safeguards</h2></div><span id="risk-badge" class="badge neutral">—</span></div>
     <div class="risk-line"><span>Soft risk threshold</span><strong>−12% · −$12</strong></div>
