@@ -129,8 +129,11 @@ export function structuralEntry(side,three,five){
   const price=three.price,tol=Math.max(five.tolerance,three.range*.65);
   // Nearby 5m resistance (UP) / support (DOWN) requires a real 3m breakout.
   if(level){
-    const distance=side==='UP'?level.lower-price:price-level.upper;
-    const near=distance>=-tol&&distance<=tol;
+    // Continue treating the zone as relevant just AFTER a shallow breach.
+    // Otherwise a single unconfirmed one-candle pierce evades the veto.
+    const near=side==='UP'?
+      price>=level.lower-tol&&price<=level.upper+2*tol:
+      price<=level.upper+tol&&price>=level.lower-2*tol;
     const breakout=side==='UP'?three.price>level.upper&&three.prevClose>level.upper
       :three.price<level.lower&&three.prevClose<level.lower;
     if(near&&!breakout)return {ok:false,reason:'Nearby 5m support/resistance barrier'};
