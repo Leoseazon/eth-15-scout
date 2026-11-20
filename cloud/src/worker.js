@@ -89,7 +89,9 @@ export class ScoutEngine extends DurableObject {
       market=getMarket(kj);
       if(!market)throw Error('No open ETH 15-minute contract in market feed');
       const prices=rows(fivej)?.slice(0,-1);
-      if(!prices?.length||!rows(tj))
+      
+if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) && Number.isFinite(Number(t.c[0]))))
+
         throw Error('Kraken 5m candles or ticker missing');
       // Calculate from completed candles only; allow protective exits without 1m data.
       m5=indicators(prices);

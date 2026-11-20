@@ -1,7 +1,7 @@
 name = "eth-15-scout-cloud-v2"
 main = "src/worker.js"
 compatibility_date = "2026-11-18"
-workers_dev = true
+workers_dev = false
 
 [vars]
 MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
