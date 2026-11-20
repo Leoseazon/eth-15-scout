@@ -157,3 +157,28 @@ footer span{margin:0 5px}
 @media(max-width:840px){.wrap{padding-left:17px;padding-right:17px}.header-inner{flex-wrap:wrap;gap:10px;padding-top:13px;padding-bottom:12px}.brand{min-width:0}.nav{order:3;width:100%;justify-content:space-between}.nav a{padding:7px 10px}.intro{align-items:flex-start}.connect-panel{flex-wrap:wrap}.connect-form{width:100%}.main-grid{grid-template-columns:1fr}.right-column{grid-column:auto;grid-template-columns:1fr 1fr}.feed-head,.activity-item{grid-template-columns:90px 95px minmax(0,1fr)}.feed-head span:nth-child(3),.activity-item .ticker{display:none}}
 @media(max-width:600px){.header-side{gap:7px}.sync-label{display:none}.brand strong{font-size:16px}.paper-pill{font-size:10px}.intro{display:block}.intro-right{flex-direction:row;align-items:center;margin-top:14px;justify-content:space-between}.intro h1{font-size:23px}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.metric{padding:13px}.metric-value{font-size:18px}.main-grid{gap:11px}.right-column{grid-template-columns:1fr}.spot{font-size:26px}.chart-box canvas{height:220px}.chart-box{min-height:220px}.market-top{padding:14px 15px 2px}.card-heading{padding:15px}.section-helper{padding:12px 15px}.contract-box{flex-wrap:wrap}.contract-right{text-align:left;align-items:flex-start}.activity-heading{align-items:flex-start;flex-direction:column}.feed-head,.activity-item{grid-template-columns:67px 77px minmax(0,1fr);gap:7px;padding:11px}.feed-head span{font-size:8px}.activity-item{font-size:10px}.event-pill{min-width:0;padding:4px 5px;font-size:9px}.activity-footnote{padding:12px}footer{display:block}.footer-notice{margin-bottom:9px}.form-inline{flex-wrap:wrap}.form-inline input{width:100%;flex:auto}.form-inline button{width:100%}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*:before,*:after{transition-duration:0s!important;animation-duration:0s!important}}
+
+/* Low-glare sound preferences and journal controls */
+.sound-menu{position:relative;z-index:15}
+.sound-menu summary{list-style:none;cursor:pointer;border:1px solid #3b5266;background:#1b2b3c;color:#b9ccdc;padding:7px 10px;border-radius:9px;font-size:11px;font-weight:750;white-space:nowrap;user-select:none}
+.sound-menu summary::-webkit-details-marker{display:none}
+.sound-menu[open] summary,.sound-menu summary:hover{background:#274057;border-color:#587086}
+.sound-menu summary.enabled{color:#9fe1cf;border-color:#38675e;background:#203b38}
+.sound-panel{position:absolute;z-index:16;right:0;top:calc(100% + 10px);width:285px;border-radius:12px;background:#1b2a3a;border:1px solid #42596b;box-shadow:0 20px 55px #02080ebd;padding:16px;color:var(--text)}
+.sound-panel strong{display:block;font-size:12px;margin-bottom:6px}
+.sound-panel p{font-size:11px;color:var(--sub);line-height:1.55;margin:0 0 14px}
+.sound-panel small{display:block;font-size:10px;color:var(--muted);line-height:1.5;margin-top:11px}
+.sound-panel button{border:1px solid #3b5969;border-radius:8px;color:#d7e6f0;background:#243c4a;padding:9px 10px;font-size:11px;font-weight:740}
+.sound-panel button:hover{background:#305264}
+.sound-toggle{display:block;width:100%;text-align:center}
+.sound-previews{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}
+.journal-tools{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 20px;background:#172536;border-top:1px solid var(--stroke)}
+.journal-tools strong{font-size:12px;display:block;margin-bottom:4px}
+.journal-tools p{font-size:11px;color:#b9c7d2;margin:0 0 4px}
+.journal-tools small{display:block;font-size:10px;color:var(--muted);max-width:530px}
+.journal-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}
+.journal-actions button{background:#24384b;border:1px solid #3b5164;color:#d6e4ed;font-size:11px;padding:9px 11px;border-radius:8px;font-weight:700;white-space:nowrap}
+.journal-actions button:hover:not(:disabled){background:#315069;border-color:#65849e}
+.journal-actions button:disabled{opacity:.43}
+@media(max-width:1070px){.journal-tools{align-items:flex-start;flex-direction:column}.journal-actions{justify-content:flex-start}}
+@media(max-width:620px){.header-side{margin-left:auto}.sound-panel{width:min(285px,calc(100vw - 35px))}.journal-tools{padding:13px}.journal-actions{width:100%}.journal-actions button{flex-grow:1}}
