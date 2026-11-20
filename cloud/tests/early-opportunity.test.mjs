@@ -36,6 +36,13 @@ test('indicator families de-duplicate echoing price/EMA/three-candle evidence',(
  rows[5].ok=true;assert.equal(signalFamilies(rows).breadth,3);
  assert.equal(signalFamilies(null).breadth,0);
 });
+test('four correlated RSI/MACD checks without any price-direction evidence do not buy',()=>{
+ const s=freshPaperState();s.armed=true;
+ const derivativeOnly={...strong,last:1795,prev:1798,e8:1800,
+   e8prev:1799,e21:1802,three:-1};
+ makeV2Engine(s).step(market(10,.60),derivativeOnly,slow,true,structureFixture());
+ assert.equal(s.open,null,'RSI+MACD alone may echo the same move without price confirmation');
+});
 test('paper market can take a guarded affordable reversal BEFORE five-minute trend flips',()=>{
  const s=freshPaperState();s.armed=true;
  makeV2Engine(s).step(market(10,.60),strong,slow,true,countertrend());
