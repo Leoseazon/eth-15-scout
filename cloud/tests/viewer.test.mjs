@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import view,{packStructure} from '../viewer-worker.js';
+import view,{packStructure,directQuoteTicker,publicContract} from '../viewer-worker.js';
 import {checkCredentials,credentialsConfigured,newSession,sessionValid,REMEMBER_DAYS} from '../viewer-auth.js';
 
 const loginSecrets={
@@ -104,4 +104,31 @@ test('viewer indicators never fabricate absent market structure',()=>{
   assert.equal(v.trend,'NEUTRAL');
   assert.equal(v.adDelta,null);
   assert.equal(v.price,100);
+});
+
+test('Kalshi public contract quote validates ticker and never fabricates prices',()=>{
+  assert.equal(directQuoteTicker('KXETH15M-26NOV200000-00'),
+    'https://external-api.kalshi.com/trade-api/v2/markets/KXETH15M-26NOV200000-00');
+  assert.equal(directQuoteTicker('https://evil.example/'),null);
+  assert.equal(directQuoteTicker('KXBTC15M-26NOV200000-00'),null);
+  assert.equal(directQuoteTicker('KXETH15M-../secrets'),null);
+  assert.equal(directQuoteTicker(null),null);
+  const now=Date.parse('2026-11-20T05:15:00Z');
+  const body={ticker:'KXETH15M-26NOV200530-30',
+    close_time:'2026-11-20T05:30:00Z',status:'open',
+    floor_strike:1781.42,yes_bid_dollars:'0.4300',
+    yes_ask_dollars:'0.4500',no_bid_dollars:'0.5500',
+    no_ask_dollars:'0.5700'};
+  const quote=publicContract(body,now);
+  assert.equal(quote.floor_strike,1781.42);
+  assert.equal(quote.yes_ask_dollars,'0.4500');
+  assert.equal(quote.yes_bid_dollars,'0.4300');
+  assert.equal(quote.no_ask_dollars,'0.5700');
+  assert.equal(quote.no_bid_dollars,'0.5500');
+  assert.equal(quote.quoteObservedAt,now);
+  assert.equal(publicContract({...body,status:'settled'},now),null);
+  assert.equal(publicContract({...body,close_time:'2026-11-20T05:00:00Z'},now),null);
+  const incomplete=publicContract({...body,yes_ask_dollars:undefined},now);
+  assert.equal(incomplete.yes_ask_dollars,null);
+  assert.equal(incomplete.no_ask_dollars,'0.5700');
 });
