@@ -377,3 +377,8 @@ body.unauthenticated #performance{display:none}
  .observation-bar{grid-template-columns:1fr}
  .observation-bar>div:first-child{grid-column:auto}
 }
+
+/* Keep live quote age and actual bot-tick age readable without forcing overflow. */
+.live-heading-right{flex-wrap:wrap;justify-content:flex-end}
+#live-proxy-age{white-space:nowrap;font-size:10px}
+@media(max-width:620px){.live-heading-right{flex-wrap:nowrap}}
