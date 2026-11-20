@@ -5,6 +5,7 @@ import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {paperEntryArmed} from './v3-policy.js';
+import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 
 const INTERVAL_MS=30000;
 const REGIME_RETRY_MS=30*60000;
@@ -50,7 +51,12 @@ export class ScoutEngine extends DurableObject {
        CREATE TABLE IF NOT EXISTS runtime_status(
          id INTEGER PRIMARY KEY CHECK(id=1), armed INTEGER NOT NULL,
          monitoring INTEGER NOT NULL, observed_at INTEGER NOT NULL,
-         last_market TEXT, last_error TEXT);`);
+         last_market TEXT, last_error TEXT);
+      CREATE TABLE IF NOT EXISTS window_outcomes(
+       ticker TEXT PRIMARY KEY, close_at INTEGER NOT NULL,
+       observed_at INTEGER NOT NULL, outcome TEXT, status TEXT NOT NULL,
+       data TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS idx_window_close ON window_outcomes(close_at);`);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -88,6 +94,40 @@ export class ScoutEngine extends DurableObject {
         meta.lastTick||Date.now(),meta.lastMarket??null,meta.lastError??null);
       this.ctx.storage.kv.put('runtime',runtime);
     });
+  }
+  async captureOfficialWindows(now=Date.now()){
+    // Independent archival poll. Failure never changes strategy/entries/P&L.
+    // Query ALL exchange-listed ETH15M closes, including those the bot passed.
+    let cursor='',seen=new Set(),written=0;
+    const sql=this.ctx.storage.sql;
+    for(let page=0;page<3;page++){
+      const response=await remote(windowEndpointUrl(now,cursor));
+      if(!Array.isArray(response?.markets))
+        throw Error('Kalshi market-outcome feed unavailable');
+      const windows=parseList(response,now).filter(x=>!seen.has(x.ticker));
+      this.ctx.storage.transactionSync(()=>{
+        for(const w of windows){
+          seen.add(w.ticker);
+          sql.exec(`INSERT INTO window_outcomes(
+            ticker,close_at,observed_at,outcome,status,data)
+            VALUES(?,?,?,?,?,?)
+            ON CONFLICT(ticker) DO UPDATE SET
+              observed_at=excluded.observed_at,
+              outcome=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.outcome ELSE excluded.outcome END,
+              status=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.status ELSE excluded.status END,
+              data=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
+                THEN window_outcomes.data ELSE excluded.data END`,
+            w.ticker,w.closeAt,w.observedAt,w.outcome,w.status,JSON.stringify(w));
+          written++;
+        }
+      });
+      const next=typeof response.cursor==='string'?response.cursor:'';
+      if(!next||next===cursor||response.markets.length<500)break;
+      cursor=next;
+    }
+    return written;
   }
   async run(){
     if(this.busy)return this.busy;
@@ -158,6 +198,18 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     try{report=engine.step(market,one,m5,fresh,context)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
+    // Never block decisions on Kalshi settlement-data availability.
+    // Run AFTER step() to ensure the bot handles the current market first.
+    if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
+      s.lastWindowScanAt=now;
+      try{
+        s.lastWindowScanCount=await this.captureOfficialWindows(now);
+        s.lastWindowScanError=null;
+        s.lastWindowScanOkayAt=Date.now();
+      }catch(e){
+        s.lastWindowScanError=safeErr(e);
+      }
+    }
     this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
       lastNotice:report.notice||'',lastFeedOkay:fresh});
   }
@@ -192,7 +244,13 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
-        recentTrades:s.trades.slice(0,10)});
+        recentTrades:s.trades.slice(0,10),
+        lastWindowScanAt:s.lastWindowScanAt||null,
+        lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
+        lastWindowScanError:s.lastWindowScanError||null,
+        recentWindows:this.ctx.storage.sql.exec(
+         'SELECT data FROM window_outcomes ORDER BY close_at DESC LIMIT 16'
+        ).toArray().map(r=>JSON.parse(r.data))});
     }
     if(path==='/v1/journal'&&req.method==='GET'){
       // Append-only SQLite is the canonical research record; no 100-row
@@ -218,13 +276,18 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         'SELECT ticker,decided_at,data FROM decisions WHERE decided_at<=? ORDER BY decided_at DESC,ticker DESC LIMIT ? OFFSET ?',
         rawAnchor,rawLimit,rawOffset
       ).toArray().map(r=>JSON.parse(r.data));
+      const windows=sql.exec(
+        'SELECT data FROM window_outcomes WHERE close_at<=? ORDER BY close_at DESC,ticker DESC LIMIT ? OFFSET ?',
+        rawAnchor,rawLimit,rawOffset
+      ).toArray().map(r=>JSON.parse(r.data));
       const counts=sql.exec(`SELECT
         (SELECT count(*) FROM events WHERE happened_at<=?) events,
         (SELECT count(*) FROM trades WHERE exit_at<=?) trades,
-        (SELECT count(*) FROM decisions WHERE decided_at<=?) decisions`,
-        rawAnchor,rawAnchor,rawAnchor).toArray()[0];
+        (SELECT count(*) FROM decisions WHERE decided_at<=?) decisions,
+        (SELECT count(*) FROM window_outcomes WHERE close_at<=?) windows`,
+        rawAnchor,rawAnchor,rawAnchor,rawAnchor).toArray()[0];
       return json({paperOnly:true,readOnly:true,anchor:rawAnchor,offset:rawOffset,limit:rawLimit,
-        totals:counts,events,trades,decisions,
+        totals:counts,events,trades,decisions,windows,
         // Pending settlement is UNCONFIRMED, never counted as a win.
         pending:this.record().pending});
     }
