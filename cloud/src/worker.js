@@ -7,7 +7,9 @@ import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './st
 import {paperEntryArmed} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 
-const INTERVAL_MS=30000;
+// Poll every 15 seconds (REST data only; not a tick-level stream).
+// Re-evaluation still requires fully closed 1m/5m Kraken candles.
+const INTERVAL_MS=15000;
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
   timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
@@ -153,13 +155,16 @@ export class ScoutEngine extends DurableObject {
     const context={strict:true,three:null,five:null,oneClosedAt:null,
       regime:s.dailyRegime?.day===today?s.dailyRegime:null};
     try{
-      const [kj,tj,fivej]=await Promise.all([
+      // Fetch 1m signals alongside 5m/Kalshi/ticker; no serial 1m round trip.
+      const [kj,tj,fivej,onej]=await Promise.all([
         remote(mUrl),remote(API+'Ticker?pair=ETHUSD'),
-        remote(API+'OHLC?pair=ETHUSD&interval=5')
+        remote(API+'OHLC?pair=ETHUSD&interval=5'),
+        remote(API+'OHLC?pair=ETHUSD&interval=1').catch(e=>({error:[safeErr(e)]}))
       ]);
       if(tj.error?.length||fivej.error?.length)
         throw Error('Kraken API rejected a request');
       const retrieved=Date.parse(kj.worker_retrieved_at);
+      s.lastQuoteRetrievedAt=Number.isFinite(retrieved)?retrieved:null;
       if(!Number.isFinite(retrieved)||Date.now()-retrieved>90000||retrieved>Date.now()+5000)
         throw Error('Kalshi quote is stale or missing its retrieval timestamp');
       market=getMarket(kj);
@@ -180,8 +185,7 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         throw Error('Kraken 5m indicators/structure incomplete');
       fresh=true;
       try {
-        const onej=await remote(API+'OHLC?pair=ETHUSD&interval=1');
-        if(onej.error?.length)throw Error('Kraken 1m API error');
+        if(onej.error?.length)throw Error('Kraken 1m API error: '+String(onej.error[0]).slice(0,60));
         const oneRows=rows(onej)?.slice(0,-1)||[];
         oneCandles=oneRows;
         if(!completedFresh(oneRows,1))throw Error('Kraken 1m completed candles stale');
@@ -237,6 +241,13 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
           m5:smallCandles(fiveCandles)}
       };
     }
+    // Persist actual bot decisions BEFORE any historical market-result scan.
+    // The read-only viewer sees this tick without waiting for archival IO.
+    s.lastMarketDataAt=fresh?now:null;
+    s.lastDecisionProcessingMs=Date.now()-now;
+    this.save(s,{lastTick:Date.now(),lastError:error,lastMarket:market?.ticker||null,
+      lastNotice:report.notice||'',lastFeedOkay:fresh});
+    // Archiving is noncritical. It does not change the strategy or P&L.
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
       s.lastWindowScanAt=now;
       try{
@@ -246,17 +257,19 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
       }catch(e){
         s.lastWindowScanError=safeErr(e);
       }
+      this.save(s,{lastTick:s.lastTick,lastError:s.lastError,
+        lastMarket:s.lastMarket,lastNotice:s.lastNotice,lastFeedOkay:s.lastFeedOkay});
     }
-    this.save(s,{lastTick:now,lastError:error,lastMarket:market?.ticker||null,
-      lastNotice:report.notice||'',lastFeedOkay:fresh});
   }
   async alarm(){
+    const start=Date.now();
     try{await this.run()}catch(e){
       const s=this.record();
       this.save(s,{lastTick:Date.now(),lastError:'Uncaught cloud tick: '+safeErr(e)});
     }finally{
       const s=this.record();
-      if(s.monitoring)await this.ctx.storage.setAlarm(Date.now()+INTERVAL_MS);
+      // Stable cadence measured from tick START, not end. No overlapping runs.
+      if(s.monitoring)await this.ctx.storage.setAlarm(Math.max(Date.now()+1000,start+INTERVAL_MS));
     }
   }
   async fetch(req){
@@ -278,6 +291,8 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
+        lastDecisionProcessingMs:s.lastDecisionProcessingMs||null,
+        lastQuoteRetrievedAt:s.lastQuoteRetrievedAt||null,
         lastFeedOkay:!!s.lastFeedOkay,policyVersion:'V3-PAPER',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
