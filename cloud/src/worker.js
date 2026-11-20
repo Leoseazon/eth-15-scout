@@ -53,6 +53,10 @@ export class ScoutEngine extends DurableObject {
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
+    // Deployment-controlled activation. No public arm endpoint is needed.
+    // Disabled/missing flag ALWAYS overrides old persisted armed state.
+    // 'enabled' authorizes PAPER simulated entries only; no broker API exists.
+    s.armed=this.env.SCOUT_PAPER_MODE==='enabled';
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
     this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
@@ -178,7 +182,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
       const counts=this.ctx.storage.sql.exec(
         'SELECT (SELECT count(*) FROM trades) as trades,(SELECT count(*) FROM decisions) as passes'
       ).toArray()[0];
-      return json({monitoring:s.monitoring,armed:s.armed,initial:s.initial,cash:s.cash,
+      return json({monitoring:s.monitoring,armed:s.armed,paperOnly:true,
+        paperMode:this.env.SCOUT_PAPER_MODE==='enabled'?'enabled':'disabled',
+        initial:s.initial,cash:s.cash,
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
         lastMarket:s.lastMarket||null,lastNotice:s.lastNotice||null,
@@ -200,9 +206,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     const s=this.record();
     if(path==='/v1/start'){s.monitoring=true;this.save(s);
       await this.ctx.storage.setAlarm(Date.now()+1000)}
-    else if(path==='/v1/arm'){s.monitoring=true;s.armed=true;this.save(s);
-      await this.ctx.storage.setAlarm(Date.now()+1000)}
-    else if(path==='/v1/pause'){s.armed=false;this.save(s)}
+    else if(path==='/v1/arm'||path==='/v1/pause')
+      return json({error:'Paper entry state is controlled only by SCOUT_PAPER_MODE in Worker settings',
+        paperOnly:true,armed:s.armed},409);
     else if(path==='/v1/stop'){s.monitoring=false;s.armed=false;this.save(s);
       await this.ctx.storage.deleteAlarm()}
     else return json({error:'Not found'},404);
