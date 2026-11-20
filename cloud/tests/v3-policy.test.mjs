@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PAPER_POLICY,entryBudget,entryGate,profitExitGate,assessDailyRisk,paperEntryArmed} from '../src/v3-policy.js';
+import {PAPER_POLICY,entryBudget,entryGate,profitExitGate,assessDailyRisk,paperEntryArmed,settlementClockPhase} from '../src/v3-policy.js';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
 import {structureFixture} from './fixtures.mjs';
 
@@ -19,6 +19,19 @@ const mk = (minutes, price=.60) => ({
   yes_ask_size_fp:'50',yes_bid_size_fp:'50'
 });
 
+test('Kalshi final 60 seconds are recognized as UNVERIFIED CF RTI averaging, not spot settlement',()=>{
+ const close='2026-11-20T06:15:00Z';
+ const base=Date.parse(close);
+ assert.equal(settlementClockPhase(close,base-60001),'PRE_SETTLEMENT_AVERAGING');
+ assert.equal(settlementClockPhase(close,base-60000),'RTI_60_SECOND_AVERAGING_UNVERIFIED');
+ assert.equal(settlementClockPhase(close,base-1000),'RTI_60_SECOND_AVERAGING_UNVERIFIED');
+ assert.equal(settlementClockPhase(close,base),'AWAITING_OFFICIAL_RESULT');
+ assert.equal(settlementClockPhase(close,base+1000),'AWAITING_OFFICIAL_RESULT');
+ assert.equal(settlementClockPhase('',base),'UNKNOWN');
+ assert.equal(entryGate({price:.65,remaining:.99,passed:7,
+   slowTrend:true,plausible:true,alignment:true,spread:.01}).ok,false,
+   'No new paper entries during the actual settlement averaging minute');
+});
 test('maximum entry cost includes fees and never exceeds $3',()=>{
   assert.equal(PAPER_POLICY.maxStakeIncludingFees,3);
   assert.equal(entryBudget(100,3),3);
