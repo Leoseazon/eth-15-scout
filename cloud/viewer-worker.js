@@ -21,6 +21,26 @@ async function jsonGet(url,deadline=8500){
  if(!response.ok)throw new Error('Data provider HTTP '+response.status);
  return response.json();
 }
+function directQuoteTicker(ticker){
+ if(typeof ticker!=='string'||!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker))return null;
+ return 'https://external-api.kalshi.com/trade-api/v2/markets/'+encodeURIComponent(ticker);
+}
+function publicContract(m,observedAt){
+ if(!m||typeof m.ticker!=='string')return null;
+ const raw=(k)=>{const v=m[k];return v==null||v===''?null:v};
+ const closeAt=Date.parse(m.close_time);
+ if(!Number.isFinite(closeAt)||closeAt<=observedAt||!['active','open'].includes(String(m.status||'').toLowerCase()))return null;
+ return {
+  ticker:m.ticker,close_time:m.close_time,
+  floor_strike:raw('floor_strike'),
+  yes_ask_dollars:raw('yes_ask_dollars'),
+  yes_bid_dollars:raw('yes_bid_dollars'),
+  no_ask_dollars:raw('no_ask_dollars'),
+  no_bid_dollars:raw('no_bid_dollars'),
+  // Timestamp is observed response receipt, not true trade/exchange quote time.
+  quoteObservedAt:observedAt,quoteSource:'Kalshi public REST (may be cached)'
+ };
+}
 function marketFrom(data){
  return (data?.markets||[]).filter(m=>
   m?.ticker?.startsWith('KXETH15M-')&&['open','active'].includes(m.status)&&
@@ -179,6 +199,32 @@ export default {
        market=marketContext({m1:fallbackOne,m5:five.value,
          ticker:fallbackTicker,quote:fallbackQuote});
      }catch(e){marketError=String(e?.message||e).slice(0,120)}
+   }
+   // The top contract-price panel is independently fed from Kalshi REST:
+   // the bot's proxy may not carry all quote fields, whereas Get Market does.
+   // NEVER backfill a missing price with a guess or the other side's 1-p complement.
+   // Safely restrict the ticker to the KXETH15M series to prevent SSRF.
+   const currentTicker=status.lastMarket||market?.contract?.ticker||null;
+   const quoteUrl=directQuoteTicker(currentTicker);
+   const latestMarket=market?.contract?.ticker===currentTicker?
+     market.contract:null;
+   if(quoteUrl){
+    try{
+     const q=await jsonGet(quoteUrl,3500);
+     const observedAt=Date.now();
+     const exact=q?.market?.ticker===currentTicker?
+       publicContract(q.market,observedAt):null;
+     if(exact){
+       if(!market)market={source:'Kalshi official contract quote only',asOf:observedAt,
+         freshness:{one:false,three:false,five:false},candles:{m1:[],m3:[],m5:[]}};
+       market.contract={...(latestMarket||{}),...exact};
+     }else if(latestMarket){
+       market.contract={...latestMarket,quoteSource:'Bot market quote cache'};
+     }
+    }catch{
+     if(market&&latestMarket)
+       market.contract={...latestMarket,quoteSource:'Bot market quote cache'};
+    }
    }
    // Do not leak authentication details, secrets, host configuration, or
    // technical stack traces through the JSON payload.
