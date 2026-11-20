@@ -10,6 +10,8 @@ import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js'
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
+const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
+const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
   timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
@@ -67,7 +69,10 @@ export class ScoutEngine extends DurableObject {
        ticker TEXT PRIMARY KEY, close_at INTEGER NOT NULL,
        observed_at INTEGER NOT NULL, outcome TEXT, status TEXT NOT NULL,
        data TEXT NOT NULL);
-      CREATE INDEX IF NOT EXISTS idx_window_close ON window_outcomes(close_at);`);
+      CREATE INDEX IF NOT EXISTS idx_window_close ON window_outcomes(close_at);
+      CREATE TABLE IF NOT EXISTS release_markers(
+        tag TEXT PRIMARY KEY,first_engine_tick_at INTEGER NOT NULL,
+        pre_release_reference_at TEXT NOT NULL,description TEXT NOT NULL);`);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -148,6 +153,13 @@ export class ScoutEngine extends DurableObject {
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
+    // Immutable marker: first PAPER engine tick on this code release.
+    // Approximate 11:40 PM was planning/editing, NOT a deployment time.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      RELEASE_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First engine tick on final observation build; target 50–100 completed paper trades');
+
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
     let fiveCandles=[],oneCandles=[],tickerSpot=null;
@@ -303,6 +315,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         lastWindowScanOkayAt:s.lastWindowScanOkayAt||null,
         lastWindowScanError:s.lastWindowScanError||null,
         marketSnapshot:s.marketSnapshot||null,
+        releaseMarkers:this.ctx.storage.sql.exec(
+          'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
+        ).toArray(),
         recentWindows:this.ctx.storage.sql.exec(
          'SELECT data FROM window_outcomes ORDER BY close_at DESC LIMIT 16'
         ).toArray().map(r=>JSON.parse(r.data))});
@@ -343,6 +358,9 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
         rawAnchor,rawAnchor,rawAnchor,rawAnchor).toArray()[0];
       return json({paperOnly:true,readOnly:true,anchor:rawAnchor,offset:rawOffset,limit:rawLimit,
         totals:counts,events,trades,decisions,windows,
+        releaseMarkers:sql.exec(
+         'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
+        ).toArray(),
         // Pending settlement is UNCONFIRMED, never counted as a win.
         pending:this.record().pending});
     }
