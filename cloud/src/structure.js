@@ -118,12 +118,12 @@ export function analyzeStructure(rows){
     support:level.support,resistance:level.resistance,tolerance:level.tolerance,
     prevClose:cs.at(-2),prevPrevClose:cs.at(-3)};
 }
-export function structuralEntry(side,three,five){
+export function structuralEntry(side,three,five,{allowOpposingFive=false}={}){
   if(!three||!five)return {ok:false,reason:'3m/5m structure unavailable'};
   // Primary trend veto; a 1m signal cannot overrule the completed 3m trend.
   if(three.trend!=='NEUTRAL'&&three.trend!==side)
     return {ok:false,reason:'3m trend opposes entry'};
-  if(five.trend!=='NEUTRAL'&&five.trend!==side)
+  if(five.trend!=='NEUTRAL'&&five.trend!==side&&!allowOpposingFive)
     return {ok:false,reason:'5m trend opposes entry'};
   const level=side==='UP'?five.resistance:five.support;
   const price=three.price,tol=Math.max(five.tolerance,three.range*.65);
