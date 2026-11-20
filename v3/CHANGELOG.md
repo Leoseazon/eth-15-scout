@@ -4,6 +4,14 @@
 
 Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 
+## 2026-11-19 CT — Highest-priority live trade panel, dependable chart and official 15-minute results
+
+- **What (published frontend):** Added a top-of-dashboard V3 PAPER BOT ACTIVITY hero ahead of account metrics and ETH chart. Shows current action, live/stale indicator, actual open simulated position and UP/DOWN side, quantity, entry/stake, estimated open P&L, market close countdown and latest saved paper transaction. Added the permanent **Official Kalshi 15-Minute Market Outcomes** timeline showing window-end Central Time, confirmed UP/DOWN result, associated paper-trading activity, and pending/unconfirmed status.
+- **Why:** Current paper trading decisions matter most to the person watching Kalshi; the historical audit needs to cover *every exchange window*, not just those V3 traded.
+- **What (backend prepared):** Reuse the V3 engine's successfully fetched Kraken 1m/3m/5m candles and quote snapshots to populate the chart; fallback market calls are independent, so a missing Kalshi quote or 1m request cannot blank a healthy 5m chart. Save Kalshi public settled YES/NO results, as UP/DOWN, for all KXETH15M contracts in the 48-hour rolling API scan, with the result permanently stored in the existing Durable Object. Older history, trade journal and official window outcomes are paginated and exported to JSON. No new real-money trading capability, no changes to trade selection or risk rules.
+- **Tests:** Frontend syntax/audio workflow and GitHub Pages deployment checked. Cloud engine and official outcome parser tests added, with Wrangler dry-run checks.
+- **Deployment:** **STATIC WEBSITE PUBLISHED.** Running Cloudflare V3 engine and viewer have NOT YET received this new backend build. Use the one-command safe release `cloud/deploy-v3-complete.ps1` from `v3-dashboard-gateway-20261119`, then verify live feed, original balance, paper arm state, chart, archived journal and Kalshi official outcomes. The temporary release config keeps `SCOUT_PAPER_MODE=enabled`; the tracked default remains disabled. Never reset the Durable Object.
+
 ## 2026-11-19 CT — Permanent username/password login instead of a viewer key
 
 - **What:** Replaced the V3 public page's manual viewing-key prompt with a private username/password sign-in form, a 30-day **Remember this device** option, a Sign out control and token restoration after normal page refresh. Credentials are never stored in website files, browser storage or Git. Only an expiring read-only signed session is remembered.
