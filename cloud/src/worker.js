@@ -56,7 +56,7 @@ export class ScoutEngine extends DurableObject {
     // Deployment-controlled activation. No public arm endpoint is needed.
     // Disabled/missing flag ALWAYS overrides old persisted armed state.
     // 'enabled' authorizes PAPER simulated entries only; no broker API exists.
-    s.armed=this.env.SCOUT_PAPER_MODE==='enabled';
+    s.armed=this.env.SCOUT_PAPER_MODE==='enabled'&&s.monitoring;
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
     this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
