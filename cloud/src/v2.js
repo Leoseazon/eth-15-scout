@@ -378,7 +378,7 @@ function toPending(pos) {
         // Priority above 40% regular stop, 96c profit and final-minute hold.
         // Uses the executable BID; no fill is claimed without sufficient depth.
         if(pos.strategy==='HONEY-POT'&&honeyStopTriggered(pos.entry,bid))
-          why='HONEY-POT stop: executable bid >10c below purchase price';
+          why='HONEY-POT stop: executable bid down 10% or more from entry price';
         else if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
            gain<=-PAPER_POLICY.contractStopLossFraction)
           why='Stop loss (−40% contract-price movement; final 6 minutes only)';
