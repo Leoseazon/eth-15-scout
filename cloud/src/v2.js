@@ -130,8 +130,8 @@ function chooseCandidate(m,one,m5,remaining,rejections=[],context=null,riskMode=
  const families=signalFamilies(signal.checks);
  // Price, RSI and MACD are correlated; require two evidence families,
  // not multiple copies of one price movement.
- if(families.breadth<2){
-   rejections.push(side+': signals confined to one correlated family');continue;
+ if(families.breadth<2||!families.price){
+   rejections.push(side+': requires a price-direction signal plus momentum/acceleration evidence');continue;
  }
  const regime=context?.regime;
  const macroAgainst=regime?.status==='ready'&&
