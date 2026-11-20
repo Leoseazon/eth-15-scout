@@ -273,7 +273,7 @@ function toPending(pos) {
         const targetAction=profitExitGate(bid,remaining);
         // Order of importance: hard stop > 96¢ target > confirmed structure
         // deterioration. Secondary bands/A-D and macro never force exits.
-        if(gain<=-0.40)why='Stop loss (−40% contract-price movement)';
+        if(gain<=-PAPER_POLICY.contractStopLossFraction)why='Stop loss (−60% contract-price movement)';
         else if(targetAction==='SELL')why='96¢ bid take-profit';
         else if(targetAction==='HOLD_PENDING'){
           notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
