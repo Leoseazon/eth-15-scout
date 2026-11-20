@@ -29,6 +29,12 @@ $tmp=Join-Path (Get-Location).Path 'wrangler.v3-RELEASE-temp.toml'
 $utf8=New-Object System.Text.UTF8Encoding($false)
 try{
  [System.IO.File]::WriteAllText($tmp,$replacement,$utf8)
+ Write-Host 'Full Node syntax and paper-regression audit...' -ForegroundColor Cyan
+ npm.cmd run check
+ if($LASTEXITCODE -ne 0){throw 'Node syntax audit FAILED. No deployment attempted.'}
+ npm.cmd test
+ if($LASTEXITCODE -ne 0){throw 'Paper regression tests FAILED. No deployment attempted.'}
+ Write-Host 'Node regression checks passed.' -ForegroundColor Green
  Write-Host 'Build check: V3 PAPER engine + journal...' -ForegroundColor Cyan
  npx.cmd wrangler deploy --config $tmp --dry-run
  if($LASTEXITCODE -ne 0){throw 'V3 dry-run failed. Nothing deployed.'}
