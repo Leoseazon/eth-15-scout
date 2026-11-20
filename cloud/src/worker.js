@@ -13,6 +13,7 @@ import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
 const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
+const PHASE1_TAG='V3-PHASE1-FEED-RELIABILITY-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
@@ -171,6 +172,12 @@ export class ScoutEngine extends DurableObject {
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
       LATE_VALUE_TAG,now,PRE_RELEASE_NOTED_AT,
       'First tick of 8m 80–89c paper rules, 60–90s 80–85c honey-pot requiring 4/7 and >=10% entry-price bid stop');
+    // First successful scheduled tick of this SAFETY PATCH only.
+    // Retains all earlier version cutovers and historical paper results.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      PHASE1_TAG,now,PRE_RELEASE_NOTED_AT,
+      'Phase 1 protective-exit/feed reliability patch; original entry strategy unchanged');
 
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
