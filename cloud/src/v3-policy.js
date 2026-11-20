@@ -5,7 +5,7 @@ export const PAPER_POLICY = Object.freeze({
   minEntryMinutes: 1.5,
   maxEntryMinutes: 12.5,
   expensiveThreshold: 0.80,
-  expensiveCutoffMinutes: 3,
+  expensiveCutoffMinutes: 5, // 80c+ eligible at <=5m, NOT earlier
   maxNewEntryPrice: 0.96,
   lateMinConfirmations: 7,
   lateMaxSpread: 0.03,
@@ -74,17 +74,22 @@ export function entryGate({price, remaining, passed, slowTrend, plausible, align
     return fail('Outside 1.5–12.5 minute entry window');
   if (price >= PAPER_POLICY.maxNewEntryPrice)
     return fail('Entry at 96¢ or more leaves insufficient exit room');
-  // One-second conservative guard prevents scheduling jitter from
-  // slipping a quote through the precise three-minute boundary.
-  if (price >= PAPER_POLICY.expensiveThreshold &&
-      remaining >= PAPER_POLICY.expensiveCutoffMinutes - 1/60)
-    return fail('80¢+ contract prohibited at/near the 3-minute cutoff');
-  if (remaining < PAPER_POLICY.expensiveCutoffMinutes &&
+  // 80c+ is allowed starting at exactly 5:00 left, never earlier.
+  // A high price alone is NOT evidence of an edge: require strong confirmed
+  // trend/reversal input, Kalshi-strike plausibility and liquid/tight quotes.
+  if(price >= PAPER_POLICY.expensiveThreshold &&
+     remaining > PAPER_POLICY.expensiveCutoffMinutes)
+    return fail('80¢+ contract permitted only with 5 minutes or less remaining');
+  const expensiveLate=price >= PAPER_POLICY.expensiveThreshold;
+  // Retain exceptional requirements during final 3 minutes for ALL entries.
+  const veryLate=remaining < 3;
+  if((expensiveLate||veryLate) &&
       (passed < PAPER_POLICY.lateMinConfirmations || !slowTrend ||
        !plausible || !alignment || spread > PAPER_POLICY.lateMaxSpread))
-    return fail('Late entry requires 7/7 checks, trend, strike plausibility and spread ≤3¢');
-  return {ok: true, reason: remaining < PAPER_POLICY.expensiveCutoffMinutes ?
-    'Exceptional late-entry checks satisfied' : 'Standard entry window'};
+    return fail('80¢+ or final-3m entry requires 7/7 checks, aligned 5m trend, strike plausibility and spread ≤3¢');
+  return {ok: true, reason:expensiveLate?
+    'High-priced contract: 5 minutes or less and strong confirmations passed':
+    veryLate?'Exceptional final-3m confirmations passed':'Standard entry window'};
 }
 
 // A bid at 96¢ or higher normally triggers a paper exit (subject to depth
