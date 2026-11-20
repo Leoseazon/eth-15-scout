@@ -51,6 +51,20 @@ Review proposed improvements **after the first 100 qualifying completed PAPER tr
 4. **If an accounting/security defect appears:** Fix it separately with tests, a dated version marker, preserved bankroll/history, and no silent changes to the active strategy.
 5. **If changes are adopted after review:** Explicit approval, paper-only deployment, regression audit, and a NEW first-engine-tick observation marker.
 
+## Trade-frequency and pass-rate standing audit — added November 20, 2026
+
+**First check:** November 21, 2026, at about 3 AM CT, one day after this rule was set. This is an observation/review, **not** authorization to loosen any live paper-entry protections or deploy new code.
+
+- [ ] Count the number of actual paper **BUY entries**, completed early SALES, official held-to-settlement closures and still-open positions **entered after November 20, 2:11 AM CT**. Distinguish entries from exits, and from historical all-time counts.
+- [ ] Calculate the entry frequency **per hour**, time since the last paper entry, and the **longest no-entry gap** while the bot was actually monitoring; do not include offline or stale-data windows as normal passes.
+- [ ] Group PASS/WATCH decisions by **hour, contract and unique 15-minute window**. Do not mistake repeated 15-second WATCH samples for independent trading opportunities.
+- [ ] Quantify rejection reasons (5m support/resistance, missing price-direction/RSI/MACD family, 3m/5m trend veto, early-exception time/price range, 7/7 late-entry requirements, wide spread/low depth, strike reachability, stale data and daily risk).
+- [ ] Flag **60+ minutes of online monitoring with zero entries** for prompt investigation, not an automatic strategy defect. Compare against real market conditions, the number of windows with plausible opportunities, and simulated fee-adjusted P/L. Extended inactivity may be correct in a poor market.
+- [ ] Review whether the bot missed unusually attractive contracts or was excessively strict, using contemporaneous quote history where available. Do not infer hypothetical guaranteed winners from final contract results.
+- [ ] Report cumulative and post-update realized P/L, win/loss by *trade*, stake awaiting verified settlement, and expected net return versus possible full binary loss. More trades alone does not imply a better strategy.
+- [ ] If data are unavailable behind the signed-in V3 viewer, explicitly request the **Export full journal JSON** or **Export trades CSV** and current performance screenshot, and avoid inventing trade counts.
+- [ ] Keep the live PAPER strategy frozen pending observation; propose changes for the post-100 trade checklist unless a verified safety/accounting defect requires correction.
+
 ## Running notes
 
 - **Nov 20, 2026:** Recorded proposed late-window 1m-dominant, strike/time/quote-aware alternative and deferred 40/50/60 stop study. **NO live bot changes were made from this checklist.**
