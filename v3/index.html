@@ -64,7 +64,7 @@
    <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span><span id="live-proxy-age" class="micro">Kalshi quote age unavailable</span></div>
   </div>
   <div class="contract-box live-contract-board" aria-label="Current Kalshi contract and latest publicly available prices">
-   <div class="board-market"><p class="mini-label">CURRENT KALSHI 15-MINUTE CONTRACT</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span></div>
+   <div class="board-market"><p class="mini-label">CURRENT KALSHI 15-MINUTE CONTRACT</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
    <div class="board-target"><span class="mini-label">ETH TARGET / STRIKE</span><strong id="contract-strike">Target unavailable</strong><small>Official contract reference, not Kraken settlement</small></div>
    <div class="board-price up"><span class="mini-label">UP / YES · BUY PRICE</span><strong id="up-quote">—</strong><small>Best ask · <span id="up-bid">Bid —</span></small></div>
    <div class="board-price down"><span class="mini-label">DOWN / NO · BUY PRICE</span><strong id="down-quote">—</strong><small>Best ask · <span id="down-bid">Bid —</span></small></div>
@@ -144,7 +144,7 @@
     <div class="signal-row"><div><strong>3-minute structure</strong><small>Completed candles only</small></div><span id="sig-3m" class="value-pill neutral">—</span></div>
     <div class="signal-row"><div><strong>Support / resistance</strong><small>5-minute confirmed levels</small></div><span id="sig-levels" class="signal-number">—</span></div>
     <div class="signal-row"><div><strong>EMA 21 / EMA 50</strong><small>5-minute alignment</small></div><span id="sig-emas" class="value-pill neutral">—</span></div>
-    <div class="signal-row"><div><strong>VWAP reference</strong><small>5-minute volume weighting</small></div><span id="sig-vwap" class="signal-number">—</span></div>
+    <div class="signal-row"><div><strong>Rolling volume-weighted price</strong><small>Up to 96 completed 5m Kraken candles; not session VWAP</small></div><span id="sig-vwap" class="signal-number">—</span></div>
    </div>
    <div class="signal-section"><div class="section-strip secondary"><span>02 · Secondary confirmation</span><small>NEVER LEADS</small></div>
     <div class="signal-row"><div><strong>RSI 14</strong><small>5-minute strength</small></div><span id="sig-rsi" class="signal-number">—</span></div>
