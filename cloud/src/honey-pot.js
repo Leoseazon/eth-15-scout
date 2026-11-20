@@ -10,7 +10,8 @@ export const HONEY_POLICY=Object.freeze({
   maxSpread:.02,minDepth:2,
   minAbsoluteStrikeMargin:2.50,
   minVolatilityMultiple:1.25,
-  maxAllInStake:.90
+  maxAllInStake:.90,
+  stopDropDollars:.10 // ABSOLUTE entry-to-bid decline, not ten percent
 });
 export function honeyPotGate({
  side,price,secondsRemaining,spread,askSize,bidSize,
@@ -39,4 +40,13 @@ export function honeyPotGate({
    return fail('Kraken price not sufficiently beyond Kalshi strike');
  return {ok:true,reason:'Paper-only late honey-pot experiment; official RTI unknown',
    margin,requiredMargin};
+}
+
+// Stop is based on the actual executable bid, not the current asking price.
+// A 85c entry: 75c is NOT more than 10c down; 74.9c IS.
+// Return false rather than inventing an exit if a usable bid is missing.
+export function honeyStopTriggered(entryPrice,executableBid){
+  return Number.isFinite(entryPrice)&&Number.isFinite(executableBid)&&
+    entryPrice>=0&&executableBid>=0&&
+    (entryPrice-executableBid)>HONEY_POLICY.stopDropDollars+1e-9;
 }
