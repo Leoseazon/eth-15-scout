@@ -135,7 +135,8 @@ if(!prices?.length || !Object.values(tj.result||{}).some(t=>Array.isArray(t?.c) 
     // ONE light context refresh per Houston day (retry at most each 30m
     // on failure). This is crypto price/volume context, NOT verified macro
     // event news, ETF flows or a calibrated probability forecast.
-    if(s.dailyRegime?.day!==today && now-(s.lastRegimeAttemptAt||0)>REGIME_RETRY_MS){
+    if((s.dailyRegime?.day!==today||s.dailyRegime?.status!=='ready') &&
+       now-(s.lastRegimeAttemptAt||0)>REGIME_RETRY_MS){
       s.lastRegimeAttemptAt=now;
       try{
         const [eh,bh]=await Promise.all([
