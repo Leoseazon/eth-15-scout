@@ -13,6 +13,7 @@ export const PAPER_POLICY = Object.freeze({
   finalMinuteHold: 1,
   maxStakeIncludingFees: 3,
   defaultRiskPercent: 3,
+  dailyRealizedLossFraction: 0.12, // $12 of net realized P/L for a $100 initial paper bankroll
 });
 
 export function entryBudget(cash, riskPercent = PAPER_POLICY.defaultRiskPercent) {
