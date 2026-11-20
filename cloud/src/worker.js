@@ -6,7 +6,7 @@ import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {paperEntryArmed,settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
-import {TIMESTOP_TAG,paperResults,reconcilePending} from './paper-ledger.js';
+import {TIMESTOP_TAG,LATE_VALUE_TAG,paperResults,reconcilePending} from './paper-ledger.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
@@ -165,6 +165,11 @@ export class ScoutEngine extends DurableObject {
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
       TIMESTOP_TAG,now,PRE_RELEASE_NOTED_AT,
       'First engine tick of 40 percent contract stop gated to last six minutes and new settlement accounting');
+    // NEW experiment timestamp. Do not overwrite previous cutovers or balances.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      LATE_VALUE_TAG,now,PRE_RELEASE_NOTED_AT,
+      'First tick of eight-minute 80c entry and experimental final-90s honey-pot with >10c bid stop');
 
     const engine=makeV2Engine(s);
     let market=null,one=null,m5=null,error=null,fresh=false;
