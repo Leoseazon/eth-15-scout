@@ -56,3 +56,17 @@ export function honeyStopTriggered(entryPrice,executableBid){
     executableBid>=0&&executableBid<=1&&
     executableBid <= entryPrice*(1-HONEY_POLICY.stopLossFraction)+1e-9;
 }
+
+// Audit-only formatting: make the SAME two requirements visible for UP and DOWN.
+export function honeyAuditReason(side,price,fastChecks,gateReason=''){
+ const ask=Number.isFinite(price)?(price*100).toFixed(1)+'¢':'unavailable';
+ const score=Number.isFinite(fastChecks)?fastChecks+'/7':'unavailable';
+ const failed=[];
+ if(!Number.isFinite(price)||price<HONEY_POLICY.minAsk||price>HONEY_POLICY.maxAsk)
+   failed.push('ask outside 80–85¢');
+ if(!Number.isInteger(fastChecks)||fastChecks<HONEY_POLICY.minFastChecks)
+   failed.push('fewer than 4 checks');
+ if(failed.length===0&&gateReason)failed.push(gateReason);
+ return side+': honey-pot BOTH sides need 80–85¢ ask + >=4/7 1m checks '+
+   '(observed '+ask+', '+score+'; '+(failed.join(' and ')||'other restriction')+')';
+}
