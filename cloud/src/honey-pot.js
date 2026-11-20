@@ -57,16 +57,17 @@ export function honeyStopTriggered(entryPrice,executableBid){
     executableBid <= entryPrice*(1-HONEY_POLICY.stopLossFraction)+1e-9;
 }
 
-// Audit-only formatting: make the SAME two requirements visible for UP and DOWN.
+// Audit-only formatting; same conditions apply to UP and DOWN.
+// Keep each side short so BOTH sides fit the 300-character WATCH cap.
 export function honeyAuditReason(side,price,fastChecks,gateReason=''){
- const ask=Number.isFinite(price)?(price*100).toFixed(1)+'¢':'unavailable';
- const score=Number.isFinite(fastChecks)?fastChecks+'/7':'unavailable';
- const failed=[];
+ const ask=Number.isFinite(price)?(price*100).toFixed(1)+'c':'n/a';
+ const score=Number.isFinite(fastChecks)?fastChecks+'/7':'n/a';
+ const fail=[];
  if(!Number.isFinite(price)||price<HONEY_POLICY.minAsk||price>HONEY_POLICY.maxAsk)
-   failed.push('ask outside 80–85¢');
+   fail.push('price');
  if(!Number.isInteger(fastChecks)||fastChecks<HONEY_POLICY.minFastChecks)
-   failed.push('fewer than 4 checks');
- if(failed.length===0&&gateReason)failed.push(gateReason);
- return side+': honey-pot BOTH sides need 80–85¢ ask + >=4/7 1m checks '+
-   '(observed '+ask+', '+score+'; '+(failed.join(' and ')||'other restriction')+')';
+   fail.push('score');
+ if(!fail.length&&gateReason)fail.push(gateReason);
+ return side+' HONEY [ask 80-85c, >=4/7]: observed '+ask+', '+score+
+   '; fails '+(fail.join('+')||'other');
 }
