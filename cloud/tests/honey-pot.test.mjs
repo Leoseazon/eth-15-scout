@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {HONEY_POLICY,honeyPotGate,honeyStopTriggered} from '../src/honey-pot.js';
+import {HONEY_POLICY,honeyPotGate,honeyStopTriggered,honeyAuditReason} from '../src/honey-pot.js';
 import {freshPaperState,makeV2Engine} from '../src/v2.js';
 import {structureFixture} from './fixtures.mjs';
 // Exactly 4 of 7 fast UP checks: EMA8 price, RSI>50,
@@ -21,6 +21,18 @@ const market=(minutes=1.25,price=.85)=>({
 const proof={side:'UP',price:.85,secondsRemaining:75,
  spread:.01,askSize:50,bidSize:50,krakenPrice:1799,strike:1795,
  oneMinuteVolatility:2,fastChecks:4};
+test('honey-pot WATCH diagnostics are symmetrical, compact and show BOTH conditions',()=>{
+ const up=honeyAuditReason('UP',.87,5,'price range');
+ const down=honeyAuditReason('DOWN',.15,2,'score low');
+ for(const line of [up,down]){
+  assert.match(line,/ask 80-85c, >=4\/7/);
+  assert.ok(line.length<145);
+ }
+ assert.match(up,/observed 87.0c, 5\/7; fails price/);
+ assert.match(down,/observed 15.0c, 2\/7; fails price\+score/);
+ const good=honeyAuditReason('DOWN',.83,6,'strike margin');
+ assert.match(good,/observed 83.0c, 6\/7; fails strike margin/);
+});
 test('honey-pot 4-of-7 gate is STRICTLY under 90 seconds and not in final RTI minute',()=>{
  assert.equal(HONEY_POLICY.minFastChecks,4);
  assert.equal(HONEY_POLICY.maxSecondsRemaining,90);
