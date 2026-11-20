@@ -288,3 +288,6 @@ body.unauthenticated .intro{padding-bottom:4px}
  .outcome-grid-head>span:nth-child(3),.outcome-item>.outcome-action{display:none}
  .outcome-footnote{padding:12px 13px}
 }
+
+/* Keep private paper information hidden until the viewer is authenticated. */
+body.unauthenticated #live-action{display:none}
