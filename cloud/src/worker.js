@@ -279,6 +279,10 @@ export class ScoutEngine extends DurableObject {
           m3:smallCandles(aggregate3m(oneCandles)),
           m5:smallCandles(fiveCandles)}
       };
+    }else{
+      // Do not display a prior healthy snapshot as if it were the current
+      // Kraken or Kalshi reference after an endpoint failed.
+      s.marketSnapshot=null;
     }
     // Persist actual bot decisions BEFORE any historical market-result scan.
     // The read-only viewer sees this tick without waiting for archival IO.
