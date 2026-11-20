@@ -136,15 +136,24 @@ function renderObservationCohort(data){
  const markers=Array.isArray(data.activity?.releaseMarkers)?data.activity.releaseMarkers:[];
  const original=markers.find(x=>x.tag==='V3-OBSERVATION-50-100-20261119');
  const revised=markers.find(x=>x.tag==='V3-TIME40-6M-20261120');
- const first=Number(original?.first_engine_tick_at),next=Number(revised?.first_engine_tick_at);
+ const latest=markers.find(x=>x.tag==='V3-80C-EIGHTMIN-20261120');
+ const first=Number(original?.first_engine_tick_at);
+ const prior=Number(revised?.first_engine_tick_at);
+ const current=Number(latest?.first_engine_tick_at);
  const date=x=>new Date(x).toLocaleString('en-US',{timeZone:'America/Chicago',
   month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' CT';
  txt('release-first-tick',Number.isFinite(first)&&first>0?date(first):'Awaiting original release');
- txt('revised-first-tick',Number.isFinite(next)&&next>0?date(next):'Awaiting time-gated stop deployment');
- const nNew=data.status?.paperResults?.revisedCohort;
- txt('observation-progress',Number.isFinite(nNew)&&next>0?
-  nNew+' / 50–100 revised-rule early paper exits · older trades separate':
-  'Not started · revised strategy not yet deployed');
+ txt('revised-first-tick',Number.isFinite(prior)&&prior>0?date(prior):'Awaiting prior revision');
+ txt('latest-first-tick',Number.isFinite(current)&&current>0?date(current):
+   'Awaiting 8-min and honey-pot rule deployment');
+ const stats=data.status?.paperResults||{};
+ const nLatest=stats.latestCohort;
+ const nPrior=stats.revisedCohort;
+ txt('observation-progress',Number.isFinite(nLatest)&&current>0?
+  nLatest+' / 50–100 new-rule early paper exits · earlier trades separate':
+  Number.isFinite(nPrior)&&prior>0?
+   nPrior+' prior-rule early exits · new build not yet live':
+   'Not started · awaiting confirmed strategy version');
 }
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
