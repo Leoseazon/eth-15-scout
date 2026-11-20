@@ -364,6 +364,23 @@ function activityRecords(data){
     ticker:s.open.ticker||'',details:(s.open.side||'')+' '+(s.open.qty||'')+
       ' paper contracts · still open'});
  }
+ // Reconstruct older paper BUY/SELL time-left labels only when both
+ // original event timestamp and contract close time are preserved.
+ const known=new Map();
+ for(const position of [...(data.activity?.trades||[]),
+    ...(data.activity?.pending||[]),...(s.open?[s.open]:[])]){
+   if(position?.ticker&&position.closeTime)known.set(position.ticker,position.closeTime);
+ }
+ for(const item of out){
+   if(!['PAPER BUY','PAPER SELL'].includes(item.type))continue;
+   if(/\b\d+m\s+\d+s remaining\b/.test(item.details||''))continue;
+   const close=Date.parse(known.get(item.ticker)||'');
+   const at=n(item.time);
+   if(Number.isFinite(close)&&at!==null&&at<=close){
+     const secs=Math.max(0,Math.ceil((close-at)/1000));
+     item.details+=' · '+Math.floor(secs/60)+'m '+String(secs%60).padStart(2,'0')+'s remaining';
+   }
+ }
  out.sort((a,b)=>b.time-a.time);
  const seen=new Set();
  return out.filter(item=>{const k=item.id||item.type+':'+item.ticker+':'+Math.floor(item.time/1000);
