@@ -146,6 +146,8 @@ function renderObservationCohort(data){
  txt('revised-first-tick',Number.isFinite(prior)&&prior>0?date(prior):'Awaiting prior revision');
  txt('latest-first-tick',Number.isFinite(current)&&current>0?date(current):
    'Awaiting 8-min and honey-pot rule deployment');
+ const feedTick=Number(markers.find(x=>x.tag==='V3-PHASE1-FEED-RELIABILITY-20261120')?.first_engine_tick_at);
+ txt('feed-first-tick',Number.isFinite(feedTick)&&feedTick>0?date(feedTick):'Awaiting patch marker');
  const stats=data.status?.paperResults||{};
  const nLatest=stats.latestCohort;
  const nPrior=stats.revisedCohort;

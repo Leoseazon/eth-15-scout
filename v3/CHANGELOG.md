@@ -102,3 +102,7 @@ Reference design: [DESIGN REFERENCE.md](./DESIGN%20REFERENCE.md).
 - **Known limitations / next steps:**
 
 **Rule:** Update this changelog in the SAME change as the files being modified. Preserve all previous entries.
+
+## 2026-11-20 CT — Feed reliability release in Performance
+
+Display the first recorded Phase 1 engine tick in Houston time so the reliability rollout can be distinguished from strategy observation counts. Pending marker shown until supplied by the journal. Frontend only. Validated with the V3 layout and sound tests. Publication tracked by GitHub Pages.
