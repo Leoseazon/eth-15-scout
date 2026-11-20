@@ -143,8 +143,11 @@ test('nearby support delays discretionary exits but NOT hard stop',()=>{
   engine.step(quote,weakOne,slow,true,ctx(1260,th,fi));
   engine.step(quote,weakOne,slow,true,ctx(1320,th,fi));
   assert.ok(s.open);
-  quote.yes_bid_dollars='0.34'; // down >40%: hard loss exit no delay
-  engine.step(quote,weakOne,slow,true,ctx(1380,th,fi));
+  // At exactly six minutes, the timed fixed stop is not armed.
+  // Re-check just inside six minutes while preserving support proximity.
+  const finalQuote=m(5.9);
+  finalQuote.yes_bid_dollars='0.34'; // >40% drawdown, stop now active
+  engine.step(finalQuote,weakOne,slow,true,ctx(1380,th,fi));
   assert.equal(s.open,null);
   assert.match(s.trades[0].reason,/Stop loss/);
 });
