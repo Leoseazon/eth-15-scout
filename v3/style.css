@@ -291,3 +291,71 @@ body.unauthenticated .intro{padding-bottom:4px}
 
 /* Keep private paper information hidden until the viewer is authenticated. */
 body.unauthenticated #live-action{display:none}
+
+/* 2026-11-19 V3 information hierarchy: live contract first, account second. */
+.live-contract-board{display:grid;grid-template-columns:minmax(185px,1.15fr) minmax(130px,.8fr)
+ minmax(150px,.85fr) minmax(150px,.85fr);gap:10px;align-items:stretch;
+ padding:14px 18px;border-top:0;border-bottom:1px solid #344f54;background:#112231}
+.live-contract-board>div{min-width:0;padding:11px 13px;border:1px solid #304757;border-radius:10px;
+ background:#192b3a;display:flex;flex-direction:column;justify-content:center}
+.live-contract-board .mini-label{font-size:10px;line-height:1.45;letter-spacing:.065em;color:#9bb7c5}
+.live-contract-board strong{margin:5px 0 4px;letter-spacing:-.35px;overflow-wrap:anywhere;
+ font-weight:800;font-size:18px;line-height:1.28}
+.live-contract-board .board-market strong{font-size:14px;letter-spacing:0}
+.live-contract-board .board-target strong{font-size:19px}
+.live-contract-board small{font-size:10px;color:var(--sub);line-height:1.45}
+.live-contract-board .quote-time{font-size:10px;color:#a9c5d0;margin-top:5px}
+.live-contract-board .board-price strong{font-size:31px;letter-spacing:-.8px;margin:5px 0}
+.live-contract-board .board-price.up{background:#173332;border-color:#38615b}
+.live-contract-board .board-price.up strong{color:#a3e7cf}
+.live-contract-board .board-price.down{background:#302530;border-color:#604354}
+.live-contract-board .board-price.down strong{color:#f3b5bd}
+.live-contract-board .board-price.missing{opacity:.78}
+.live-contract-board .board-price.missing strong{color:#e9ddc3}
+.live-action-body{background:#172838}
+#performance.account-card{margin:0 0 14px}
+.account-summary-body{display:grid;grid-template-columns:minmax(200px,1fr) minmax(360px,1.6fr)
+ minmax(190px,.85fr);gap:14px;padding:14px;align-items:stretch}
+.account-summary-body .balance-main{margin:0;min-height:150px;padding:19px;display:flex;
+ flex-direction:column;justify-content:center}
+.account-summary-body .balance-main strong{font-size:32px}
+.account-summary-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-content:stretch}
+.account-summary-stats .account-row{margin:0;padding:12px;border:1px solid var(--stroke);
+ border-radius:9px;display:flex;flex-direction:column;gap:5px;align-items:start;
+ justify-content:center}
+.account-summary-stats .account-row span{font-size:10px}
+.account-summary-stats .account-row strong{font-size:15px;white-space:normal}
+.account-summary-stats .stat-tiles{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;
+ gap:8px;margin:0}
+.account-summary-stats .stat-tiles>div{padding:10px 12px}
+.account-summary-stats .stat-tiles strong{font-size:17px;margin-top:5px}
+.account-summary-body .open-position{margin:0;padding:17px 15px;border:1px solid var(--stroke);
+ border-radius:9px;min-height:150px;display:flex;flex-direction:column;justify-content:center}
+.account-summary-body .open-position #open-position-value{font-size:15px;font-weight:750;
+ margin:9px 0;overflow-wrap:anywhere;line-height:1.4}
+.account-summary-body .open-position .fine{margin-top:5px}
+.right-column .risk-card{width:100%}
+@media(max-width:1160px){
+ .live-contract-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .account-summary-body{grid-template-columns:minmax(180px,1fr) minmax(250px,1.45fr)}
+ .account-summary-body .open-position{grid-column:1/-1;min-height:65px}
+ .right-column{grid-column:span 2;grid-template-columns:minmax(0,1fr)}
+}
+@media(max-width:840px){
+ .main-grid .right-column{grid-column:auto;grid-template-columns:1fr}
+ .account-summary-body{grid-template-columns:1fr 1fr}
+}
+@media(max-width:600px){
+ .live-contract-board{padding:10px;gap:8px}
+ .live-contract-board>div{padding:12px 10px}
+ .live-contract-board .board-market,.live-contract-board .board-target{grid-column:1/-1}
+ .live-contract-board .board-price strong{font-size:27px}
+ .live-contract-board .board-market strong{font-size:12px}
+ .account-summary-body{grid-template-columns:1fr;padding:10px}
+ .account-summary-body .open-position{grid-column:auto}
+ .account-summary-stats{grid-template-columns:1fr 1fr}
+}
+@media(max-width:380px){
+ .live-contract-board .board-price strong{font-size:24px}
+ .live-contract-board .board-price .mini-label{font-size:9px}
+}
