@@ -936,14 +936,53 @@ async function exportArchive(url,collection){
   if(offset%1000===0)researchStatus('Exporting '+collection+'… '+offset+'/'+total);
  }
 }
+/* Cursor-based Kalshi book history (unlike REST OFFSET endpoints).
+ * Bound a single browser export so we never falsely claim a complete backup
+ * after a crash or out-of-memory error. The read-only cursor API itself has
+ * no one-million-row offset ceiling.
+ */
+async function exportStreamArchive(){
+ if(lastPayload?.streamAvailable!==true)
+  return {anchor:null,total:null,records:[],available:false};
+ let anchor=null,before=null,total=null;
+ const records=[];
+ for(;;){
+  const url=new URL('https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/stream');
+  url.searchParams.set('limit','100');
+  if(anchor!==null)url.searchParams.set('anchor',String(anchor));
+  if(before!==null)url.searchParams.set('before',String(before));
+  const response=await fetch(url.toString(),{cache:'no-store',
+   headers:{Authorization:'Bearer '+token}});
+  if(!response.ok)throw Error('Stream archive HTTP '+response.status);
+  const p=await response.json();
+  if(p.readOnly!==true||p.paperOnly!==true||
+   !Array.isArray(p.items)||!Number.isSafeInteger(p.anchor)||
+   !Number.isSafeInteger(p.total))
+   throw Error('Stream archive pagination invalid');
+  if(anchor===null){anchor=p.anchor;total=p.total}
+  else if(anchor!==p.anchor||total!==p.total)
+   throw Error('Stream archive snapshot inconsistent');
+  if(total>50000)throw Error(
+   'Stream history exceeds the 50,000-record safe browser-export limit. '+
+   'Complete cursor archive remains on the private gateway; a chunked backup is required.');
+  records.push(...p.items);
+  if(records.length>=total)return {anchor,total,records,available:true};
+  if(!p.items.length||!Number.isSafeInteger(p.nextBefore))
+   throw Error('Incomplete Kalshi stream archive');
+  before=p.nextBefore;
+  if(records.length%1000===0)researchStatus(
+   'Exporting authenticated streaming observations… '+records.length+'/'+total);
+ }
+}
 async function exportCompleteEvidence(){
  const btn=$('research-export');if(!token||!researchState.ready||!journalState.ready)return;
  btn.disabled=true;researchStatus('Building anchored research export from Cloudflare…');
  try{
   const base=await fullJournal();
-  const [ticks,quotes]=await Promise.all([
+  const [ticks,quotes,stream]=await Promise.all([
    exportArchive(RESEARCH_API,'ticks'),
-   exportArchive(QUOTE_ARCHIVE_API,'quotes')
+   exportArchive(QUOTE_ARCHIVE_API,'quotes'),
+   exportStreamArchive()
   ]);
   const payload={format:'ETH-15 Scout V4 complete research evidence',version:3,
    exportedAt:new Date().toISOString(),paperOnly:true,
@@ -955,15 +994,18 @@ async function exportCompleteEvidence(){
     'V4 WebSocket streaming and official ETH index recordings are not yet connected.'
    ],
    journals:base,researchTicks:ticks.records,restQuoteArchive:quotes.records,
+   webSocketBookArchive:stream.records,streamArchiveAvailable:stream.available,
    stopPostmortem:window.ScoutStopAudit?.analyzeStopHistory(
      base.trades,quotes.records,base.windows)||null,
-   anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor},
-   totals:{...base.totals,researchTicks:ticks.total,restQuotes:quotes.total}};
+   anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor,stream:stream.anchor},
+   totals:{...base.totals,researchTicks:ticks.total,restQuotes:quotes.total,
+    streamedBookSamples:stream.total}};
   const stamp=new Date().toISOString().slice(0,10);
   download('ETH-15-Scout-V4-Complete-Evidence-'+stamp+'.json',
    JSON.stringify(payload,null,2),'application/json');
   researchStatus('Evidence export created: '+ticks.total+' tick observations, '+
-   quotes.total+' recorded REST quotes, plus the existing paper journal and outcomes.');
+   quotes.total+' recorded REST quotes, '+(stream.total??'unavailable')+
+   ' streaming book observations, plus paper journal and official outcomes.');
  }catch(err){
   researchStatus('Export incomplete; no complete archive was claimed: '+
    String(err?.message||err));
