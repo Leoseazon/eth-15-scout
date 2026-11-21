@@ -53,7 +53,9 @@ export function parseSafeTailEvent(raw){
  if(typeof raw!=='string'||raw.length>250_000)return null;
  let envelope;
  try{envelope=JSON.parse(raw)}catch{return null}
- if(!envelope||typeof envelope!=='object')return null;
+ if(!envelope||typeof envelope!=='object'||Array.isArray(envelope)||
+    !Array.isArray(envelope.logs)||
+    !Number.isSafeInteger(envelope.eventTimestamp))return null;
  const stamp=Number.isSafeInteger(envelope.eventTimestamp)&&envelope.eventTimestamp>0&&
   envelope.eventTimestamp<8.64e15?envelope.eventTimestamp:null;
  const timestamp=stamp!==null?new Date(stamp).toISOString():null;
@@ -73,7 +75,8 @@ export function parseSafeTailEvent(raw){
  return {totalInvocation:1,items:result};
 }
 
-export function reportText({startedAt,finishedAt,total,items,tailOk=true}){
+export function reportText({startedAt,finishedAt,total,items,tailOk=true,
+  stoppedByTimer=false,connectedBanner=false,failureCode='NONE'}={}){
  const counts=new Map();
  for(const item of items){
   const key=item.kind+' / '+item.code;
@@ -86,17 +89,23 @@ export function reportText({startedAt,finishedAt,total,items,tailOk=true}){
   'Source: Wrangler real-time tail; partial observation only, not durable SQLite history',
   'V3 touched: NO',
   'Raw logs, keys, signatures, balances, and contract prices: NOT EXPORTED',
-  'Tail session: '+(tailOk?'FINISHED':'FAILED_OR_INTERRUPTED'),
+  'Tail session: '+(!tailOk?'FAILED_OR_INTERRUPTED':
+    stoppedByTimer?'CAPTURE_WINDOW_COMPLETED':'ENDED_BEFORE_DEADLINE'),
+  'Connection banner observed: '+(connectedBanner?'YES':'NO_OR_UNRECOGNIZED'),
+  'Wrangler diagnostic status: '+failureCode,
   'Invocation envelopes observed: '+total,
   'Safe diagnostic messages observed: '+items.length,'',
   'Diagnostic code counts:',
   ...([...counts.entries()].sort((a,b)=>b[1]-a[1])
     .map(([key,n])=>'  '+String(n).padStart(4)+'  '+key)),
-  ...(counts.size===0?['  NONE — inconclusive; live logs may not have arrived during capture.']:[]),
+  ...(counts.size===0?['  NONE — inconclusive; no matching V4 safe logs captured.']:[]),
   '', 'Latest sanitized events (up to 30):',
   ...items.slice(-30).reverse().map(x=>'  '+(x.timestamp||'UNKNOWN_TIME')+'  '+x.kind+'  '+x.code),
   ...(items.length===0?['  No safe events captured.']:[]),
-  '', 'A successful subscription or REST 200 is NOT proof of a valid book snapshot.',
+  '', 'A quiet capture cannot prove whether Cloudflare's V4 alarms ran.',
+  'When a connection banner is absent, verify Wrangler tail authorization.',
+  'A planned collector stop is normal and is not itself a Wrangler failure.',
+  'A successful subscription or REST 200 is NOT proof of a valid book snapshot.',
   'A BOOK_SNAPSHOT / RECORDED event means a valid/fresh snapshot was stored,',
   'but completeness and multi-market continuity still require separate verification.'
  ];
@@ -122,24 +131,64 @@ export async function capture({minutes=3,runner=spawn}={}){
  const child=runner(process.execPath,[bin,'tail',WORKER,'--format','json'],{
   cwd:ROOT,env:process.env,windowsHide:true,stdio:['ignore','pipe','pipe']
  });
- let total=0,items=[],failed=false;
- child.stderr.on('data',()=>{}); // Intentionally never display or persist stderr.
- const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
- lines.on('line',line=>{
-  const event=parseSafeTailEvent(line);
-  if(!event)return;
+ let total=0,items=[],failed=false,stoppedByTimer=false,connectedBanner=false;
+ let failureCode='NONE',pending='',ended=false;
+ const safeBanner=text=>/successfully created tail|connected to.*tail|tail created|listening for logs/i.test(text);
+ // Fixed, non-sensitive status taxonomy. Never store stderr or stdout verbatim.
+ const safeFailure=text=>{
+  if(/unauthorized|forbidden|not authenticated|not logged in|permission denied|insufficient permissions|authentication error/i.test(text))
+    return 'AUTH_OR_PERMISSION_ERROR';
+  if(/failed to create tail|could not create tail|failed to connect|cannot connect|websocket connection failed/i.test(text))
+    return 'TAIL_CONNECTION_ERROR';
+  if(/unknown argument|unexpected argument|unknown option/i.test(text))
+    return 'CLI_ARGUMENT_REJECTED';
+  return null;
+ };
+ const recordEvent=event=>{
   total+=event.totalInvocation;
   if(items.length<2000)items.push(...event.items.slice(0,30));
+ };
+ // Wrangler tail can print compact or pretty JSON. Keep partial raw chunks
+ // only in memory, bounded and never printed, uploaded or persisted.
+ const acceptLine=line=>{
+  if(typeof line!=='string'||line.length>250_000)return;
+  if(safeBanner(line))connectedBanner=true;
+  const bad=safeFailure(line);
+  if(bad)failureCode=bad;
+  const clean=line.trim();
+  if(!clean)return;
+  const event=parseSafeTailEvent(clean);
+  if(event){pending='';recordEvent(event);return}
+  if(!pending&&!clean.startsWith('{'))return;
+  pending+=clean;
+  if(pending.length>250_000){pending='';return}
+  const multi=parseSafeTailEvent(pending);
+  if(multi){pending='';recordEvent(multi)}
+ };
+ child.stderr.on('data',chunk=>{
+  const line=String(chunk).slice(0,4000);
+  if(safeBanner(line))connectedBanner=true;
+  const bad=safeFailure(line);
+  if(bad)failureCode=bad;
  });
- const timeout=setTimeout(()=>{try{child.kill('SIGTERM')}catch{}},minutes*60_000);
+ const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
+ lines.on('line',acceptLine);
+ const timeout=setTimeout(()=>{
+  stoppedByTimer=true;
+  try{child.kill('SIGTERM')}catch{failed=true}
+ },minutes*60_000);
  const result=await new Promise(resolve=>{
-  child.on('error',()=>{failed=true;resolve(1)});
-  child.on('close',code=>resolve(code));
+  child.once('error',()=>{failed=true;resolve({code:null,signal:'ERROR'})});
+  child.once('close',(code,signal)=>{ended=true;resolve({code,signal})});
  });
  clearTimeout(timeout);
- if(result!==0&&total===0)failed=true;
+ // An intentional SIGTERM at the requested deadline is an ordinary ending.
+ // A premature process exit with nonzero code (or a spawn error) is not.
+ if(!stoppedByTimer&&(result.code!==0||failed))failed=true;
+ if(failureCode!=='NONE')failed=true;
+ if(stoppedByTimer&&result.signal==='ERROR')failed=true;
  const text=reportText({startedAt,finishedAt:new Date().toISOString(),
-  total,items,tailOk:!failed});
+  total,items,tailOk:!failed,stoppedByTimer,connectedBanner,failureCode});
  const dir=existsSync(join(homedir(),'Downloads'))?join(homedir(),'Downloads'):homedir();
  const stamp=startedAt.replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
  const filepath=join(dir,'ETH15-V4-Cloudflare-ReadOnly-'+stamp+'.txt');
@@ -147,10 +196,10 @@ export async function capture({minutes=3,runner=spawn}={}){
  process.stdout.write('Read-only V4 report saved to: '+filepath+'\n');
  process.stdout.write('Safe events: '+items.length+'; invocation envelopes: '+total+'\n');
  if(failed){
-  process.stdout.write('Tail did not produce a usable session. Check Wrangler login/permission.\n');
+  process.stdout.write('Tail authorization/connection issue. See sanitized report status; no token needed in chat.\n');
   process.exitCode=1;
  }
- return {filepath,total,items,failed};
+ return {filepath,total,items,failed,stoppedByTimer,connectedBanner,failureCode};
 }
 
 const invoked=process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url);
