@@ -11,7 +11,7 @@ import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js'
 import {paperResults,reconcilePending} from './paper-ledger.js';
 import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
-import {probeKalshiPublicRest} from './kalshi-network-diagnostic.js';
+import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttps} from './kalshi-network-diagnostic.js';
 import {ensureStreamAudit,appendStreamSample,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
@@ -394,16 +394,26 @@ export class ScoutEngineV4 extends DurableObject {
               Date.now()-(s.lastNetworkProbeAt||0)>=10*60*1000){
             s.lastNetworkProbeAt=Date.now();
             this.save(s,tickMeta); // persist cooldown BEFORE probing
-            try{
-              const checks=await probeKalshiPublicRest();
-              appendStreamEvent(this.ctx.storage.sql,{
-                kind:'NETWORK_REST_CHECK',ticker:market.ticker,at:Date.now(),
-                detail:checks.map(x=>x.endpoint+'_'+x.result).join('|')});
-            }catch{
-              appendStreamEvent(this.ctx.storage.sql,{
-                kind:'NETWORK_REST_CHECK',ticker:market.ticker,at:Date.now(),
-                detail:'DIAGNOSTIC_UNAVAILABLE'});
-            }
+            // All three probes are read-only, with fixed URLs and no
+            // response-body ingestion. Parallel requests bound alarm latency.
+            // The auth probe touches only the read::portfolio_balance GET
+            // endpoint and saves *HTTP status only*, NEVER account balances.
+            const [publicRest,authenticatedRest,webSocketHttps]=await Promise.allSettled([
+              probeKalshiPublicRest(),
+              probeKalshiSignedRead({keyId,privatePem}),
+              probeKalshiWebsocketHostHttps()
+            ]);
+            const safe=(r,format)=>r.status==='fulfilled'?
+              format(r.value):'DIAGNOSTIC_UNAVAILABLE';
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'NETWORK_REST_CHECK',ticker:market.ticker,at:Date.now(),
+              detail:safe(publicRest,checks=>checks.map(x=>x.endpoint+'_'+x.result).join('|'))});
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'AUTH_REST_CHECK',ticker:market.ticker,at:Date.now(),
+              detail:safe(authenticatedRest,code=>String(code).slice(0,100))});
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'WS_HOST_HTTPS_CHECK',ticker:market.ticker,at:Date.now(),
+              detail:safe(webSocketHttps,checks=>checks.map(x=>x.endpoint+'_'+x.result).join('|'))});
           }
         }else if(market&&(!keyId||!privatePem)){
           if(this.streamLastFault!=='READ_CREDENTIALS_UNAVAILABLE'){
