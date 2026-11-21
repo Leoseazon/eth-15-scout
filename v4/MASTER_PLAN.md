@@ -117,6 +117,22 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 
 **Nonnegotiable:** No real trades, no V4 simulated entries, no secret exposure, no V3 source or V3 Durable Object modifications.
 
+## Gate 2E — WebSocket diagnostics and official REST depth fallback (November 21, 2026)
+**Observed:** The owner's V4-only log capture contained 19 Cloudflare invocations and three NETWORK_CONNECT_FAILED faults. Both official Kalshi REST hosts returned HTTP 200; the authenticated balance read returned HTTP 200; both WS hosts returned HTTP 401 to intentionally unauthenticated ordinary HTTPS. No validated streaming book has been captured.
+
+- [x] Expand fixed-code WebSocket exception taxonomy for Upgrade/header/runtime limitations, URL scheme, subrequest limits, egress policy, and recognized DNS, TLS, reset, refusal, timeout. Never persist raw exceptions, headers, secrets or response bodies. Unknown errors retain NETWORK_CONNECT_FAILED.
+- [x] New V4-only official REST depth reader and append-only v4_rest_book_samples table, with strict fixed-point validation of up to 20 YES/NO bid levels, implied complementary asks, empty-book and crossed-book flags, request and receipt timestamps, and explicit UNKNOWN exchange event time/sequence.
+- [x] Direct Kalshi GET /trade-api/v2/markets/{ticker}/orderbook?depth=20, using only fixed official hostname and validated KXETH15M ticker. No third-party proxy, order API, trading scope or account balance read. Official getting-started docs say this endpoint does not require authentication.
+- [x] V4_REST_BOOK_CAPTURE_ENABLED=true in V4-only Wrangler manifest. Save snapshots only when valid ETH15M market exists and authenticated WebSocket is not connected with a fresh valid book, at most once per 15 seconds. Back off for two minutes on HTTP 429.
+- [x] Isolate REST from genuine streaming: never fill missing WebSocket sequences/events with REST, never use REST snapshots for simulated fills, trading decisions, official settlement or proven P&L. V4 paper remains hard-disarmed.
+- [x] Isolated V4 REST-depth archive read routes, authenticated viewer gateway, source-specific history chart and full evidence export with independent cursor anchors and clear REST receipt-only labels.
+- [x] Add unit tests for malformed/empty/crossed levels, fixed-point precision, source identity, insufficient depth, pagination, no secret exposure and V4-only integration.
+- [ ] Owner-approved V4-only deployment and subsequent live verification of increasing REST table counts and more granular WS exception codes. GitHub commits/tests are NOT Cloudflare deployment.
+- [ ] Separately deploy/configure the private V4 viewer when approved; website source changes are not yet publicly active.
+- [ ] Review Kalshi market-data rights and Cloudflare long-term storage costs before indefinite archival. 15-second REST snapshots do not replace real-time streamed data.
+
+**Official references:** https://docs.kalshi.com/api-reference/market/get-market-orderbook ; https://docs.kalshi.com/getting_started/orderbook_responses
+
 ## Gate 3 — Modeling
 - [ ] **Settlement model:** time, target, official-reference distance, intrawindow volatility, and final-minute accumulated official average.
 - [ ] **Resale model:** distribution of future executable bid under a specific exit policy, fees, latency, depth, losses and missed exits.
