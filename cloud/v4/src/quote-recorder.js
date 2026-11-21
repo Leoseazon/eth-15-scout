@@ -45,3 +45,22 @@ export function recentQuotes(sql,{ticker=null,limit=240}={}){
   'SELECT * FROM quote_observations ORDER BY observed_at DESC LIMIT ?';
  return sql.exec(query,...(ticker?[ticker,limit]:[limit])).toArray().reverse();
 }
+
+/* Stable high-water archive pages for historic research export.
+ * No backend deletion or simulated filling; all recorded contract windows
+ * remain accessible after the current ticker changes.
+ */
+export function quoteArchivePage(sql,{anchor=null,offset=0,limit=100}={}){
+ if(!Number.isSafeInteger(offset)||offset<0||offset>1000000||
+    !Number.isSafeInteger(limit)||limit<1||limit>100||
+    (anchor!==null&&(!Number.isSafeInteger(anchor)||anchor<0)))
+   throw new RangeError('Invalid quote archive pagination');
+ const latest=sql.exec('SELECT COALESCE(MAX(id),0) top FROM quote_observations').toArray()[0]?.top??0;
+ const high=anchor===null?Number(latest):anchor;
+ const total=sql.exec('SELECT COUNT(*) n FROM quote_observations WHERE id<=?',high).toArray()[0]?.n??0;
+ const quotes=sql.exec('SELECT * FROM quote_observations WHERE id<=? ORDER BY id DESC LIMIT ? OFFSET ?',
+   high,limit,offset).toArray();
+ return {anchor:high,offset,limit,total:Number(total),
+   source:'REST proxy snapshots, possibly cached; exchange event time unavailable',
+   quotes};
+}
