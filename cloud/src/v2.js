@@ -2,7 +2,7 @@
  * Deliberately unchanged trading logic; no live Kalshi account or orders.
  * The surrounding cloud scheduler and storage are new. See README.
  */
-import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
+import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk,regularStopBreach} from './v3-policy.js';
 import {structuralEntry, structuralExit} from './structure.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
@@ -397,7 +397,6 @@ function toPending(pos) {
       const proceeds=Number.isFinite(bid)&&Number.isFinite(bidDepth)&&bidDepth>=pos.qty?pos.qty*bid-fee(bid,pos.qty):NaN;
       pos.markPnl=Number.isFinite(proceeds)?Number((proceeds-pos.cost).toFixed(2)):NaN;
       if(Number.isFinite(proceeds)){
-        const gain=(bid-pos.entry)/pos.entry;
         let why=null;
         const targetAction=profitExitGate(bid,remaining);
         // Order of importance: hard stop > 96¢ target > confirmed structure
@@ -407,7 +406,7 @@ function toPending(pos) {
         if(pos.strategy==='HONEY-POT'&&honeyStopTriggered(pos.entry,bid))
           why='HONEY-POT stop: executable bid down 10% or more from entry price';
         else if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
-           gain<=-PAPER_POLICY.contractStopLossFraction)
+           regularStopBreach(pos.entry,bid))
           why='Stop loss (−40% contract-price movement; final 6 minutes only)';
         else if(targetAction==='SELL')why='96¢ bid take-profit';
         else if(targetAction==='HOLD_PENDING'){
