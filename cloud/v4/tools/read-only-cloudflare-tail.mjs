@@ -132,7 +132,7 @@ export async function capture({minutes=3,runner=spawn}={}){
   cwd:ROOT,env:process.env,windowsHide:true,stdio:['ignore','pipe','pipe']
  });
  let total=0,items=[],failed=false,stoppedByTimer=false,connectedBanner=false;
- let failureCode='NONE',pending='',ended=false;
+ let failureCode='NONE',pending='';
  const safeBanner=text=>/successfully created tail|connected to.*tail|tail created|listening for logs/i.test(text);
  // Fixed, non-sensitive status taxonomy. Never store stderr or stdout verbatim.
  const safeFailure=text=>{
@@ -179,12 +179,12 @@ export async function capture({minutes=3,runner=spawn}={}){
  },minutes*60_000);
  const result=await new Promise(resolve=>{
   child.once('error',()=>{failed=true;resolve({code:null,signal:'ERROR'})});
-  child.once('close',(code,signal)=>{ended=true;resolve({code,signal})});
+  child.once('close',(code,signal)=>resolve({code,signal}));
  });
  clearTimeout(timeout);
  // An intentional SIGTERM at the requested deadline is an ordinary ending.
  // A premature process exit with nonzero code (or a spawn error) is not.
- if(!stoppedByTimer&&(result.code!==0||failed))failed=true;
+ if(!stoppedByTimer)failed=true; // Unexpected early end of a continuous live tail.
  if(failureCode!=='NONE')failed=true;
  if(stoppedByTimer&&result.signal==='ERROR')failed=true;
  const text=reportText({startedAt,finishedAt:new Date().toISOString(),
