@@ -14,6 +14,7 @@ import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 const INTERVAL_MS=15000;
 const RELEASE_TAG='V3-OBSERVATION-50-100-20261119';
 const PHASE1_TAG='V3-PHASE1-FEED-RELIABILITY-20261120';
+const SOFT_GUARD_HOTFIX_TAG='V3-PAPER-SOFT-GUARD-BYPASS-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
 const REGIME_RETRY_MS=30*60000;
 const chicagoDay=ts=>new Intl.DateTimeFormat('en-CA',{
@@ -179,7 +180,14 @@ export class ScoutEngine extends DurableObject {
       PHASE1_TAG,now,PRE_RELEASE_NOTED_AT,
       'Phase 1 protective-exit/feed reliability patch; original entry strategy unchanged');
 
-    const engine=makeV2Engine(s);
+    // Authorized temporary PAPER-only change: restore normal entry checks
+    // even after the -12% SOFT threshold. The -20% HARD halt is unchanged.
+    // This opt-out never modifies any existing paper trade or journal row.
+    this.ctx.storage.sql.exec(
+      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+      SOFT_GUARD_HOTFIX_TAG,now,'not supplied',
+      'First engine tick with SOFT entry restrictions bypassed; HARD halt remains active');
+    const engine=makeV2Engine(s,{softGuardEnabled:false});
     let market=null,one=null,m5=null,error=null,fresh=false;
     let fiveCandles=[],oneCandles=[],tickerSpot=null;
     const today=chicagoDay(now);

@@ -30,7 +30,7 @@ const chicagoDay = ts => new Intl.DateTimeFormat('en-CA',{
   timeZone:'America/Chicago',year:'numeric',month:'2-digit',day:'2-digit'
 }).format(new Date(ts));
 
-export function makeV2Engine(state) {
+export function makeV2Engine(state,{softGuardEnabled=true}={}) {
   let notice = '';
   const persist = () => {}; // Committed atomically by the cloud object after each tick.
   const note = (type,msg,ticker='',extra={}) => {
@@ -362,7 +362,7 @@ function toPending(pos) {
     ).reduce((total,p)=>total+Number(p.cost||0),0);
     const previousMode=state.dailyRisk?.day===day?state.dailyRisk.mode:'NORMAL';
     const next=assessDailyRisk({initial:state.initial,realizedToday,openLoss,
-      pendingExposure,previousMode});
+      pendingExposure,previousMode,softGuardEnabled});
     state.dailyRisk={day,...next};
     return state.dailyRisk;
   }
