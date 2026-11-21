@@ -4,6 +4,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
 import {ensureQuoteTable,recordQuote,recentQuotes} from './quote-recorder.js';
+import {ensureResearchJournal,recordResearchTick,researchPage} from './research-journal.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
@@ -79,6 +80,7 @@ export class ScoutEngineV4 extends DurableObject {
         tag TEXT PRIMARY KEY,first_engine_tick_at INTEGER NOT NULL,
         pre_release_reference_at TEXT NOT NULL,description TEXT NOT NULL);`);
     ensureQuoteTable(this.ctx.storage.sql);
+    ensureResearchJournal(this.ctx.storage.sql);
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -288,6 +290,21 @@ export class ScoutEngineV4 extends DurableObject {
     // The read-only viewer sees this tick without waiting for archival IO.
     s.lastMarketDataAt=fresh&&one&&context.three&&market?now:null;
     s.lastDecisionProcessingMs=Date.now()-now;
+    // V4 shadow evidence journal: log every evaluated tick, including no-market,
+    // feed degradation, WATCH and explicit engine messages. No paper order implied.
+    try{
+      const research=recordResearchTick(this.ctx.storage.sql,{
+        startedAt:now,finishedAt:Date.now(),market,
+        quoteRetrievedAt:s.lastQuoteRetrievedAt,spot:tickerSpot,
+        one,five:m5,context,feedChecks,feedIssues,report,
+        engineState:s,lastError:error
+      });
+      s.lastResearchTickAt=research.observedAt;
+      s.lastResearchError=null;
+    }catch(e){
+      // Preserve the live baseline behavior even if research SQLite fails.
+      s.lastResearchError=safeErr(e);
+    }
     const tickMeta={lastTick:Date.now(),lastError:error,
       lastMarket:market?.ticker||null,lastNotice:report.notice||'',
       lastFeedOkay:!!(fresh&&one&&context.three&&market)};
@@ -342,6 +359,8 @@ export class ScoutEngineV4 extends DurableObject {
         lastDecisionProcessingMs:s.lastDecisionProcessingMs||null,
         lastQuoteRetrievedAt:s.lastQuoteRetrievedAt||null,
         lastFeedOkay:!!s.lastFeedOkay,feedChecks:s.lastFeedChecks||null,
+        lastResearchTickAt:s.lastResearchTickAt||null,
+        lastResearchError:s.lastResearchError||null,
         policyVersion:'V4-SHADOW-FOUNDATION',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
@@ -404,6 +423,21 @@ export class ScoutEngineV4 extends DurableObject {
         ).toArray(),
         // Pending settlement is UNCONFIRMED, never counted as a win.
         pending:this.record().pending});
+    }
+    if(path==='/v1/research'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams;
+      const rawLimit=q.get('limit')||'80',rawOffset=q.get('offset')||'0',
+        rawAnchor=q.get('anchor');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(rawLimit)||!valid(rawOffset)||
+         (rawAnchor!==null&&!valid(rawAnchor)))
+        return json({error:'Invalid research request'},400);
+      try{
+        const page=researchPage(this.ctx.storage.sql,{
+          limit:Number(rawLimit),offset:Number(rawOffset),
+          anchor:rawAnchor===null?null:Number(rawAnchor)});
+        return json({paperOnly:true,readOnly:true,version:'V4',...page});
+      }catch{return json({error:'Invalid research pagination'},400)}
     }
     if(path==='/v1/quotes'&&req.method==='GET'){
       const u=new URL(req.url),rawLimit=u.searchParams.get('limit')||'240',
