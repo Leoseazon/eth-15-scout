@@ -162,3 +162,33 @@ test('V4 stream archive remains session-gated and permanently GET-only',async()=
  assert.match(seen[0],/\/v1\/stream\?/);
  assert.doesNotMatch(seen[0],/\/v1\/start|\/v1\/stop|\/v1\/arm/);
 });
+
+
+test('REST book archive is GET-only, session-gated and reaches V4 local Durable Object only',async()=>{
+ const signed=await newSession(loginSecrets.SCOUT_SESSION_SECRET,true);
+ const seen=[];
+ const e=env();
+ e.SCOUT_V4={getByName:name=>{
+  assert.equal(name,'v4-single-paper-scout');
+  return {fetch:async url=>{
+   seen.push(String(url));
+   return Response.json({paperOnly:true,readOnly:true,
+    source:'KALSHI_OFFICIAL_REST_ORDERBOOK',isWebSocket:false,
+    items:[],total:0,anchor:0,before:null,nextBefore:null,limit:20});
+  }};
+ }};
+ const u='https://viewer.example/api/v4/rest-book';
+ assert.equal((await view.fetch(new Request(u),e)).status,401);
+ const head={Origin:origin,Authorization:'Bearer '+signed.token};
+ assert.equal((await view.fetch(new Request(u,{method:'POST',headers:head}),e)).status,404);
+ assert.equal((await view.fetch(new Request(u+'?ticker=https://evil.invalid', {headers:head}),e)).status,400);
+ const ok=await view.fetch(new Request(u+'?limit=20',{headers:head}),e);
+ assert.equal(ok.status,200);
+ const p=await ok.json();
+ assert.equal(p.paperOnly,true);
+ assert.equal(p.readOnly,true);
+ assert.equal(p.isWebSocket,false);
+ assert.equal(seen.length,1);
+ assert.match(seen[0],/https:\/\/internal\/v1\/rest-book\?limit=20/);
+ assert.doesNotMatch(seen[0],/\/v1\/arm|\/v1\/start|\/v1\/stop/);
+});
