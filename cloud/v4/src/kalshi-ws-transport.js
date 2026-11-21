@@ -23,6 +23,31 @@ export function classifyNetworkException(err){
     return 'NETWORK_FETCH_REJECTED';
   return 'NETWORK_CONNECT_FAILED';
 }
+// A second, WebSocket-specific diagnostic stage. Inspect exception text only
+// in memory, mapping to fixed labels. Never store .message, .cause, or stack.
+// Conservative: unrecognized conditions remain NETWORK_CONNECT_FAILED.
+export function classifyWebSocketUpgradeException(err){
+ const base=classifyNetworkException(err);
+ if(base!=='NETWORK_CONNECT_FAILED')return base;
+ const raw=typeof err?.message==='string'?err.message.toLowerCase().slice(0,2000):'';
+ const cause=typeof err?.cause?.code==='string'?err.cause.code.toUpperCase():'';
+ if(['ENOTFOUND','EAI_AGAIN'].includes(cause))return 'NETWORK_DNS_FAILED';
+ if(['ETIMEDOUT','ESOCKETTIMEDOUT'].includes(cause))return 'NETWORK_TIMEOUT';
+ if(['ECONNRESET','EPIPE'].includes(cause))return 'NETWORK_CONNECTION_LOST';
+ if(['ECONNREFUSED','EHOSTUNREACH','ENETUNREACH'].includes(cause))
+  return 'NETWORK_FETCH_REJECTED';
+ if(/unsupported (?:url )?scheme|unsupported protocol|invalid url scheme/.test(raw))
+  return 'WS_SCHEME_REJECTED';
+ if(/invalid.*(?:upgrade|header)|(?:upgrade|header).*not (?:allowed|supported)|forbidden.*header/.test(raw))
+  return 'WS_UPGRADE_HEADER_REJECTED';
+ if(/websocket.*(?:not supported|unsupported|upgrade rejected)|(?:websocket|upgrade).*not implemented/.test(raw))
+  return 'WS_UPGRADE_RUNTIME_UNSUPPORTED';
+ if(/(?:subrequest|outbound request).*(?:limit|exceeded)/.test(raw))
+  return 'WS_WORKER_SUBREQUEST_LIMIT';
+ if(/(?:egress|outbound|connection).*(?:blocked|prohibited|denied|not permitted)/.test(raw))
+  return 'NETWORK_EGRESS_BLOCKED';
+ return 'NETWORK_CONNECT_FAILED';
+}
 function shouldSwitchHost(reason){
   return /^NETWORK_/.test(reason)||
     ['HANDSHAKE_HTTP_502','HANDSHAKE_HTTP_503','HANDSHAKE_HTTP_504'].includes(reason);
@@ -92,6 +117,7 @@ export class KalshiReadOnlySocket {
     this.attempts=0;this.retryAfter=0;this.commandId=1;
     this.connecting=false;this.resyncAt=0;this.lastFailure=null;this.generation=0;
     this.endpointIndex=0;this.endpointFailureStreak=0;
+    this.lastNetworkDiagnostic='NONE';
     this.lastAttemptEndpoint=null;this.lastHttpStatus=null;
   }
   fault(reason,at=Date.now()){
@@ -101,6 +127,7 @@ export class KalshiReadOnlySocket {
   }
   socketClosed(reason,at=Date.now()){
     this.book.disconnected();this.socket=null;this.lastFailure=reason;
+    this.lastNetworkDiagnostic=reason;
     this.attempts++;
     // Kalshi's 429 is either a connection cap or a reconnect-rate limit.
     // Never route around an auth refusal or rate limit by switching hosts.
@@ -129,6 +156,7 @@ export class KalshiReadOnlySocket {
     return {connected:!!this.socket&&this.socket.readyState===1,
       targetTicker:this.ticker,attempts:this.attempts,retryAfter:this.retryAfter,
       lastMessageAt:this.lastMessageAt,lastFailure:this.lastFailure,
+      lastNetworkDiagnostic:this.lastNetworkDiagnostic,
       endpoint:this.endpointIndex===0?'PRIMARY':'COMPAT',
       lastAttemptEndpoint:this.lastAttemptEndpoint,
       lastHttpStatus:this.lastHttpStatus,
@@ -182,7 +210,7 @@ export class KalshiReadOnlySocket {
     }catch(err){
       // No raw error.message, Kalshi response body or credential in storage.
       const code=typeof err?.kalshiCode==='string'?err.kalshiCode:
-        stage==='NETWORK_CONNECT'?classifyNetworkException(err):
+        stage==='NETWORK_CONNECT'?classifyWebSocketUpgradeException(err):
         stage==='SOCKET_SETUP'?'SOCKET_SETUP_FAILED':
         stage==='SUBSCRIPTION_SEND'?'SUBSCRIPTION_SEND_FAILED':
         'AUTH_SIGNING_FAILED';
