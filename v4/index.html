@@ -9,6 +9,7 @@
 <title>ETH-15 Scout V4 | Paper Trading Console</title>
 <link rel="stylesheet" href="./style.css">
 <script src="./sounds.js" defer></script>
+<script src="./stop-postmortem.js" defer></script>
 <script src="./app.js" defer></script>
 </head>
 <body>
@@ -166,6 +167,15 @@
     </div>
   </div>
   <p id="research-message" class="activity-footnote">Research observations and Kalshi REST quotes are not verified fills or official ETH index values. WebSocket book history remains inactive until Gate 2 integration.</p>
+  <div class="stop-analysis" aria-labelledby="stop-audit-heading">
+    <div class="stop-analysis-heading">
+      <div><strong id="stop-audit-heading">40% stop-loss postmortem</strong>
+        <p class="micro">Analyze actual recorded stop exits and observed bid paths at +30, +60 and +120 seconds, without assuming fills or recovering missing observations.</p></div>
+      <button type="button" id="stop-audit-run" disabled>Analyze stopped trades</button>
+    </div>
+    <p id="stop-audit-summary" class="micro">Historical stop follow-ups have not been analyzed.</p>
+    <div id="stop-audit-list" class="stop-audit-list"></div>
+  </div>
 </section>
 <section id="signals" class="card signals-card" aria-labelledby="signals-title">
    <div class="card-heading"><div><p class="eyebrow">WEIGHTED EVIDENCE</p><h2 id="signals-title">Signal hierarchy</h2></div><span class="badge neutral">Reference</span></div>
