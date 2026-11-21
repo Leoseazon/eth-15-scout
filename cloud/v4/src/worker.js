@@ -10,6 +10,8 @@ import {settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 import {paperResults,reconcilePending} from './paper-ledger.js';
 import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
+import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
+import {ensureStreamAudit,appendStreamSample,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
@@ -81,6 +83,36 @@ export class ScoutEngineV4 extends DurableObject {
         pre_release_reference_at TEXT NOT NULL,description TEXT NOT NULL);`);
     ensureQuoteTable(this.ctx.storage.sql);
     ensureResearchJournal(this.ctx.storage.sql);
+    ensureStreamAudit(this.ctx.storage.sql);
+    // Zero connections unless the NEW V4-only feature flag is explicitly set.
+    // The stream requires a dedicated READ-only Kalshi key, not a trading key.
+    this.stream=null;this.streamLastWritten=0;this.streamLastQuoteKey=null;
+    this.streamLastFault=null;this.streamLastFaultAt=0;
+    if(env.V4_STREAM_CAPTURE_ENABLED==='true'){
+      this.stream=new KalshiReadOnlySocket({
+        onObservation:({type,quote,receivedAt})=>{
+          const key=[quote.ticker,quote.yesBid?.price,quote.yesAsk?.price,
+            quote.noBid?.price,quote.noAsk?.price,quote.valid,quote.fresh].join('|');
+          // Preserve every changed top-of-book price and every initial snapshot.
+          // Constant-depth deltas are sampled at most once a second.
+          if(type!=='orderbook_snapshot'&&key===this.streamLastQuoteKey&&
+             receivedAt-this.streamLastWritten<1000)return;
+          appendStreamSample(this.ctx.storage.sql,{
+            quote,at:receivedAt,kind:type==='orderbook_snapshot'?'snapshot':'delta'});
+          this.streamLastWritten=receivedAt;this.streamLastQuoteKey=key;
+        },
+        onFault:reason=>{
+          const at=Date.now();
+          // Include every distinct fault and repeat faults at most once/30sec.
+          if(reason!==this.streamLastFault||at-this.streamLastFaultAt>=30000){
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'STREAM_FAULT',ticker:this.stream?.ticker||null,
+              at,detail:String(reason).slice(0,70)});
+            this.streamLastFault=reason;this.streamLastFaultAt=at;
+          }
+        }
+      });
+    }
   }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
@@ -328,6 +360,40 @@ export class ScoutEngineV4 extends DurableObject {
     // Only official finalized outcomes resolve paper holdings.
     const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
     if(settled>0)this.save(s,tickMeta);
+    // Research stream always follows critical paper accounting and journal IO.
+    // NO stream data is fed into the existing V3-derived entry/exit engine.
+    if(this.stream){
+      const at=Date.now();
+      try{
+        const watch=this.stream.watchdog(at);
+        if(watch==='RECONNECT_REQUIRED')
+          appendStreamEvent(this.ctx.storage.sql,{
+            kind:'STREAM_RECONNECT',ticker:market?.ticker||null,at,
+            detail:'Stream silence; no assumed current quote'});
+        const keyId=this.env.KALSHI_V4_READ_KEY_ID;
+        const privatePem=this.env.KALSHI_V4_READ_PRIVATE_KEY;
+        if(market&&typeof keyId==='string'&&typeof privatePem==='string'){
+          const previous=this.stream.ticker;
+          const started=await this.stream.ensure(market.ticker,{keyId,privatePem},Date.now());
+          if(started)appendStreamEvent(this.ctx.storage.sql,{
+            kind:'STREAM_SUBSCRIBED',ticker:market.ticker,at:Date.now(),
+            detail:previous&&previous!==market.ticker?'Next 15-minute window':'Read-only subscription'});
+        }else if(market&&(!keyId||!privatePem)){
+          if(this.streamLastFault!=='READ_CREDENTIALS_UNAVAILABLE'){
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'STREAM_CONFIG_MISSING',ticker:market.ticker,at,
+              detail:'V4 read-only stream secrets absent'});
+            this.streamLastFault='READ_CREDENTIALS_UNAVAILABLE';
+          }
+        }
+      }catch(e){
+        // Collecting stream history is never permitted to break V3-style
+        // tick decisions, official outcomes or settlement reconciliation.
+        appendStreamEvent(this.ctx.storage.sql,{
+          kind:'STREAM_RESEARCH_ERROR',ticker:market?.ticker||null,
+          at:Date.now(),detail:'Isolated stream path unavailable'});
+      }
+    }
   }
   async alarm(){
     const start=Date.now();
@@ -364,6 +430,10 @@ export class ScoutEngineV4 extends DurableObject {
         lastFeedOkay:!!s.lastFeedOkay,feedChecks:s.lastFeedChecks||null,
         lastResearchTickAt:s.lastResearchTickAt||null,
         lastResearchError:s.lastResearchError||null,
+        streamCaptureEnabled:!!this.stream,
+        streamConnection:this.stream?this.stream.status(Date.now()):
+          {connected:false,source:'NOT_CONFIGURED',reason:'V4 WebSocket feature flag disabled'},
+        streamArchive:latestStreamStatus(this.ctx.storage.sql),
         policyVersion:'V4-SHADOW-FOUNDATION',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
@@ -451,6 +521,20 @@ export class ScoutEngineV4 extends DurableObject {
       return json({readOnly:true,paperOnly:true,version:'V4',
         source:'REST proxy: quote receipt timestamp is not true exchange event time',
         quotes:recentQuotes(this.ctx.storage.sql,{ticker,limit})});
+    }
+    if(path==='/v1/stream'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams;
+      const limitRaw=q.get('limit')||'60',anchorRaw=q.get('anchor'),
+        beforeRaw=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limitRaw)||(anchorRaw!==null&&!valid(anchorRaw))||
+         (beforeRaw!==null&&!valid(beforeRaw)))
+        return json({error:'Invalid stream archive request'},400);
+      try{
+        return json(streamPage(this.ctx.storage.sql,{
+          limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
+          before:beforeRaw===null?null:Number(beforeRaw),ticker}));
+      }catch{return json({error:'Invalid stream archive request'},400)}
     }
     if(path==='/v1/quote-archive'&&req.method==='GET'){
       const q=new URL(req.url).searchParams,rawLimit=q.get('limit')||'100',
