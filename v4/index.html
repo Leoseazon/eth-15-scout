@@ -43,7 +43,7 @@
 </header>
 <div id="top"></div>
 <main id="main" class="wrap">
- <section class="v4-stage-banner" role="status"><strong>V4 RESEARCH SHADOW</strong> — Simulated orders are hard-disabled. The recorder will capture best-effort, possibly cached REST price snapshots only after a separately approved deployment. The V4 probability and resale models are not active yet.</section>
+ <section class="v4-stage-banner" role="status"><strong>V4 RESEARCH SHADOW</strong> — Simulated orders are hard-disabled. Historical REST quotes and separate direct REST order-book snapshots are labeled with receipt-time provenance; WebSocket data is independently verified. The V4 probability and resale models are not active yet.</section>
  <div class="intro">
    <div><p class="eyebrow">ETH-15 SCOUT · PAPER-ONLY RESEARCH</p><h1>Find the edge <span class="muted-normal">/ before it is priced in</span></h1><p class="intro-sub"><strong>Bot philosophy:</strong> Identify promising ETH 15-minute setups early, before Kalshi contracts fully reprice. Balance emerging evidence, affordable entry prices and minutes remaining to pursue better potential returns while controlling reversal, liquidity and settlement risk.</p></div>
    <div class="intro-right"><span id="mode-badge" class="pill pill-neutral"><span class="dot"></span>Disconnected</span><span id="updated-label" class="micro">No data loaded</span></div>
@@ -157,6 +157,8 @@
     <span><strong>Recorded book observations</strong><small id="v4-stream-count">—</small></span>
     <span><strong>Stream sequence gaps</strong><small id="v4-stream-gaps">—</small></span>
     <span><strong>Last book receipt</strong><small id="v4-stream-received">No authenticated observation</small></span>
+    <span><strong>Official REST depth archive</strong><small id="v4-rest-book-count">Not enabled</small></span>
+    <span><strong>Last REST receipt</strong><small id="v4-rest-book-received">No direct REST depth observation</small></span>
   </div>
   <div class="research-grid-head"><span>OBSERVED (CT)</span><span>CONTRACT</span><span>FEEDS / QUOTE</span><span>DECISION EVIDENCE</span></div>
   <div id="research-list" class="research-list" aria-live="polite">
@@ -172,7 +174,7 @@
       <button type="button" id="research-export" disabled>Export full research evidence JSON</button>
     </div>
   </div>
-  <p id="research-message" class="activity-footnote">Research observations and Kalshi REST quotes are not verified fills or official ETH index values. WebSocket book history remains inactive until Gate 2 integration.</p>
+  <p id="research-message" class="activity-footnote">Research observations and Kalshi REST quotes are not verified fills or official ETH index values. Streaming history is verified separately; an HTTP REST snapshot never proves WebSocket connectivity or an executable sale.</p>
   <div class="stop-analysis" aria-labelledby="stop-audit-heading">
     <div class="stop-analysis-heading">
       <div><strong id="stop-audit-heading">40% stop-loss postmortem</strong>
