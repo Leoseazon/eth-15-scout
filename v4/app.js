@@ -997,38 +997,76 @@ async function exportStreamArchive(){
    'Exporting authenticated streaming observations… '+records.length+'/'+total);
  }
 }
+/* Separately anchored official REST-depth snapshots. Receipt times are not
+ * exchange timestamps and no observed depth guarantees an executable fill. */
+async function exportRestBookArchive(){
+ if(lastPayload?.restBookAvailable!==true)
+  return {anchor:null,total:null,records:[],available:false};
+ let anchor=null,before=null,total=null;
+ const records=[];
+ for(;;){
+  const u=new URL(REST_BOOK_ARCHIVE_API);
+  u.searchParams.set('limit','100');
+  if(anchor!==null)u.searchParams.set('anchor',String(anchor));
+  if(before!==null)u.searchParams.set('before',String(before));
+  const response=await fetch(u.toString(),{cache:'no-store',
+   headers:{Authorization:'Bearer '+token}});
+  if(!response.ok)throw Error('REST depth archive HTTP '+response.status);
+  const p=await response.json();
+  if(p.readOnly!==true||p.paperOnly!==true||p.isWebSocket!==false||
+     p.source!=='KALSHI_OFFICIAL_REST_ORDERBOOK'||
+     !Array.isArray(p.items)||!Number.isSafeInteger(p.anchor)||
+     !Number.isSafeInteger(p.total))
+    throw Error('REST depth archive provenance or pagination invalid');
+  if(anchor===null){anchor=p.anchor;total=p.total}
+  else if(anchor!==p.anchor||total!==p.total)
+    throw Error('REST depth archive anchored totals changed');
+  if(total>50000)throw Error(
+    'REST depth history exceeds the 50,000-row safe browser export limit. '+
+    'Use a paginated private backup.');
+  records.push(...p.items);
+  if(records.length>=total)return {anchor,total,records,available:true};
+  if(!p.items.length||!Number.isSafeInteger(p.nextBefore))
+    throw Error('Incomplete official REST depth archive');
+  before=p.nextBefore;
+ }
+}
 async function exportCompleteEvidence(){
  const btn=$('research-export');if(!token||!researchState.ready||!journalState.ready)return;
  btn.disabled=true;researchStatus('Building anchored research export from Cloudflare…');
  try{
   const base=await fullJournal();
-  const [ticks,quotes,stream]=await Promise.all([
+  const [ticks,quotes,stream,restBooks]=await Promise.all([
    exportArchive(RESEARCH_API,'ticks'),
    exportArchive(QUOTE_ARCHIVE_API,'quotes'),
-   exportStreamArchive()
+   exportStreamArchive(),exportRestBookArchive()
   ]);
-  const payload={format:'ETH-15 Scout V4 complete research evidence',version:3,
+  const payload={format:'ETH-15 Scout V4 complete research evidence',version:4,
    exportedAt:new Date().toISOString(),paperOnly:true,
    completeness:'Complete through each included per-source high-water anchor',
    warnings:[
     'Kalshi REST snapshots may be cached and are not verified exchange tick times.',
     'Kraken spot is not the official Kalshi settlement index.',
     'Displayed prices are not verified executable fills.',
-    'V4 WebSocket streaming and official ETH index recordings are not yet connected.'
+    'Streaming history requires confirmed book snapshots, not REST inference.',
+    'Official REST depth observations have receipt timestamps only and unknown source-event ages.'
    ],
    journals:base,researchTicks:ticks.records,restQuoteArchive:quotes.records,
+   officialRestBookArchive:restBooks.records,restBookArchiveAvailable:restBooks.available,
    webSocketBookArchive:stream.records,streamArchiveAvailable:stream.available,
    stopPostmortem:window.ScoutStopAudit?.analyzeStopHistory(
      base.trades,quotes.records,base.windows)||null,
-   anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor,stream:stream.anchor},
+   anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor,stream:stream.anchor,
+    restBook:restBooks.anchor},
    totals:{...base.totals,researchTicks:ticks.total,restQuotes:quotes.total,
-    streamedBookSamples:stream.total}};
+    streamedBookSamples:stream.total,officialRestBookSamples:restBooks.total}};
   const stamp=new Date().toISOString().slice(0,10);
   download('ETH-15-Scout-V4-Complete-Evidence-'+stamp+'.json',
    JSON.stringify(payload,null,2),'application/json');
   researchStatus('Evidence export created: '+ticks.total+' tick observations, '+
    quotes.total+' recorded REST quotes, '+(stream.total??'unavailable')+
-   ' streaming book observations, plus paper journal and official outcomes.');
+   ' streaming book observations, '+(restBooks.total??'unavailable')+
+   ' official REST depth observations, plus paper journal and official outcomes.');
  }catch(err){
   researchStatus('Export incomplete; no complete archive was claimed: '+
    String(err?.message||err));
