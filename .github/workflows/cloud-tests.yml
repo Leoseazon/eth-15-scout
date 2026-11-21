@@ -36,6 +36,7 @@ jobs:
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
+      - run: node --check v4/tools/read-only-cloudflare-tail.mjs
       - run: node --check v4/src/paper-execution-research.js
       - run: node --check ../v4/stop-postmortem.js
       - run: node --check v4/src/v2.js
