@@ -14,6 +14,9 @@ SCOUT_V4_PAPER_MODE = "disabled"
 # Dashboard-approved V4-only read-only market-data collection.
 # This is NOT simulated trade activation; SCOUT_V4_PAPER_MODE remains disabled.
 V4_STREAM_CAPTURE_ENABLED = "true"
+# Direct official Kalshi REST depth: strictly historical/read-only, NOT live WS.
+# Uses a new V4-only SQLite table and never drives entries, fills, or P&L.
+V4_REST_BOOK_CAPTURE_ENABLED = "true"
 
 [observability.logs]
 enabled = true
