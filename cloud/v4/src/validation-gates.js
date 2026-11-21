@@ -102,6 +102,11 @@ export function measureBookCoverage(samples,{ticker,startAt,endAt,maxGapMs=5000}
   Number.isSafeInteger(s.receivedAt)&&s.receivedAt>=startAt&&s.receivedAt<=endAt)
   .sort((a,b)=>a.receivedAt-b.receivedAt);
  const unique=[...new Set(valid.map(s=>s.receivedAt))].sort((a,b)=>a-b);
+ if(!unique.length)return {
+  source:'V4_KALSHI_WEBSOCKET_BOOK',ticker,startAt,endAt,
+  receivedSamples:0,gapsOverThreshold:1,longestGapMs:endAt-startAt,
+  approximateCoverageFraction:0,reliable:false,
+  note:'No verified streaming book samples; zero observed coverage'};
  let gapCount=0,longestGapMs=0,coveredMs=0;
  let prior=startAt;
  for(const observed of [...unique,endAt]){
