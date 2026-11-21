@@ -39,7 +39,7 @@ test('do not use pre-horizon bid, too-late bid, wrong ticker, or post-close quot
 });
 test('expired market cannot be counted as a post-exit resale opportunity',()=>{
  const position={...trade,closeTime:new Date(at+50000).toISOString()};
- const r=audit([position],[sample(60,.98)],[
+ const r=audit([position],[sample(31,.98),sample(60,.98)],[
   {ticker,closeAt:at+50000,status:'OFFICIAL_RESULT',outcome:'UP'}]);
  assert.equal(r.stops[0].horizons[0].status,'OBSERVED_REST_UNVERIFIED_EXECUTION');
  assert.equal(r.stops[0].horizons[1].status,'CONTRACT_EXPIRED');
@@ -47,7 +47,7 @@ test('expired market cannot be counted as a post-exit resale opportunity',()=>{
 });
 test('exclude non-stop exits; preserve trade-level loss and side-specific quote fields',()=>{
  const down={...trade,side:'DOWN',exitBid:.3};
- const quotes=[sample(30,.9),{...sample(30,.9),no_bid:.56}];
+ const quotes=[{...sample(30,.9),no_bid:.56}];
  const r=audit([down,{...trade,reason:'96¢ bid take-profit'}],quotes);
  assert.equal(r.stoppedTrades,1);
  assert.equal(r.stops[0].horizons[0].bid,.56);
