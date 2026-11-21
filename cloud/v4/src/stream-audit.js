@@ -10,9 +10,8 @@ const str=(v,max=MAX_EVENT)=>typeof v==='string'?v.slice(0,max):null;
 const level=v=>(v&&Number.isFinite(v.price)&&typeof v.sizeFp==='string'&&
   /^\d{1,15}(?:\.\d{1,2})?$/.test(v.sizeFp))?
   {price:v.price,sizeFp:v.sizeFp}:null;
-// Fixed, non-secret telemetry mirror for read-only V4 Cloudflare tail automation.
-// This is independent of the durable SQL archive and MUST never log credentials,
-// raw exceptions, order data, account fields, or user-provided strings.
+// Safe V4 telemetry mirror for read-only local Wrangler tail.
+// No secrets, raw exceptions, account fields, contract prices or trade details.
 const AUDIT_TAG='ETH15_V4_AUDIT';
 const DIAG_RESULT=/^(?:HTTP_[1-5][0-9]{2}|NETWORK_(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED))$/;
 const FAULTS=new Set([
@@ -36,8 +35,25 @@ export function v4AuditCode(kind,detail=''){
  if(kind==='STREAM_CONFIG_MISSING')return 'CONFIG_MISSING';
  if(kind==='NETWORK_REST_CHECK'||kind==='WS_HOST_HTTPS_CHECK'){
    const m=/^PRIMARY_([A-Z0-9_]+)\|COMPAT_([A-Z0-9_]+)$/.exec(detail);
-   return m&&CODE.test(m[1])&&CODE.test(m[2])&&
-     m[1].match(new RegExp('^'+CODE.source+'
+   return m&&DIAG_RESULT.test(m[1])&&DIAG_RESULT.test(m[2])?
+     'PRIMARY_'+m[1]+'|COMPAT_'+m[2]:'REDACTED';
+ }
+ if(kind==='AUTH_REST_CHECK'){
+   if(/^AUTH_REST_HTTP_[1-5][0-9]{2}$/.test(detail))return detail;
+   if(/^AUTH_REST_NETWORK_(CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED)$/.test(detail))return detail;
+   if(['AUTH_REST_KEY_IMPORT_FAILED','AUTH_REST_KEY_PEM_BASE64_INVALID',
+     'AUTH_REST_KEY_PEM_BOUNDARIES_INVALID','AUTH_REST_KEY_SIGNING_FAILED',
+     'AUTH_REST_CREDENTIALS_MISSING_OR_INVALID'].includes(detail))return detail;
+   return 'REDACTED';
+ }
+ return null;
+}
+function echoAudit(kind,detail){
+ const code=v4AuditCode(kind,detail);
+ if(code===null)return;
+ try{console.info(AUDIT_TAG+'|'+kind+'|'+code)}catch{}
+}
+export function ensureStreamAudit(sql){
  sql.exec('CREATE TABLE IF NOT EXISTS v4_stream_samples ('+
   'id INTEGER PRIMARY KEY AUTOINCREMENT,ticker TEXT NOT NULL,'+
   'received_at INTEGER NOT NULL,source TEXT NOT NULL,'+
