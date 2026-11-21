@@ -7,6 +7,7 @@ workers_dev = false
 [vars]
 MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
 SCOUT_V4_PAPER_MODE = "disabled"
+V4_STREAM_CAPTURE_ENABLED = "false" # Requires separate isolated deployment approval and read-scoped Kalshi secrets
 
 [[durable_objects.bindings]]
 name = "SCOUT_V4"
