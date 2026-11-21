@@ -67,3 +67,31 @@ test('capture time parameter bounded; no V3 worker name or unauthorized routes',
  assert.throws(()=>parseMinutes(['--minutes','10']));
  assert.throws(()=>parseMinutes(['--worker','eth-15-scout-cloud-v3test']));
 });
+
+
+test('planned collector timeout is a completed capture window, not a Cloudflare failure',()=>{
+ const report=reportText({
+  startedAt:'2026-11-21T07:51:16Z',
+  finishedAt:'2026-11-21T07:54:16Z',
+  total:0,items:[],tailOk:true,stoppedByTimer:true,
+  connectedBanner:false,failureCode:'NONE'});
+ assert.match(report,/Tail session: CAPTURE_WINDOW_COMPLETED/);
+ assert.match(report,/Connection banner observed: NO_OR_UNRECOGNIZED/);
+ assert.match(report,/NONE — inconclusive/);
+ assert.doesNotMatch(report,/Tail session: FAILED_OR_INTERRUPTED/);
+});
+test('diagnostic collector can report a read-only auth/permission error without exposing stderr',()=>{
+ const report=reportText({
+  startedAt:'a',finishedAt:'b',total:0,items:[],
+  tailOk:false,stoppedByTimer:false,connectedBanner:false,
+  failureCode:'AUTH_OR_PERMISSION_ERROR'});
+ assert.match(report,/Tail session: FAILED_OR_INTERRUPTED/);
+ assert.match(report,/AUTH_OR_PERMISSION_ERROR/);
+ assert.doesNotMatch(report,/Bearer|private key|secret material/i);
+});
+test('only actual Wrangler JSON event envelopes count as invocation records',()=>{
+ assert.equal(parseSafeTailEvent(JSON.stringify({status:'connected'})),null);
+ assert.equal(parseSafeTailEvent(JSON.stringify({logs:[],message:'fake'})),null);
+ const actual=JSON.stringify({logs:[],eventTimestamp:1795200000000});
+ assert.equal(parseSafeTailEvent(actual).totalInvocation,1);
+});
