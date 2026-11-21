@@ -169,17 +169,19 @@ export class KalshiBookStream {
     const onYes=(side==='UP')===(action==='SELL');
     const source=levelList(onYes?s.yes:s.no);
     let left=contracts*100,cost=0,available=0;
+    const levels=[];
     for(const [p,size] of source){
       const qty=Math.min(left,size);
       const tradePrice=action==='BUY'?10000-p:p;
       cost+=tradePrice*qty;
+      levels.push({price:tradePrice/10000,contracts:qty/100});
       left-=qty;available+=qty;
       if(left===0)break;
     }
     if(left!==0)return {executable:false,reason:'INSUFFICIENT_DISPLAYED_DEPTH',
       availableContracts:available/100,requestedContracts:contracts};
     return {executable:true,source:snapshot.source,action,side,
-      contracts,averagePrice:cost/(contracts*100*10000),
+      contracts,levels,averagePrice:cost/(contracts*100*10000),
       grossDollars:cost/(100*10000),
       note:'Displayed book walk only; fees, queue, latency and slippage not yet modeled'};
   }
