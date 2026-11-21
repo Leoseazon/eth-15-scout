@@ -87,7 +87,7 @@ export function ensureResearchJournal(sql){
 }
 export function buildResearchTick({startedAt,finishedAt,market=null,
  quoteRetrievedAt=null,quoteObservedAt=null,spot=null,one=null,five=null,context=null,
- feedChecks=null,feedIssues=[],report=null,engineState=null,
+ feedChecks=null,feedIssues=[],report=null,shadowProbe=null,engineState=null,
  lastError=null}){
  if(!millis(startedAt)||!millis(finishedAt)||finishedAt<startedAt)
   throw new TypeError('Invalid tick chronology');
@@ -130,6 +130,7 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
   decision:{classification:'UNVALIDATED_V3_BASELINE_SHADOW',
    notice:str(report?.notice,280),observedEvents,
    calibratedProbability:null,settlementVerified:false,exitFillVerified:false,
+   shadowProbe:shadowProbe&&typeof shadowProbe==='object'?shadowProbe:null,
    stopAudit:engineState?.lastStopAudit?.at>=startedAt&&
     engineState?.lastStopAudit?.at<=finishedAt?
     stopEvidence(engineState.lastStopAudit):null,
