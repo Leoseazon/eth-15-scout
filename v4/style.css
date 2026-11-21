@@ -420,3 +420,18 @@ body.unauthenticated #performance{display:none}
  .research-item{grid-template-columns:1fr;gap:5px}
  .research-item>div:last-child{grid-column:auto}
 }
+
+
+/* Gate 2 stop-exit forensics: read-only and explicit, not performance claims. */
+.stop-analysis{border-top:1px solid var(--stroke-soft);padding:16px 18px 18px}
+.stop-analysis-heading{display:flex;gap:16px;align-items:start;justify-content:space-between}
+.stop-analysis-heading strong{font-size:13px;color:#d8edf3}
+.stop-analysis-heading p{margin-top:6px;max-width:660px;line-height:1.6}
+.stop-analysis-heading button{flex-shrink:0}
+#stop-audit-summary{margin:13px 0;line-height:1.6;color:#c6d6e5}
+.stop-audit-list{max-height:380px;overflow:auto}
+.stop-audit-row{padding:10px 0;border-top:1px solid var(--stroke-soft);
+ display:flex;flex-direction:column;gap:6px;font-size:11px;color:#bed6e7;overflow-wrap:anywhere}
+.stop-audit-row strong{font-size:12px;color:#e1f0f8}
+.stop-audit-row small{color:#88a4c3}
+@media(max-width:680px){.stop-analysis-heading{flex-direction:column}}
