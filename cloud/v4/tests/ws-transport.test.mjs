@@ -120,3 +120,33 @@ test('handshake failure backs off; wrong market IDs cannot trigger connection',a
   assert.equal(await client.ensure(ticker,creds,at+10),false);
   assert.equal(calls,1);
 });
+
+
+test('watchdog requests a fresh snapshot before declaring stream silence',async()=>{
+  const ws=new FakeSocket();
+  const client=new KalshiReadOnlySocket({fetcher:async()=>({status:101,webSocket:ws})});
+  const at=Date.now();
+  await client.ensure(ticker,creds,at);
+  client.handleMessage(JSON.stringify(packet()),at,ws);
+  assert.equal(client.watchdog(at+16000),'SNAPSHOT_REQUESTED');
+  assert.equal(ws.sent[1].cmd,'update_subscription');
+  assert.equal(client.watchdog(at+18000),'OK');
+  assert.equal(client.watchdog(at+50000),'RECONNECT_REQUIRED');
+  assert.equal(client.status(at+50001).connected,false);
+});
+test('stopping during an in-flight handshake does not revive a cancelled stream',async()=>{
+  let release,started;
+  const fetchStarted=new Promise(resolve=>{started=resolve});
+  const ws=new FakeSocket();
+  const client=new KalshiReadOnlySocket({
+    fetcher:async()=>{started();return new Promise(resolve=>{release=resolve})}
+  });
+  const running=client.ensure(ticker,creds,Date.now());
+  await fetchStarted;
+  client.stop();
+  release({status:101,webSocket:ws});
+  assert.equal(await running,false);
+  assert.equal(client.status().connected,false);
+  assert.equal(client.status().targetTicker,null);
+  assert.equal(ws.sent.length,0);
+});
