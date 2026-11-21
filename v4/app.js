@@ -4,6 +4,8 @@
 const API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/dashboard';
 const LOGIN_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/login';
 const JOURNAL_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/journal';
+const RESEARCH_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/research';
+const QUOTE_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/quote-archive';
 const KEY='eth15scout:v4:login-session';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
@@ -19,6 +21,7 @@ const trendStyle=t=>t==='UP'?'success':t==='DOWN'?'danger':'neutral';
 const regimeName=s=>s==='RISK_ON'?'Risk-on':s==='RISK_OFF'?'Risk-off':s==='MIXED'?'Mixed':'Unavailable';
 let token='',expiresAt=0,lastPayload=null,filter='ALL',tf='m5',busy=false,signingIn=false;
 let journalState={ready:false,anchor:null,offset:0,events:[],windows:[],totals:null};
+let researchState={ready:false,anchor:null,offset:0,rows:[],anchorTotal:0,currentTotal:0};
 function storeSession(result,remember){
  token=result.token;expiresAt=result.expiresAt;
  const destination=remember?localStorage:sessionStorage;
@@ -47,6 +50,7 @@ function connectionVisible(show){
 function reset(message='You have signed out. Use your same username and password to sign in again.'){
  token='';expiresAt=0;lastPayload=null;busy=false;
  journalState={ready:false,anchor:null,offset:0,events:[],windows:[],totals:null};
+ researchState={ready:false,anchor:null,offset:0,rows:[],anchorTotal:0,currentTotal:0};
  try{sessionStorage.removeItem(KEY);localStorage.removeItem(KEY)}catch{}
  connectionVisible(true);txt('sync-label','Not connected');txt('updated-label','No data loaded');
  txt('mode-badge','Disconnected');cls('mode-badge','neutral');
@@ -96,6 +100,7 @@ async function load(){
   const result=await response.json();
   if(result.paperOnly!==true||result.readOnly!==true)throw new Error('Unexpected response from the read-only viewer.');
   synchronizeJournal(result);
+  synchronizeResearch(result);
   if(window.ScoutSounds)window.ScoutSounds.observe(result.activity?.events||[]);
   lastPayload=result;connectionVisible(false);render(result);
  }catch(err){
@@ -331,7 +336,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);drawChart();drawQuoteChart();
+ renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();drawChart();drawQuoteChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
