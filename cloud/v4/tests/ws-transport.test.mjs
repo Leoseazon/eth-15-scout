@@ -115,7 +115,7 @@ test('handshake failure backs off; wrong market IDs cannot trigger connection',a
   const at=Date.now();
   assert.equal(await client.ensure(ticker,creds,at),false);
   assert.equal(calls,1);
-  assert.equal(client.status(at).lastFailure,'HANDSHAKE_OR_AUTH_FAILURE');
+  assert.equal(client.status(at).lastFailure,'HANDSHAKE_HTTP_401');
   assert.ok(client.status(at).retryAfter>at);
   assert.equal(await client.ensure(ticker,creds,at+10),false);
   assert.equal(calls,1);
@@ -149,4 +149,44 @@ test('stopping during an in-flight handshake does not revive a cancelled stream'
   assert.equal(client.status().connected,false);
   assert.equal(client.status().targetTicker,null);
   assert.equal(ws.sent.length,0);
+});
+
+
+test('sanitized diagnostic differentiates malformed PEM, unsupported keys and HTTP refusal without leaking credentials',async()=>{
+ const reasons=[];
+ const broken=new KalshiReadOnlySocket({
+  fetcher:async()=>{throw Error('private key must never appear in logs')},
+  onFault:reason=>reasons.push(reason)});
+ const now=Date.now();
+ const invalid={keyId:'test',privatePem:'-----BEGIN PRIVATE KEY-----\ninvalid\n-----END PRIVATE KEY-----'};
+ assert.equal(await broken.ensure(ticker,invalid,now),false);
+ assert.equal(broken.status(now).lastFailure,'KEY_PEM_BASE64_INVALID');
+ assert.ok(reasons.every(r=>!r.includes('invalid')));
+ const badFormat=new KalshiReadOnlySocket({onFault:r=>reasons.push(r)});
+ assert.equal(await badFormat.ensure(ticker,{
+  keyId:'test',privatePem:'not a key'},now),false);
+ assert.equal(badFormat.status(now).lastFailure,'KEY_PEM_BOUNDARIES_INVALID');
+ assert.equal(reasons.includes('KEY_PEM_BOUNDARIES_INVALID'),true);
+});
+test('read-only websocket handshakes classify 403, 429 and network failures without reading server bodies',async()=>{
+ for(const status of [403,429,500]){
+  const observed=[];
+  const client=new KalshiReadOnlySocket({fetcher:async()=>({
+   status,webSocket:null,json:()=>{throw Error('body must not be read')}}),
+   onFault:r=>observed.push(r)});
+  assert.equal(await client.ensure(ticker,creds,Date.now()),false);
+  assert.equal(client.status().lastFailure,'HANDSHAKE_HTTP_'+status);
+  assert.deepEqual(observed,['HANDSHAKE_HTTP_'+status]);
+ }
+ const network=new KalshiReadOnlySocket({fetcher:async()=>{
+  throw Error('network error contains sensitive info');
+ }});
+ assert.equal(await network.ensure(ticker,creds,Date.now()),false);
+ assert.equal(network.status().lastFailure,'NETWORK_CONNECT_FAILED');
+ assert.doesNotMatch(network.status().lastFailure,/sensitive/);
+});
+test('handshake 101 without upgrade socket reports safe and distinct failure',async()=>{
+ const client=new KalshiReadOnlySocket({fetcher:async()=>({status:101})});
+ assert.equal(await client.ensure(ticker,creds,Date.now()),false);
+ assert.equal(client.status().lastFailure,'UPGRADE_SOCKET_MISSING');
 });
