@@ -336,7 +336,7 @@ function render(data){
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
  riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();drawChart();drawQuoteChart();
+ renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -1083,3 +1083,20 @@ async function analyzeStops(){
  }
 }
 $('stop-audit-run').addEventListener('click',analyzeStops);
+
+
+function renderStreamHealth(data){
+ const s=data?.status||{},c=s.streamConnection||{},archive=s.streamArchive||{};
+ const enabled=s.streamCaptureEnabled===true;
+ txt('v4-stream-state',!enabled?'Disabled · requires separate V4 release':
+   c.connected?(c.quote?.fresh?'Connected · fresh snapshot':'Connected · book not verified fresh'):
+   'Enabled, not connected · no live quote asserted');
+ txt('v4-stream-count',Number.isFinite(archive.count)?
+  archive.count.toLocaleString('en-US'):'—');
+ txt('v4-stream-gaps',enabled&&Number.isFinite(c.sequenceGaps)?
+  String(c.sequenceGaps)+' this connection':'—');
+ const received=archive.latest?.receivedAt;
+ txt('v4-stream-received',Number.isSafeInteger(received)?
+  ago(received)+' · '+(archive.latest?.ticker||'unknown contract'):
+  'No authenticated book observation');
+}
