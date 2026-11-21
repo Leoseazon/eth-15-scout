@@ -74,7 +74,9 @@ export class KalshiBookStream {
     this.invalidate('DISCONNECTED');this.sid=null;this.seq=null;
   }
   apply(packet,receivedAt=Date.now()){
-    const envelope=validateEnvelope(packet,receivedAt);
+    let envelope;
+    try{envelope=validateEnvelope(packet,receivedAt)}
+    catch{this.invalidate('MALFORMED_ENVELOPE');return {accepted:false,reason:'MALFORMED_ENVELOPE',resync:true};}
     if(!envelope)return {accepted:false,ignored:true};
     const {ticker,event,sent}=envelope;
     if(this.sid!==null&&packet.sid!==this.sid){
