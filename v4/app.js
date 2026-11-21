@@ -769,3 +769,184 @@ function drawQuoteChart(){
  const up=data.filter(q=>q.yes_bid!==null).length,no=data.filter(q=>q.no_bid!==null).length;
  meta.textContent='Recorded REST observations: '+data.length+' · UP bid values: '+up+' · DOWN bid values: '+no+' · Cyan: UP bid / Violet: DOWN bid. May be cached; these are not verified exchange-tick timestamps.';
 }
+
+
+/* V4 research evidence: read-only, anchored and never stored in localStorage.
+ * Original V3 journals remain independent; no simulated fill is claimed here.
+ */
+function synchronizeResearch(data){
+ if(data.researchAvailable!==true||!Array.isArray(data.researchHistory))return;
+ const recent=data.researchHistory.filter(x=>Number.isSafeInteger(x?.id)&&x.id>0);
+ const nTotal=Number(data.researchTotal);
+ if(!researchState.ready){
+  researchState={ready:true,
+   anchor:Number.isSafeInteger(data.researchAnchor)?data.researchAnchor:0,
+   offset:recent.length,rows:[...recent],
+   anchorTotal:Number.isSafeInteger(nTotal)?nTotal:0,
+   currentTotal:Number.isSafeInteger(nTotal)?nTotal:0};
+ }else{
+  researchState.currentTotal=Number.isSafeInteger(nTotal)?nTotal:researchState.currentTotal;
+  const ids=new Set(researchState.rows.map(x=>x.id));
+  for(const row of recent)if(!ids.has(row.id)){
+   researchState.rows.push(row);ids.add(row.id);
+  }
+  researchState.rows.sort((a,b)=>b.id-a.id);
+ }
+}
+function researchElement(r){
+ const el=document.createElement('div');el.className='research-item';
+ const date=document.createElement('time');
+ date.textContent=r.observedAt?new Date(r.observedAt).toLocaleString('en-US',{
+  timeZone:'America/Chicago',month:'short',day:'numeric',hour:'2-digit',
+  minute:'2-digit',second:'2-digit'}):'—';
+ const contract=document.createElement('span');
+ contract.className='research-ticker';
+ contract.textContent=r.ticker||'No valid market';
+ const feed=document.createElement('div');
+ const status=document.createElement('strong');
+ const good=r.dataStatus==='READY_FOR_HEURISTIC_EVALUATION';
+ status.className=good?'research-healthy':'research-incomplete';
+ status.textContent=good?'Baseline feeds complete':'Feeds incomplete';
+ const prices=document.createElement('small');
+ prices.textContent='REST UP '+quote(r.quote?.yesAsk)+' · DOWN '+quote(r.quote?.noAsk)+
+  ' · Kraken '+(n(r.kraken?.spot)===null?'—':'$'+fmt(r.kraken.spot,2));
+ feed.append(status,prices);
+ const decision=document.createElement('div');
+ const summary=document.createElement('div');
+ summary.textContent=String(r.decision?.notice||r.lastError||'No decision note recorded');
+ const details=document.createElement('details');details.className='research-detail';
+ const toggle=document.createElement('summary');toggle.textContent='View feed, signal and timing evidence';
+ const payload=document.createElement('pre');
+ payload.textContent=JSON.stringify({
+  observedAt:r.observedAt,processingMs:r.processingMs,
+  secondsRemaining:r.secondsRemaining,quote:r.quote,
+  reference:r.kraken,feeds:r.feeds,issues:r.issues,
+  dailyRegime:r.dailyRegime,decision:r.decision,
+  paperSnapshot:r.paperSnapshot,lastError:r.lastError},null,2);
+ details.append(toggle,payload);
+ decision.append(summary,details);
+ el.append(date,contract,feed,decision);
+ return el;
+}
+function renderResearch(){
+ const root=$('research-list');if(!root)return;
+ root.replaceChildren();
+ const ready=researchState.ready;
+ $('research-older').disabled=!ready||researchState.offset>=researchState.anchorTotal;
+ $('research-export').disabled=!ready||!journalState.ready;
+ txt('research-count',ready?String(researchState.currentTotal)+' recorded':'Not collecting yet');
+ txt('research-summary',ready?
+  String(researchState.currentTotal)+' durable engine observations · '+
+  String(researchState.rows.length)+' currently loaded · '+
+  String(researchState.anchorTotal)+' in original anchored history':
+  'V4 is not connected to its research recorder. No observation is being claimed.');
+ if(!ready||!researchState.rows.length){
+  const empty=document.createElement('div');empty.className='empty-state';
+  empty.textContent=ready?'No research observations recorded yet. No historical data has been invented.':
+   'V4 research recorder has not been deployed or connected. Development-only records cannot appear here.';
+  root.append(empty);return;
+ }
+ const shown=researchState.rows.slice(0,250);
+ for(const r of shown)root.append(researchElement(r));
+ if(researchState.rows.length>shown.length){
+  const note=document.createElement('p');note.className='fine';
+  note.textContent='Showing 250 of '+researchState.rows.length+
+   ' loaded records for performance. Full history remains available in the JSON export.';
+  root.append(note);
+ }
+}
+function researchStatus(message){txt('research-message',message);}
+async function researchPageRequest(offset,anchor){
+ const url=new URL(RESEARCH_API);
+ url.searchParams.set('limit','100');url.searchParams.set('offset',String(offset));
+ if(anchor!==null)url.searchParams.set('anchor',String(anchor));
+ const resp=await fetch(url.toString(),{cache:'no-store',
+  headers:{Authorization:'Bearer '+token}});
+ if(!resp.ok)throw Error('Research page unavailable (HTTP '+resp.status+')');
+ const page=await resp.json();
+ if(page.readOnly!==true||page.paperOnly!==true||!Array.isArray(page.ticks)||
+  !Number.isSafeInteger(page.total)||!Number.isSafeInteger(page.anchor))
+  throw Error('Invalid research archive response');
+ return page;
+}
+async function loadOlderResearch(){
+ if(!researchState.ready||!token)return;
+ $('research-older').disabled=true;
+ researchStatus('Loading older V4 decision evidence…');
+ try{
+  const page=await researchPageRequest(researchState.offset,researchState.anchor);
+  if(page.anchor!==researchState.anchor||page.total!==researchState.anchorTotal)
+   throw Error('Research anchor changed; reload the dashboard');
+  if(!page.ticks.length&&researchState.offset<researchState.anchorTotal)
+   throw Error('Research archive ended unexpectedly');
+  const ids=new Set(researchState.rows.map(x=>x.id));
+  for(const r of page.ticks)if(!ids.has(r.id)){
+   researchState.rows.push(r);ids.add(r.id);
+  }
+  researchState.offset+=page.ticks.length;
+  researchState.rows.sort((a,b)=>b.id-a.id);
+  renderResearch();
+  researchStatus('Loaded '+page.ticks.length+' older observations; no V4 records were deleted.');
+ }catch(err){
+  researchStatus('Older research unavailable: '+String(err?.message||err));
+  renderResearch();
+ }
+}
+async function exportArchive(url,collection){
+ let anchor=null,offset=0,total=null;const records=[];
+ for(;;){
+  const u=new URL(url);u.searchParams.set('limit','100');
+  u.searchParams.set('offset',String(offset));
+  if(anchor!==null)u.searchParams.set('anchor',String(anchor));
+  const resp=await fetch(u.toString(),{cache:'no-store',
+   headers:{Authorization:'Bearer '+token}});
+  if(!resp.ok)throw Error('Archive export interrupted (HTTP '+resp.status+')');
+  const page=await resp.json();
+  if(page.paperOnly!==true||page.readOnly!==true||
+   !Array.isArray(page[collection])||
+   !Number.isSafeInteger(page.anchor)||!Number.isSafeInteger(page.total))
+   throw Error('Unverified archive response');
+  if(anchor===null){anchor=page.anchor;total=page.total}
+  else if(anchor!==page.anchor||total!==page.total)
+   throw Error('Archive changed within the anchored export');
+  const batch=page[collection];
+  records.push(...batch);offset+=batch.length;
+  if(offset>=total)return {anchor,total,records};
+  if(!batch.length||offset>1000000)throw Error(
+   'Archive exceeds the available pagination range; export not marked complete');
+  if(offset%1000===0)researchStatus('Exporting '+collection+'… '+offset+'/'+total);
+ }
+}
+async function exportCompleteEvidence(){
+ const btn=$('research-export');if(!token||!researchState.ready||!journalState.ready)return;
+ btn.disabled=true;researchStatus('Building anchored research export from Cloudflare…');
+ try{
+  const base=await fullJournal();
+  const [ticks,quotes]=await Promise.all([
+   exportArchive(RESEARCH_API,'ticks'),
+   exportArchive(QUOTE_ARCHIVE_API,'quotes')
+  ]);
+  const payload={format:'ETH-15 Scout V4 complete research evidence',version:3,
+   exportedAt:new Date().toISOString(),paperOnly:true,
+   completeness:'Complete through each included per-source high-water anchor',
+   warnings:[
+    'Kalshi REST snapshots may be cached and are not verified exchange tick times.',
+    'Kraken spot is not the official Kalshi settlement index.',
+    'Displayed prices are not verified executable fills.',
+    'V4 WebSocket streaming and official ETH index recordings are not yet connected.'
+   ],
+   journals:base,researchTicks:ticks.records,restQuoteArchive:quotes.records,
+   anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor},
+   totals:{...base.totals,researchTicks:ticks.total,restQuotes:quotes.total}};
+  const stamp=new Date().toISOString().slice(0,10);
+  download('ETH-15-Scout-V4-Complete-Evidence-'+stamp+'.json',
+   JSON.stringify(payload,null,2),'application/json');
+  researchStatus('Evidence export created: '+ticks.total+' tick observations, '+
+   quotes.total+' recorded REST quotes, plus the existing paper journal and outcomes.');
+ }catch(err){
+  researchStatus('Export incomplete; no complete archive was claimed: '+
+   String(err?.message||err));
+ }finally{if(lastPayload)renderResearch();}
+}
+$('research-older').addEventListener('click',loadOlderResearch);
+$('research-export').addEventListener('click',exportCompleteEvidence);
