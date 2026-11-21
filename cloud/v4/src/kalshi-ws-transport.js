@@ -9,35 +9,47 @@ export const KALSHI_WS_URL='https://external-api-ws.kalshi.com/trade-api/ws/v2';
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
+// Error reason codes are safe for the private V4 audit database. Never persist
+// credentials, signatures, response bodies or raw exception messages.
+const authError=code=>Object.assign(new Error(code),{kalshiCode:code});
 function base64(bytes){
   let s='';for(let i=0;i<bytes.length;i+=8192)
     s+=String.fromCharCode(...bytes.subarray(i,i+8192));
   return btoa(s);
 }
 export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
-  if(typeof keyId!=='string'||!keyId.trim()||keyId.length>200||
-    typeof privatePem!=='string'||!/^-----BEGIN PRIVATE KEY-----/.test(privatePem.trim())||
-    !Number.isSafeInteger(now)||now<=0)throw new TypeError('Missing or invalid Kalshi WebSocket credentials');
+  if(typeof keyId!=='string'||!keyId.trim()||keyId.trim().length>200||
+    typeof privatePem!=='string'||!Number.isSafeInteger(now)||now<=0)
+    throw authError('CREDENTIALS_MISSING_OR_INVALID');
+  if(!/^-----BEGIN PRIVATE KEY-----/.test(privatePem.trim())||
+     !/-----END PRIVATE KEY-----$/.test(privatePem.trim()))
+    throw authError('KEY_PEM_BOUNDARIES_INVALID');
   const pem=privatePem.trim().replace(/\r/g,'');
   const body=pem.replace(/^-----BEGIN PRIVATE KEY-----\s*/,'').replace(/\s*-----END PRIVATE KEY-----$/,'').replace(/\s+/g,'');
   if(!/^[A-Za-z0-9+/]+={0,2}$/.test(body)||body.length>16384)
-    throw new TypeError('Invalid PKCS8 private key envelope');
+    throw authError('KEY_PEM_BASE64_INVALID');
   // Kalshi recommends Ed25519 PKCS#8; self-generated RSA PKCS#8 also works.
   // Kalshi-issued RSA PKCS#1 keys must be converted to PKCS#8 offline.
   // No persistent key cache and no secret logging.
-  const binary=Uint8Array.from(atob(body),c=>c.charCodeAt(0));
+  let binary;
+  try{binary=Uint8Array.from(atob(body),c=>c.charCodeAt(0))}
+  catch{throw authError('KEY_PEM_BASE64_INVALID')}
   let key,method;
   try{
     key=await subtle.importKey('pkcs8',binary.buffer,{name:'Ed25519'},false,['sign']);
     method={name:'Ed25519'};
   }catch{
-    key=await subtle.importKey('pkcs8',binary.buffer,{name:'RSA-PSS',hash:'SHA-256'},false,['sign']);
-    method={name:'RSA-PSS',saltLength:32};
+    try{
+      key=await subtle.importKey('pkcs8',binary.buffer,{name:'RSA-PSS',hash:'SHA-256'},false,['sign']);
+      method={name:'RSA-PSS',saltLength:32};
+    }catch{throw authError('KEY_IMPORT_FAILED')}
   }
   const timestamp=String(now);
-  const signature=new Uint8Array(await subtle.sign(method,
-    key,enc.encode(timestamp+'GET'+KALSHI_SIGN_PATH)));
-  return {'KALSHI-ACCESS-KEY':keyId,
+  let signature;
+  try{signature=new Uint8Array(await subtle.sign(method,
+    key,enc.encode(timestamp+'GET'+KALSHI_SIGN_PATH)))}
+  catch{throw authError('KEY_SIGNING_FAILED')}
+  return {'KALSHI-ACCESS-KEY':keyId.trim(),
     'KALSHI-ACCESS-SIGNATURE':base64(signature),
     'KALSHI-ACCESS-TIMESTAMP':timestamp};
 }
@@ -81,16 +93,24 @@ export class KalshiReadOnlySocket {
     if(at<this.retryAfter)return false;
     this.connecting=true;this.ticker=ticker;
     const generation=++this.generation;
+    let stage='AUTH_SIGNING';
     try{
       const headers=await wsAuthHeaders({...credentials,now:at});
       if(this.generation!==generation)return false; // Stopped or switched while signing.
+      stage='NETWORK_CONNECT';
       const response=await this.fetcher(KALSHI_WS_URL,{headers:{...headers,Upgrade:'websocket'}});
       if(this.generation!==generation){
         try{response.webSocket?.accept();response.webSocket?.close(1000,'V4 cancelled')}catch{}
         return false;
       }
-      if(response.status!==101||!response.webSocket)
-        throw new Error('Kalshi WebSocket handshake failed (HTTP '+response.status+')');
+      if(response.status!==101){
+        const status=Number.isInteger(response.status)&&response.status>=100&&response.status<=599?
+          response.status:'UNKNOWN';
+        this.socketClosed('HANDSHAKE_HTTP_'+status,at);
+        return false;
+      }
+      if(!response.webSocket){this.socketClosed('UPGRADE_SOCKET_MISSING',at);return false;}
+      stage='SOCKET_SETUP';
       const ws=response.webSocket;
       const owner=this;
       ws.addEventListener('message',event=>owner.handleMessage(event.data,Date.now(),ws));
@@ -100,12 +120,19 @@ export class KalshiReadOnlySocket {
       ws.accept();
       this.socket=ws;this.book=new KalshiBookStream();
       this.commandId=1;this.lastMessageAt=at;this.resyncAt=0;
+      stage='SUBSCRIPTION_SEND';
       ws.send(JSON.stringify(subscribeOrderbook(ticker,this.commandId++)));
       this.lastSubscriptionAt=at;
       this.lastFailure=null;
       return true;
     }catch(err){
-      if(this.generation===generation)this.socketClosed('HANDSHAKE_OR_AUTH_FAILURE',at);
+      // No raw error.message, Kalshi response body or credential in storage.
+      const code=typeof err?.kalshiCode==='string'?err.kalshiCode:
+        stage==='NETWORK_CONNECT'?'NETWORK_CONNECT_FAILED':
+        stage==='SOCKET_SETUP'?'SOCKET_SETUP_FAILED':
+        stage==='SUBSCRIPTION_SEND'?'SUBSCRIPTION_SEND_FAILED':
+        'AUTH_SIGNING_FAILED';
+      if(this.generation===generation)this.socketClosed(code,at);
       return false;
     }finally{if(this.generation===generation)this.connecting=false;}
   }
