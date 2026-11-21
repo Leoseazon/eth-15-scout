@@ -26,7 +26,7 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [ ] Create V4-only Worker, DO class/instance, SQLite storage, viewer secrets/session, dashboard theme.
 - [ ] V4 remains HARD-DISARMED for simulated entries until independently approved.
 - [ ] Add deterministic settlement-average arithmetic and minimal append-only quote recorder, with source timestamps and test fixtures.
-- [ ] Run all existing V3 tests, V4 tests, dry-run builds and branch diff checks.
+- [x] Run existing V3 tests, V4 unit tests, syntax checks and standalone Wrangler dry-run CI; complete branch isolation audit again before release.
 - [ ] Prove V4 has no code path to V3's Durable Object or settings.
 
 ## Gate 2 — Data acquisition
@@ -47,6 +47,28 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [ ] Validate market-data continuity on real streams before any paper execution uses the model.
 
 **Gate 2A/2B prototype scope:** No new trading rules, deployment, real trades, trading-model calibration or Cloudflare secret configuration. The old REST recorder is still preliminary and labeled possibly cached. Passing mocked transport tests does NOT mean a Cloudflare connection or live streaming feed is operating. A dedicated Kalshi `read`-scope key, never a default read/write key, is required for eventual V4-only deployment. WebCrypto code accepts Ed25519 PKCS#8 or RSA-PSS PKCS#8; Kalshi-issued RSA PKCS#1 PEM needs offline PKCS#8 conversion first. Never commit or send private keys in chat.
+
+## Evidence retention contract — preserve V3 and extend V4
+- [x] Preserve V3-style append-only event, completed-trade, WATCH/final-PASS, pending paper positions and official Kalshi market-outcome records in separate V4 Durable Object storage. Dashboard recent-row limits never truncate the canonical archive.
+- [x] Add V4 append-only research_ticks recording every monitored engine evaluation, including no-market windows, source receipt/proxy times, observed contract prices, 1m/5m signals, 3m/5m structure, market regime, feed failures, decision notes, account state and stop diagnostics.
+- [x] Add separate research_book_samples schema and writer for timestamped YES/NO WebSocket bids and sizes; NOT connected to live streaming.
+- [x] Expose bounded, authenticated research and quote archive pages with high-water anchored pagination, on-site evidence timeline, load-older interactions and JSON export combining research ticks, REST prices, journal and official outcomes.
+- [x] Add optional on-site stop-loss postmortem from stored trades and bid observations, looking +30/+60/+120 seconds ahead only when real observations exist. Explicitly separate official settlement direction from resale and never infer missing fills.
+- [ ] Store authenticated WebSocket book paths, market trades, exchange timestamps and freshness after future Gate 2 isolated deployment and data-retention permission review.
+- [ ] Upgrade archival pagination beyond one million observations, implement coverage/gap reporting and consistent exports for long-term operation.
+- [ ] Add full entry/no-entry rationales, fee-adjusted hypothetical fills, shadow predictions and model-version lineage only when forecasting models exist.
+- [ ] Add automated post-stop followups from true streaming snapshots; current postmortem is based on possibly cached REST and is not proof of executable resale.
+- [ ] Verify live durable history/export coverage under long-running load. CI alone does not establish historical completeness.
+
+## V4 stop-loss experiment — high priority
+- [x] Keep emergency −40% contract bid decline stop armed strictly inside the final six minutes. No unilateral widening to 50%/60% or removing it based on a few later-winning settlements.
+- [x] Fix the V4 exact 40% threshold using integer 1/10000-dollar prices and whole-second six-minute boundary; regression-test equality, 6:00 vs 5:59, invalid data and expiry. V3 remains untouched.
+- [x] Change V4-only two-candle adverse-reversal evaluation to start after purchase, requiring two consecutive fully post-entry closed 1m candles, at most one of seven directional confirmations and confirmed adverse 3m/5m structure. The existing emergency-stop, 96¢ target and last-minute policies retain priority. Treat this as an experiment, not a proven improvement.
+- [x] Persist stop arming time, entry-to-bid decline, available bid, estimated mark P&L, severe-indicator evidence and 3m/5m structure in the V4 research history.
+- [ ] Run counterfactual replay and out-of-sample shadow comparisons: early-candle exits, no change, or hold-to-settlement; account for fills, slippage, depth, missed winners, severe losers and data gaps.
+- [ ] Measure cases that crossed the −40% threshold before six-minute arming and losses that exceeded a nominal 40% due to gaps, late checks or thin bids.
+
+**Interpretation:** A 40% contract-price trigger is not a guaranteed execution price. A sellable bid may gap or have insufficient depth. A $2.29 simulated loss alongside $0.96 winners can occur even with a nominal 40% stop. The mechanism must be established from timed bid and depth evidence rather than assumed.
 
 ## Gate 3 — Modeling
 - [ ] **Settlement model:** time, target, official-reference distance, intrawindow volatility, and final-minute accumulated official average.
