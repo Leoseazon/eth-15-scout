@@ -1,0 +1,20 @@
+# Separate, paper-disabled V4 shadow Worker: deploy ONLY with explicit later approval.
+name = "eth-15-scout-cloud-v4test"
+main = "v4/src/worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = false
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+SCOUT_V4_PAPER_MODE = "disabled"
+
+[[durable_objects.bindings]]
+name = "SCOUT_V4"
+class_name = "ScoutEngineV4"
+
+[[migrations]]
+tag = "v4-new-class-v1"
+new_sqlite_classes = ["ScoutEngineV4"]
+
+[triggers]
+crons = ["* * * * *"]
