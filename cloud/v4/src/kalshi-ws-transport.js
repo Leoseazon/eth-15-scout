@@ -85,7 +85,10 @@ export class KalshiReadOnlySocket {
       const headers=await wsAuthHeaders({...credentials,now:at});
       if(this.generation!==generation)return false; // Stopped or switched while signing.
       const response=await this.fetcher(KALSHI_WS_URL,{headers:{...headers,Upgrade:'websocket'}});
-      if(this.generation!==generation){try{response.webSocket?.close()}catch{};return false;}
+      if(this.generation!==generation){
+        try{response.webSocket?.accept();response.webSocket?.close(1000,'V4 cancelled')}catch{}
+        return false;
+      }
       if(response.status!==101||!response.webSocket)
         throw new Error('Kalshi WebSocket handshake failed (HTTP '+response.status+')');
       const ws=response.webSocket;
