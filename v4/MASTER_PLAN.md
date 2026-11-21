@@ -40,12 +40,13 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 ### Gate 2A — Read-only WebSocket book reconstruction (development checkpoint)
 - [x] Verified Kalshi's current WebSocket orderbook envelope: `orderbook_snapshot` uses `yes_dollars_fp`/`no_dollars_fp`; `orderbook_delta` uses `price_dollars`, `delta_fp`, and `side`. Subscription-wide `seq` must be contiguous; per-market `clock` is not a gap counter.
 - [x] Implemented independent, tested V4-only pure `KalshiBookStream` library with exact fixed-point parsing, complementary ask/depth reconstruction, fail-closed sequence gaps, snapshot recovery, source timestamps, stale-book flags, and research-only displayed-depth walkthroughs.
-- [ ] Wire authenticated Kalshi WebSocket transport, handshake signing, reconnect/backoff, and subscription rollover to the isolated V4 Durable Object. The current book library is not yet fed by a live socket.
+- [x] Develop a V4-only, deliberately **unwired** read-only WebSocket transport prototype with Kalshi-signed RSA-PSS PKCS#8 / recommended Ed25519 PKCS#8 handshakes, scoped single-market subscription, specific snapshot recovery, and reconnect/backoff; deterministic mocked-channel tests are included.
+- [ ] Wire the prototype to the isolated V4 Durable Object and validate Cloudflare WebSocket lifecycles, market rollover, recovery, no-downtime failure modes, and actual Kalshi scopes. The book library is **not** yet fed by a live socket.
 - [ ] Record authenticated stream observations with provenance in durable storage; enforce bounds, cleanup, permissions, read-only gateway exposure, and long-run/reconnect tests.
 - [ ] Verify official ETH index entitlement, start and ending 60-second settlement averages, and historical official-result reconciliation.
 - [ ] Validate market-data continuity on real streams before any paper execution uses the model.
 
-**Gate 2A scope:** No new trading rules, deployment, real trades, trading-model calibration or Cloudflare secret configuration. The old REST recorder is still preliminary and labeled possibly cached. A stream model test passing does NOT mean stream transport or live data is operating.
+**Gate 2A/2B prototype scope:** No new trading rules, deployment, real trades, trading-model calibration or Cloudflare secret configuration. The old REST recorder is still preliminary and labeled possibly cached. Passing mocked transport tests does NOT mean a Cloudflare connection or live streaming feed is operating. A dedicated Kalshi `read`-scope key, never a default read/write key, is required for eventual V4-only deployment. WebCrypto code accepts Ed25519 PKCS#8 or RSA-PSS PKCS#8; Kalshi-issued RSA PKCS#1 PEM needs offline PKCS#8 conversion first. Never commit or send private keys in chat.
 
 ## Gate 3 — Modeling
 - [ ] **Settlement model:** time, target, official-reference distance, intrawindow volatility, and final-minute accumulated official average.
