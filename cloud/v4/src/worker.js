@@ -292,6 +292,12 @@ export class ScoutEngineV4 extends DurableObject {
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     try{report=engine.step(market,one,m5,fresh,context)}
     catch(e){error='V2 evaluation failed: '+safeErr(e)}
+    // V4 candidate scanning is read-only: a qualifying heuristic NEVER arms
+    // or purchases a paper contract, even when markets remain uncalibrated.
+    let shadowProbe=null;
+    try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
+    catch(e){shadowProbe={status:'UNAVAILABLE',reason:'Shadow probe failure',
+      candidate:null,calibratedProbability:null,executableFillVerified:false}}
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
     // Chart reuses the engine's successfully fetched reference candles.
@@ -332,7 +338,7 @@ export class ScoutEngineV4 extends DurableObject {
         startedAt:now,finishedAt:Date.now(),market,
         quoteRetrievedAt:s.lastQuoteRetrievedAt,quoteObservedAt,spot:tickerSpot,
         one,five:m5,context,feedChecks,feedIssues,report,
-        engineState:s,lastError:error
+        shadowProbe,engineState:s,lastError:error
       });
       s.lastResearchTickAt=research.observedAt;
       s.lastResearchError=null;
