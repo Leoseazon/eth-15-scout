@@ -6,6 +6,7 @@ const LOGIN_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/login
 const JOURNAL_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/journal';
 const RESEARCH_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/research';
 const QUOTE_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/quote-archive';
+const REST_BOOK_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/rest-book';
 const KEY='eth15scout:v4:login-session';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
@@ -744,15 +745,25 @@ function drawQuoteChart(){
    lastPayload.streamHistory.filter(q=>q?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
      q.ticker===ticker&&Number.isSafeInteger(q.receivedAt)):[]; 
  const streaming=stream.length>0;
+ const officialRest=Array.isArray(lastPayload?.restBookHistory)?
+   lastPayload.restBookHistory.filter(q=>
+     q?.source==='KALSHI_OFFICIAL_REST_ORDERBOOK'&&q.ticker===ticker&&
+     Number.isSafeInteger(q.receivedAt)):[];
+ const directRest=!streaming&&officialRest.length>0;
  const raw=streaming?stream.map(q=>({
    ticker:q.ticker,observed_at:q.receivedAt,
    yes_bid:q.valid&&q.fresh?q.yesBid?.price??null:null,
    no_bid:q.valid&&q.fresh?q.noBid?.price??null:null
+ })):directRest?officialRest.map(q=>({
+   ticker:q.ticker,observed_at:q.receivedAt,
+   yes_bid:!q.lockedOrCrossed?q.yesBid?.price??null:null,
+   no_bid:!q.lockedOrCrossed?q.noBid?.price??null:null
  })):(Array.isArray(lastPayload?.quoteHistory)?lastPayload.quoteHistory:[]);
  const data=raw.filter(q=>q?.ticker===ticker&&Number.isFinite(Number(q.observed_at)))
    .sort((a,b)=>Number(a.observed_at)-Number(b.observed_at));
  txt('v4-quote-source',streaming?'Kalshi WebSocket book · read-only archive':
-   'REST snapshots · best effort · may be cached');
+   directRest?'Official Kalshi REST depth · receipt timestamps only':
+   'REST proxy quotes · best effort · may be cached');
  const left=30,right=w-16,top=12,bottom=h-26;
  ctx.strokeStyle='#334663';ctx.lineWidth=1;ctx.fillStyle='#94a7c5';ctx.font='11px sans-serif';
  for(let i=0;i<=4;i++){
@@ -785,7 +796,8 @@ function drawQuoteChart(){
   data.length+' · UP bid values: '+up+' · DOWN bid values: '+no+
   ' · Cyan: UP bid / Violet: DOWN bid. '+
   (streaming?'Historic snapshots of displayed bids; not proven fills or settlement values.':
-   'REST prices may be cached; no verified exchange event timestamps.');
+   directRest?'Direct REST order-book bids; receipt time only, no exchange event timestamp or proven fills.':
+   'REST proxy prices may be cached; no verified exchange event timestamps.');
 }
 
 
@@ -867,7 +879,8 @@ function renderResearch(){
   String(researchState.currentTotal)+' durable engine observations · '+
   String(researchState.rows.length)+' currently loaded · '+
   String(researchState.anchorTotal)+' in original anchored history · '+
-  String(lastPayload?.streamArchiveTotal??'—')+' recorded WebSocket book observations':
+  String(lastPayload?.streamArchiveTotal??'—')+' recorded WebSocket book observations · '+
+  String(lastPayload?.restBookArchiveTotal??'—')+' official REST depth snapshots':
   'V4 is not connected to its research recorder. No observation is being claimed.');
  if(!ready||!researchState.rows.length){
   const empty=document.createElement('div');empty.className='empty-state';
