@@ -6,13 +6,20 @@ compatibility_date = "2026-11-18"
 # Newly created Workers remain disabled unless the flag is explicitly set.
 keep_vars = true
 workers_dev = false
+preview_urls = false # keep private version/preview URLs disabled
 
 [vars]
 MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
 SCOUT_V4_PAPER_MODE = "disabled"
-# V4_STREAM_CAPTURE_ENABLED intentionally NOT declared here.
-# Missing flag is fail-closed (no WebSocket). Production flag is managed in
-# the V4 Cloudflare dashboard, which keep_vars retains during code deploy.
+# Dashboard-approved V4-only read-only market-data collection.
+# This is NOT simulated trade activation; SCOUT_V4_PAPER_MODE remains disabled.
+V4_STREAM_CAPTURE_ENABLED = "true"
+
+[observability.logs]
+enabled = true
+
+[observability.issues]
+enabled = false
 
 [[durable_objects.bindings]]
 name = "SCOUT_V4"
