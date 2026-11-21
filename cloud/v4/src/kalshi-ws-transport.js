@@ -47,7 +47,7 @@ export class KalshiReadOnlySocket {
     this.book=new KalshiBookStream();this.socket=null;this.ticker=null;
     this.lastMessageAt=null;this.lastSubscriptionAt=null;
     this.attempts=0;this.retryAfter=0;this.commandId=1;
-    this.connecting=false;this.resyncAt=0;this.lastFailure=null;
+    this.connecting=false;this.resyncAt=0;this.lastFailure=null;this.generation=0;
   }
   fault(reason,at=Date.now()){
     this.book.invalidate(reason);
@@ -61,8 +61,9 @@ export class KalshiReadOnlySocket {
     try{this.onFault(reason)}catch{}
   }
   stop(){
+    this.generation++;this.connecting=false;
     const ws=this.socket;this.socket=null;this.book.disconnected();this.ticker=null;
-    this.retryAfter=0;this.attempts=0;
+    this.retryAfter=0;this.attempts=0;this.resyncAt=0;
     try{ws?.close(1000,'V4 shadow stream stopped')}catch{}
   }
   status(now=Date.now()){
@@ -79,9 +80,12 @@ export class KalshiReadOnlySocket {
     if(this.socket?.readyState===1||this.connecting)return false;
     if(at<this.retryAfter)return false;
     this.connecting=true;this.ticker=ticker;
+    const generation=++this.generation;
     try{
       const headers=await wsAuthHeaders({...credentials,now:at});
+      if(this.generation!==generation)return false; // Stopped or switched while signing.
       const response=await this.fetcher(KALSHI_WS_URL,{headers:{...headers,Upgrade:'websocket'}});
+      if(this.generation!==generation){try{response.webSocket?.close()}catch{};return false;}
       if(response.status!==101||!response.webSocket)
         throw new Error('Kalshi WebSocket handshake failed (HTTP '+response.status+')');
       const ws=response.webSocket;
@@ -92,15 +96,40 @@ export class KalshiReadOnlySocket {
         owner.socketClosed('SOCKET_ERROR');try{ws.close()}catch{} }});
       ws.accept();
       this.socket=ws;this.book=new KalshiBookStream();
-      this.commandId=1;this.lastMessageAt=at;
+      this.commandId=1;this.lastMessageAt=at;this.resyncAt=0;
       ws.send(JSON.stringify(subscribeOrderbook(ticker,this.commandId++)));
       this.lastSubscriptionAt=at;
       this.lastFailure=null;
       return true;
     }catch(err){
-      this.socketClosed('HANDSHAKE_OR_AUTH_FAILURE',at);
+      if(this.generation===generation)this.socketClosed('HANDSHAKE_OR_AUTH_FAILURE',at);
       return false;
-    }finally{this.connecting=false;}
+    }finally{if(this.generation===generation)this.connecting=false;}
+  }
+
+  // Called by a future isolated DO scheduler; never declares an old quote current.
+  watchdog(at=Date.now(),silentMs=45000){
+    if(!Number.isSafeInteger(silentMs)||silentMs<5000)throw new TypeError('Invalid watchdog interval');
+    if(!this.socket||this.socket.readyState!==1)return 'NO_CONNECTION';
+    if(this.lastMessageAt!==null&&at-this.lastMessageAt>silentMs){
+      const ws=this.socket;
+      this.socketClosed('STREAM_SILENCE',at);
+      try{ws.close(1000,'V4 read-only stream silence')}catch{}
+      return 'RECONNECT_REQUIRED';
+    }
+    const q=this.ticker?this.book.view(this.ticker,at):null;
+    if(q&&!q.fresh&&this.book.sid&&at-this.resyncAt>=10000){
+      this.resyncAt=at;
+      try{
+        this.socket.send(JSON.stringify(requestSnapshot(
+          this.book.sid,this.ticker,this.commandId++)));
+        return 'SNAPSHOT_REQUESTED';
+      }catch{
+        this.fault('WATCHDOG_RESYNC_FAILED',at);
+        return 'RESYNC_FAILED';
+      }
+    }
+    return 'OK';
   }
   handleMessage(raw,receivedAt=Date.now(),fromSocket=this.socket){
     if(fromSocket!==this.socket)return; // stale socket callbacks must not mutate new books.
