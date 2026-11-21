@@ -834,6 +834,7 @@ function renderResearch(){
  const ready=researchState.ready;
  $('research-older').disabled=!ready||researchState.offset>=researchState.anchorTotal;
  $('research-export').disabled=!ready||!journalState.ready;
+ $('stop-audit-run').disabled=!ready||!journalState.ready||!window.ScoutStopAudit;
  txt('research-count',ready?String(researchState.currentTotal)+' recorded':'Not collecting yet');
  txt('research-summary',ready?
   String(researchState.currentTotal)+' durable engine observations · '+
@@ -936,6 +937,8 @@ async function exportCompleteEvidence(){
     'V4 WebSocket streaming and official ETH index recordings are not yet connected.'
    ],
    journals:base,researchTicks:ticks.records,restQuoteArchive:quotes.records,
+   stopPostmortem:window.ScoutStopAudit?.analyzeStopHistory(
+     base.trades,quotes.records,base.windows)||null,
    anchors:{journal:base.anchor,research:ticks.anchor,quotes:quotes.anchor},
    totals:{...base.totals,researchTicks:ticks.total,restQuotes:quotes.total}};
   const stamp=new Date().toISOString().slice(0,10);
@@ -950,3 +953,63 @@ async function exportCompleteEvidence(){
 }
 $('research-older').addEventListener('click',loadOlderResearch);
 $('research-export').addEventListener('click',exportCompleteEvidence);
+
+
+
+/* Explicit analysis, not a hidden side-effect of a page refresh. */
+let stopAuditLoading=false;
+function showStopAudit(a){
+ const root=$('stop-audit-list');root.replaceChildren();
+ if(!a){txt('stop-audit-summary','Stop audit unavailable.');return}
+ txt('stop-audit-summary',a.stoppedTrades+' observed 40% stop exits · net realized '+money(a.realizedStopNetPnl,true)+
+  ' · '+a.observedQuoteRecoveries+' showed a later bid at or above their entry price within recorded horizons · '+
+  a.officialDirectionCorrectCount+' officially resolved in the traded direction. Observed quotes are NOT proven fills.');
+ if(!a.stoppedTrades){
+  const el=document.createElement('p');el.className='fine';
+  el.textContent='No recorded V4 40% emergency stop exits yet. This is not evidence the rule is effective.';
+  root.append(el);return;
+ }
+ for(const item of a.stops.slice(0,40)){
+  const row=document.createElement('div');row.className='stop-audit-row';
+  const top=document.createElement('strong');
+  top.textContent=(item.side||'?')+' · '+(item.ticker||'—')+' · '+money(item.netRealizedPnl,true)+
+   ' · '+(item.exitAt?ct(item.exitAt):'—')+' CT';
+  const horizons=document.createElement('div');
+  horizons.textContent=item.horizons.map(h=>h.seconds+'s: '+
+   (h.status==='OBSERVED_REST_UNVERIFIED_EXECUTION'?
+     quote(h.bid)+(h.reachedEntryPrice===true?' (reached entry)':h.reachedEntryPrice===false?' (below entry)':''):
+     h.status==='CONTRACT_EXPIRED'?'market expired':'data unavailable')).join(' · ');
+  const settlement=document.createElement('small');
+  settlement.textContent='Official settlement direction: '+(
+   item.settlementDirectionCorrect===null?'unavailable':
+   item.settlementDirectionCorrect?'correct':'incorrect')+
+   ' · resale fill not verified';
+  row.append(top,horizons,settlement);root.append(row);
+ }
+ if(a.stops.length>40){
+  const el=document.createElement('p');el.className='fine';
+  el.textContent='Showing 40 of '+a.stops.length+' stopped exits; all are included in the full JSON export.';
+  root.append(el);
+ }
+}
+async function analyzeStops(){
+ if(stopAuditLoading||!token||!journalState.ready)return;
+ stopAuditLoading=true;$('stop-audit-run').disabled=true;
+ researchStatus('Loading historical stop losses and quote follow-ups…');
+ try{
+  const [journal,quotes]=await Promise.all([
+   fullJournal(),exportArchive(QUOTE_ARCHIVE_API,'quotes')
+  ]);
+  if(!window.ScoutStopAudit)throw Error('Stop audit analysis library unavailable');
+  const result=window.ScoutStopAudit.analyzeStopHistory(
+   journal.trades,quotes.records,journal.windows);
+  showStopAudit(result);
+  researchStatus('Stop observations calculated from archived quotes; no exit prices or outcomes were invented.');
+ }catch(err){
+  researchStatus('Stop audit incomplete: '+String(err?.message||err));
+ }finally{
+  stopAuditLoading=false;
+  if(lastPayload)renderResearch();
+ }
+}
+$('stop-audit-run').addEventListener('click',analyzeStops);
