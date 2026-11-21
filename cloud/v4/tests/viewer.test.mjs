@@ -132,3 +132,33 @@ test('Kalshi public contract quote validates ticker and never fabricates prices'
   assert.equal(incomplete.yes_ask_dollars,null);
   assert.equal(incomplete.no_ask_dollars,'0.5700');
 });
+
+
+test('V4 stream archive remains session-gated and permanently GET-only',async()=>{
+ const signed=await newSession(loginSecrets.SCOUT_SESSION_SECRET,true);
+ const seen=[];
+ const e=env();
+ e.SCOUT_V4={getByName:()=>({fetch:async url=>{
+   seen.push(String(url));
+   return Response.json({paperOnly:true,readOnly:true,items:[],
+     anchor:100,before:60,nextBefore:null,limit:40,total:0});
+ }})};
+ const root='https://viewer.example/api/v4/stream';
+ const unauthorized=await view.fetch(new Request(root),e);
+ assert.equal(unauthorized.status,401);
+ const post=await view.fetch(new Request(root,{
+  method:'POST',headers:{Origin:origin,
+   Authorization:'Bearer '+signed.token}}),e);
+ assert.equal(post.status,404);
+ const headers={Origin:origin,Authorization:'Bearer '+signed.token};
+ const invalid=await view.fetch(new Request(root+'?ticker=https://evil.test&limit=100',
+  {headers}),e);
+ assert.equal(invalid.status,400);
+ const valid=await view.fetch(new Request(root+'?limit=40&before=60&anchor=100',
+  {headers}),e);
+ assert.equal(valid.status,200);
+ assert.equal((await valid.json()).readOnly,true);
+ assert.equal(seen.length,1);
+ assert.match(seen[0],/\/v1\/stream\?/);
+ assert.doesNotMatch(seen[0],/\/v1\/start|\/v1\/stop|\/v1\/arm/);
+});
