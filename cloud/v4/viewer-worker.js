@@ -134,7 +134,7 @@ export default {
    return respond({ok:true,readOnly:true,paperOnly:true,
      token:session.token,expiresAt:session.expiresAt},200,origin);
   }
-  if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive'].includes(path)||req.method!=='GET')
+  if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive','/api/v4/stream'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
   if(!env.SCOUT_V4||!credentialsConfigured(env))
    return respond({error:'Viewer not configured'},503,origin);
@@ -160,6 +160,23 @@ export default {
      const data=await result.json();
      return respond({...data,version:'V4',source:'Durable Object append-only journal'},200,origin);
    }
+   if(path==='/api/v4/stream'){
+     const q=new URL(req.url).searchParams,limit=q.get('limit')||'60',
+       anchor=q.get('anchor'),before=q.get('before'),ticker=q.get('ticker');
+     const valid=v=>/^\d{1,15}$/.test(v);
+     if(!valid(limit)||Number(limit)>100||(anchor!==null&&!valid(anchor))||
+       (before!==null&&!valid(before))||
+       (ticker!==null&&!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker)))
+       return respond({error:'Invalid stream page'},400,origin);
+     const params=new URLSearchParams({limit});
+     if(anchor!==null)params.set('anchor',anchor);
+     if(before!==null)params.set('before',before);
+     if(ticker!==null)params.set('ticker',ticker);
+     const result=await stub.fetch('https://internal/v1/stream?'+params.toString());
+     if(!result.ok)return respond({error:'Read-only stream archive unavailable'},502,origin);
+     return respond({...await result.json(),version:'V4',
+       paperOnly:true,readOnly:true},200,origin);
+   }
    if(path==='/api/v4/research'||path==='/api/v4/quote-archive'){
      const q=new URL(req.url).searchParams,offset=q.get('offset')||'0',
        limit=q.get('limit')||'100',anchor=q.get('anchor');
@@ -175,11 +192,12 @@ export default {
      const data=await result.json();
      return respond({...data,readOnly:true,paperOnly:true,version:'V4'},200,origin);
    }
-   const [st,history,journal,quotes,research]=await Promise.all([
+   const [st,history,journal,quotes,research,stream]=await Promise.all([
     stub.fetch('https://internal/v1/status'),stub.fetch('https://internal/v1/history'),
     stub.fetch('https://internal/v1/journal?limit=70&offset=0'),
     stub.fetch('https://internal/v1/quotes?limit=240'),
-    stub.fetch('https://internal/v1/research?limit=28&offset=0')
+    stub.fetch('https://internal/v1/research?limit=28&offset=0'),
+    stub.fetch('https://internal/v1/stream?limit=100')
    ]);
    if(!st.ok||!history.ok)
     throw new Error('Private paper engine read unavailable');
@@ -187,6 +205,7 @@ export default {
    const journalData=journal.ok?await journal.json():null;
    const quoteData=quotes.ok?await quotes.json():null;
    const researchData=research.ok?await research.json():null;
+   const streamData=stream.ok?await stream.json():null;
    // Market context is independent of the bot tick: errors do not prevent
    // account and paper history from loading.
    let market=null,marketError=null;
@@ -263,7 +282,11 @@ export default {
     researchHistory:researchData?.ticks||[],
     researchTotal:researchData?.total??null,
     researchAnchor:researchData?.anchor??null,
-    researchAvailable:!!researchData},200,origin);
+    researchAvailable:!!researchData,
+    streamHistory:streamData?.items||[],
+    streamArchiveTotal:streamData?.total??null,
+    streamArchiveAnchor:streamData?.anchor??null,
+    streamAvailable:!!streamData},200,origin);
   }catch(e){
    return respond({error:'V4 paper feed temporarily unavailable'},502,origin);
   }
