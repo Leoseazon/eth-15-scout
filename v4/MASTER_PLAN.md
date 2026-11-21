@@ -1,5 +1,5 @@
 # ETH-15 Scout V4 — Master development plan
-**Created:** 2026-11-21 · **Status:** Gate 2–5 offline prototype, private read-only stream capture disabled · **No V4 deployment or paper activation**
+**Created:** 2026-11-21 · **Status:** Separate V4 read-only Worker deployed and monitoring, paper trading hard-disabled; Kalshi streaming capture enabled but still no confirmed order-book connection · Gate 2 connectivity repair ongoing.
 
 ## Mission
 Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's expected early resale return separately from its probability of winning at official settlement. Preserve the ability to recognize justified inexpensive entries below 60c without equating low cost with an edge.
@@ -98,7 +98,22 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [x] Fail closed when no forecasts, no verified results or too few independent windows exist. These tests explicitly refuse to claim a profitable or calibrated model.
 - [ ] Gather a clean independent sample, compare resale versus settlement forecasts, model ablations, fee-adjusted expectancy, stop-out loss severity and holdout confidence intervals.
 
-**Release blocker:** Offline code and CI cannot prove market-stream entitlement, WebSocket resiliency in live Cloudflare, official CF settlement access, source retention permission, quote execution fidelity or forecast profitability. All V4 real-time connections and paper-entry code stay disabled until separate live-read-only deployment and simulation-activation approvals.
+**Release blocker:** Offline code and CI cannot prove market-stream entitlement, WebSocket resiliency in live Cloudflare, official CF settlement access, source retention permission, quote execution fidelity or forecast profitability. V4 read-only capture was separately enabled by the owner; actual Kalshi WebSocket book capture remains unverified. V4 paper-entry code stays hard-disarmed until separate explicit simulation-activation approval.
+
+## Gate 2D — Live Kalshi WebSocket connectivity incident (November 21, 2026)
+**Observed in owner's V4-only Data Studio:** successful monitoring ticks, paper armed=0, zero WS book samples, repeated NETWORK_CONNECT_FAILED. Local signing finished before the outbound WS fetch failed without an HTTP status; this does NOT establish an invalid Kalshi API key.
+
+- [x] Confirm Kalshi's primary external-api-ws.kalshi.com and officially supported compatibility api.elections.kalshi.com, with same GET /trade-api/ws/v2 signing path.
+- [x] V4-only fallback after two consecutive network failures, restricted to official allowlisted hosts. Never bypass auth 401/403 or rate-limit 429 via host switching.
+- [x] Safe fixed diagnostic categories for DNS, TLS, timeout, connection loss and fetch rejection; back off at least two minutes on 429. Never store raw errors, secrets, signatures or response bodies.
+- [x] After persistent failure, periodically compare two public unauthenticated Kalshi /exchange/status REST endpoints; at most one probe per 10 minutes, HTTP status labels only, no account data.
+- [x] Audit host switches using WS_FALLBACK_COMPAT_SELECTED and WS_FALLBACK_PRIMARY_SELECTED; log bounded NETWORK_REST_CHECK results in existing V4-only history.
+- [ ] After passing CI and operator's dry-run review, deploy this V4-only read-only fix and inspect real source-tagged error events.
+- [ ] Validate HTTP 101 handshake, live order-book snapshots and multi-window continuity. A successful public REST check is NOT proof of WebSocket connectivity.
+- [ ] If both WS hosts remain unreachable, investigate Cloudflare egress and service policy; assess secure separate relay only with authorization and data/license review.
+- [ ] Review market-data storage/retention rights before scaling historical collection.
+
+**Nonnegotiable:** No real trades, no V4 simulated entries, no secret exposure, no V3 source or V3 Durable Object modifications.
 
 ## Gate 3 — Modeling
 - [ ] **Settlement model:** time, target, official-reference distance, intrawindow volatility, and final-minute accumulated official average.
@@ -129,7 +144,7 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [ ] Separate later approval to activate V4 paper entries after shadow observation.
 
 ## Known limits
-V4 branch creation does **not** mean V4 recorder, live WebSocket, pricing models, dashboard, or tests are complete. No trading edge is established. The current V3 remains the operational reference system.
+V4's Worker, recorder, read-only shadow engine and tests have been deployed or built as indicated, but the private V4 viewer, authenticated live Kalshi WebSocket capture, official index access, predictive models, and realistic paper execution are not yet complete or validated. No trading edge is established. V3 remains the operational reference system.
 
 ## Prioritized build order
 Isolation > timestamps/feed correctness > recorder > settlement arithmetic > bid/ask and execution correctness > forecast models > shadow validation > V4 paper performance.
