@@ -831,7 +831,16 @@ function researchElement(r){
  feed.append(status,prices);
  const decision=document.createElement('div');
  const summary=document.createElement('div');
- summary.textContent=String(r.decision?.notice||r.lastError||'No decision note recorded');
+ const probe=r.decision?.shadowProbe;
+ summary.textContent=probe?.status==='HEURISTIC_CANDIDATE'?
+  'SHADOW CANDIDATE ONLY · '+String(probe.candidate?.side||'')+
+  ' '+quote(probe.candidate?.ask)+' · '+String(probe.candidate?.strategy||'baseline')+
+  ' · not an approved or executable trade':
+  probe?.status==='WATCH'?
+   'SHADOW WATCH · '+String(probe.reason||'No baseline candidate')+
+   (Array.isArray(probe.rejections)&&probe.rejections.length?
+     ' · '+probe.rejections.join('; ').slice(0,180):''):
+  String(r.decision?.notice||r.lastError||'No decision note recorded');
  const details=document.createElement('details');details.className='research-detail';
  const toggle=document.createElement('summary');toggle.textContent='View feed, signal and timing evidence';
  const payload=document.createElement('pre');
@@ -857,7 +866,8 @@ function renderResearch(){
  txt('research-summary',ready?
   String(researchState.currentTotal)+' durable engine observations · '+
   String(researchState.rows.length)+' currently loaded · '+
-  String(researchState.anchorTotal)+' in original anchored history':
+  String(researchState.anchorTotal)+' in original anchored history · '+
+  String(lastPayload?.streamArchiveTotal??'—')+' recorded WebSocket book observations':
   'V4 is not connected to its research recorder. No observation is being claimed.');
  if(!ready||!researchState.rows.length){
   const empty=document.createElement('div');empty.className='empty-state';
