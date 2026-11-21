@@ -128,31 +128,39 @@ test('engine requires an actual 5-of-7 directional setup for final-3m 70–79c b
  assert.ok(seven.open,'69c final-3m 7/7 must remain eligible');
 });
 test('40 percent downside stop only activates strictly INSIDE final six minutes',()=>{
-  assert.equal(PAPER_POLICY.contractStopLossFraction,0.40);
-  assert.equal(PAPER_POLICY.stopLossArmedMinutes,6);
-  for(const minutes of [10,6,5.9,3,0.5]){
-    const s=freshPaperState();s.armed=true;
-    const engine=makeV2Engine(s),m=mk(10);
-    engine.step(m,strong,slow,true,structureFixture());
-    assert.ok(s.open);
-    // Simulate DOWN or UP contract's own executable bid falling 50%.
-    // This tests stop timing without a guessed exchange settlement.
-    const open=s.open;
-    const q=mk(minutes);
-    const exitBid=String(Number((open.entry*0.5).toFixed(3)));
-    if(open.side==='UP')q.yes_bid_dollars=exitBid;
-    else q.no_bid_dollars=exitBid;
-    // Prevent the structural exit from masking the stop rule in the fixture.
-    engine.step(q,strong,slow,true,structureFixture());
-    if(minutes<6){
-      assert.equal(s.open,null,'must stop after threshold at '+minutes+'m');
-      assert.equal(s.trades.length,1);
-      assert.match(s.trades[0].reason,/40%/);
-    }else{
-      assert.ok(s.open,'must not trigger fixed 40% stop at '+minutes+'m');
-      assert.equal(s.trades.length,0);
+  // Fixed test clock is essential: mk(6) computes close_time from Date.now(),
+  // and a second real Date.now() inside engine.step would otherwise see
+  // 5:59.999. This test guards the exact boundary, not scheduler latency.
+  // V3 production engine/policy code is intentionally unchanged.
+  const realNow=Date.now,at=Date.parse('2026-11-21T06:00:00Z');
+  try{
+    Date.now=()=>at;
+    assert.equal(PAPER_POLICY.contractStopLossFraction,0.40);
+    assert.equal(PAPER_POLICY.stopLossArmedMinutes,6);
+    for(const minutes of [10,6,5.9,3,0.5]){
+      const s=freshPaperState();s.armed=true;
+      const engine=makeV2Engine(s),m=mk(10);
+      engine.step(m,strong,slow,true,structureFixture());
+      assert.ok(s.open);
+      // Simulate DOWN or UP contract's own executable bid falling 50%.
+      // This tests stop timing without a guessed exchange settlement.
+      const open=s.open;
+      const q=mk(minutes);
+      const exitBid=String(Number((open.entry*0.5).toFixed(3)));
+      if(open.side==='UP')q.yes_bid_dollars=exitBid;
+      else q.no_bid_dollars=exitBid;
+      // Prevent the structural exit from masking the stop rule in the fixture.
+      engine.step(q,strong,slow,true,structureFixture());
+      if(minutes<6){
+        assert.equal(s.open,null,'must stop after threshold at '+minutes+'m');
+        assert.equal(s.trades.length,1);
+        assert.match(s.trades[0].reason,/40%/);
+      }else{
+        assert.ok(s.open,'must not trigger fixed 40% stop at '+minutes+'m');
+        assert.equal(s.trades.length,0);
+      }
     }
-  }
+  }finally{Date.now=realNow;}
 });
 
 test('BUY and early SELL permanently capture seconds remaining in paper events and trade data',()=>{
