@@ -86,7 +86,7 @@ export function ensureResearchJournal(sql){
   'CREATE INDEX IF NOT EXISTS idx_v4_research_books_ticker_id ON research_book_samples(ticker,id DESC);');
 }
 export function buildResearchTick({startedAt,finishedAt,market=null,
- quoteRetrievedAt=null,spot=null,one=null,five=null,context=null,
+ quoteRetrievedAt=null,quoteObservedAt=null,spot=null,one=null,five=null,context=null,
  feedChecks=null,feedIssues=[],report=null,engineState=null,
  lastError=null}){
  if(!millis(startedAt)||!millis(finishedAt)||finishedAt<startedAt)
@@ -109,7 +109,7 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
   ticker,closeAt,secondsRemaining:closeAt===null?null:Math.max(0,(closeAt-startedAt)/1000),
   dataStatus:ready?'READY_FOR_HEURISTIC_EVALUATION':'PARTIAL_OR_UNAVAILABLE',
   quote:{source:'Kalshi REST proxy (potentially cached)',
-   retrievedAt:millis(quoteRetrievedAt),receiptAt:startedAt,exchangeEventAt:null,
+   retrievedAt:millis(quoteRetrievedAt),receiptAt:millis(quoteObservedAt),exchangeEventAt:null,
    strike:providerNum(market?.floor_strike,10000000),
    yesBid:providerNum(market?.yes_bid_dollars,1),
    yesAsk:providerNum(market?.yes_ask_dollars,1),
