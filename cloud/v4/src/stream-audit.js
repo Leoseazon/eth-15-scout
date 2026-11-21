@@ -14,8 +14,7 @@ const level=v=>(v&&Number.isFinite(v.price)&&typeof v.sizeFp==='string'&&
 // This is independent of the durable SQL archive and MUST never log credentials,
 // raw exceptions, order data, account fields, or user-provided strings.
 const AUDIT_TAG='ETH15_V4_AUDIT';
-const NETWORK_REASON=/(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED)/;
-const CODE=/(?:HTTP_[1-5][0-9]{2}|NETWORK_(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED))/;
+const DIAG_RESULT=/^(?:HTTP_[1-5][0-9]{2}|NETWORK_(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED))$/;
 const FAULTS=new Set([
  'NETWORK_CONNECT_FAILED','NETWORK_DNS_FAILED','NETWORK_TLS_FAILED',
  'NETWORK_TIMEOUT','NETWORK_CONNECTION_LOST','NETWORK_FETCH_REJECTED',
@@ -33,6 +32,7 @@ const FAULTS=new Set([
 export function v4AuditCode(kind,detail=''){
  if(kind==='STREAM_FAULT')return FAULTS.has(detail)?detail:'OTHER_REDACTED';
  if(kind==='STREAM_SUBSCRIBED')return 'SUBSCRIBED';
+ if(kind==='BOOK_SNAPSHOT')return 'RECORDED';
  if(kind==='STREAM_CONFIG_MISSING')return 'CONFIG_MISSING';
  if(kind==='NETWORK_REST_CHECK'||kind==='WS_HOST_HTTPS_CHECK'){
    const m=/^PRIMARY_([A-Z0-9_]+)\|COMPAT_([A-Z0-9_]+)$/.exec(detail);
@@ -67,7 +67,7 @@ export function appendStreamSample(sql,{quote,at=Date.now(),kind='delta'}){
   sample.ticker,at,sample.source,sample.seq,sample.valid?1:0,
   JSON.stringify(sample));
  if(kind==='snapshot'&&sample.valid&&sample.fresh)
-   echoAudit('STREAM_SUBSCRIBED','SUBSCRIBED'); // confirmed book snapshot only
+   echoAudit('BOOK_SNAPSHOT','RECORDED'); // persisted valid fresh book, not a fill
  return sample;
 }
 export function appendStreamEvent(sql,{kind,ticker=null,at=Date.now(),detail='' }){
