@@ -1,5 +1,5 @@
 # ETH-15 Scout V4 — Master development plan
-**Created:** 2026-11-21 · **Status:** Foundation development · **Paper/shadow only**
+**Created:** 2026-11-21 · **Status:** Gate 2–5 offline prototype, private read-only stream capture disabled · **No V4 deployment or paper activation**
 
 ## Mission
 Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's expected early resale return separately from its probability of winning at official settlement. Preserve the ability to recognize justified inexpensive entries below 60c without equating low cost with an edge.
@@ -69,6 +69,36 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [ ] Measure cases that crossed the −40% threshold before six-minute arming and losses that exceeded a nominal 40% due to gaps, late checks or thin bids.
 
 **Interpretation:** A 40% contract-price trigger is not a guaranteed execution price. A sellable bid may gap or have insufficient depth. A $2.29 simulated loss alongside $0.96 winners can occur even with a nominal 40% stop. The mechanism must be established from timed bid and depth evidence rather than assumed.
+
+### Gate 2C — Live-stream integration and safety (code committed; not activated)
+- [x] Wire the read-only Kalshi WebSocket prototype into the **isolated V4 Durable Object** only behind `V4_STREAM_CAPTURE_ENABLED = "false"` by default. No V3 codepaths, production order submission, paper positions or secret values are touched.
+- [x] Require separate V4-only `KALSHI_V4_READ_KEY_ID` and `KALSHI_V4_READ_PRIVATE_KEY` environment secrets when stream capture is explicitly enabled. A read-permission-scoped API key must be provisioned outside chat.
+- [x] Re-subscribe to the detected 15-minute ETH contract; close/reconnect on dead feeds; preserve timestamped book and fault events in separate append-only SQLite tables. Subscriber-wide sequence gaps are recorded, not hidden.
+- [x] Add an authenticated read-only `/api/v4/stream` cursor archive and dashboard provenance/coverage indicators, plus bounded browser export of retained observations.
+- [x] Add conservative book-walk levels and fee-aware **hypothetical** fills. No simulated order or P&L is activated by this.
+- [ ] Validate real authenticated stream connectivity and market rollover in Cloudflare. Mock WebSocket success is **not** real activation or source verification.
+- [ ] Capture official CF Benchmarks ETH index values and opening/closing 60-second means with confirmed license/entitlement. Kraken spot cannot replace these values.
+- [ ] Validate actual KXETH15M fee multiplier/rules, latency, book depth and take/exit behavior under realistic data; model slippage, missed fills and partial liquidity.
+- [ ] Confirm provider market-data retention and redistribution conditions before running the long-term archive and exposing the private research website.
+- [ ] Assess Cloudflare storage, CPU, duration and connection limits after opt-in deployment; outbound connections cannot be assumed immortal. Stop monitoring must close outbound connections.
+
+### Gate 3A — Baseline shadow research (code complete, performance NOT validated)
+- [x] Add an explicitly untrained, read-only UP/DOWN/WATCH baseline probe to each paper-disabled V4 engine tick. It reuses the V3 candidate eligibility tests but cannot enter or exit positions.
+- [x] Persist candidate side, quoted ask/bid, seven source checks and families, structural evidence and rejection reasons. Heuristic ranking scores are NOT calibrated probabilities.
+- [ ] Train real settlement and future-resale forecasts on retained exchange/CF index data, using time-ordered windows and held-out sessions without future information leakage. Do not retrofit a score to the original 34 V3 trades and claim an edge.
+
+### Gate 4A — Execution research foundation (code complete, fills NOT verified)
+- [x] Hypothetical order-book walk captures the exact price-level quantities on YES and NO bid ladders, with fees applied to each recorded displayed level.
+- [x] All-in `$3` maximum and provisional published general taker-fee schedule used in tests; market-specific fee verification required. Simulated depth is not a guarantee of an executable fill.
+- [x] Preserve the 40% final-six-minute emergency stop and experimental from-purchase severe two-candle reversal exit; V3's running logic remains untouched.
+- [ ] Integrate conservative delayed quote matching, real feed freshness, partial/missed fills, finalized market results and persistent virtual bankroll only **after** Gate 2 evidence checks pass.
+
+### Gate 5A — Statistical validation infrastructure (code complete, insufficient live observations)
+- [x] Add fixed-horizon, one-forecast-per-market holdout Brier/log-loss evaluation from **official Kalshi finalized outcomes only**, plus book-history gap/coverage diagnostics.
+- [x] Fail closed when no forecasts, no verified results or too few independent windows exist. These tests explicitly refuse to claim a profitable or calibrated model.
+- [ ] Gather a clean independent sample, compare resale versus settlement forecasts, model ablations, fee-adjusted expectancy, stop-out loss severity and holdout confidence intervals.
+
+**Release blocker:** Offline code and CI cannot prove market-stream entitlement, WebSocket resiliency in live Cloudflare, official CF settlement access, source retention permission, quote execution fidelity or forecast profitability. All V4 real-time connections and paper-entry code stay disabled until separate live-read-only deployment and simulation-activation approvals.
 
 ## Gate 3 — Modeling
 - [ ] **Settlement model:** time, target, official-reference distance, intrawindow volatility, and final-minute accumulated official average.
