@@ -403,7 +403,8 @@ function toPending(pos) {
         // A stop can fire after a gap at a worse price than its threshold;
         // this is a diagnostic, NOT an exchange-supported stop order.
         const stop=assessContractStop({
-          entry:pos.entry,bid,closeAt:Date.parse(pos.closeTime),at:now
+          entry:pos.entry,bid,closeAt:Date.parse(pos.closeTime),at:now,
+          armSeconds:PAPER_POLICY.stopLossArmedMinutes*60
         });
         state.lastStopAudit={
           at:now,ticker:pos.ticker,side:pos.side,entry:pos.entry,bid,
