@@ -56,6 +56,7 @@ export class KalshiReadOnlySocket {
   }
   socketClosed(reason,at=Date.now()){
     this.book.disconnected();this.socket=null;this.lastFailure=reason;
+    this.attempts++;
     this.retryAfter=at+Math.min(60000,1000*2**Math.min(this.attempts,6));
     try{this.onFault(reason)}catch{}
   }
@@ -94,10 +95,10 @@ export class KalshiReadOnlySocket {
       this.commandId=1;this.lastMessageAt=at;
       ws.send(JSON.stringify(subscribeOrderbook(ticker,this.commandId++)));
       this.lastSubscriptionAt=at;
-      this.lastFailure=null;this.attempts=0;
+      this.lastFailure=null;
       return true;
     }catch(err){
-      this.attempts++;this.socketClosed('HANDSHAKE_OR_AUTH_FAILURE',at);
+      this.socketClosed('HANDSHAKE_OR_AUTH_FAILURE',at);
       return false;
     }finally{this.connecting=false;}
   }
@@ -118,6 +119,7 @@ export class KalshiReadOnlySocket {
     try{outcome=this.book.apply(packet,receivedAt)}
     catch{this.fault('INVALID_BOOK_FRAME',receivedAt);return;}
     if(outcome?.accepted){
+      if(outcome.snapshot)this.attempts=0; // A usable snapshot, not just a handshake, proves recovery.
       try{this.onObservation({result:outcome,quote:this.book.view(this.ticker,receivedAt),
         type:packet.type,receivedAt})}catch{this.fault('OBSERVATION_HANDLER_FAILURE',receivedAt)}
     }
