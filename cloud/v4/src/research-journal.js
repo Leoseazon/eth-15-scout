@@ -30,6 +30,38 @@ function providerNum(v,max){
  if(v===undefined||v===null||v==='')return null;
  const n=Number(v);return Number.isFinite(n)&&n>=0&&n<=max?n:null;
 }
+function stopEvidence(v){
+ if(!v||typeof v!=='object')return null;
+ const early=v.earlyExitEvidence;
+ return {version:str(v.version,55),at:millis(v.at),
+  ticker:SERIES.test(v.ticker||'')?v.ticker:null,
+  side:['UP','DOWN'].includes(v.side)?v.side:null,
+  entry:num(v.entry),bid:num(v.bid),qty:num(v.qty),
+  markPnl:num(v.markPnl),usable:v.usable===true,
+  armed:v.armed===true,triggered:v.triggered===true,
+  thresholdHit:v.thresholdHit===true,
+  thresholdBid:num(v.thresholdBid),declinePct:num(v.declinePct),
+  wholeSecondsRemaining:num(v.wholeSecondsRemaining),
+  cause:str(v.cause,80),executableFillVerified:false,
+  oneMinuteChecksPassed:num(v.oneMinuteChecksPassed),
+  structureExitConfirmed:v.structureExitConfirmed===true,
+  structureExitReason:str(v.structureExitReason,125),
+  earlyExitEvidence:early?{
+   consecutive:num(early.consecutive),trigger:early.trigger===true,
+   lastCandleOpenSeconds:num(early.lastCandleOpenSeconds),
+   reason:str(early.reason,80)}:null};
+}
+function mostRecentExit(s,startedAt,finishedAt){
+ const t=Array.isArray(s?.trades)?s.trades.find(x=>
+  Number.isSafeInteger(x.exitAt)&&x.exitAt>=startedAt&&x.exitAt<=finishedAt):null;
+ if(!t)return null;
+ return {ticker:SERIES.test(t.ticker||'')?t.ticker:null,
+   side:['UP','DOWN'].includes(t.side)?t.side:null,
+   at:t.exitAt,entry:num(t.entry),exitBid:num(t.exitPrice),
+   qty:num(t.qty),cost:num(t.cost),netPnl:num(t.pnl),
+   reason:str(t.reason,220),feeEstimate:num(t.sellFee),
+   officialSettlementVerified:false,source:'V4 simulated displayed bid'}; 
+}
 function feedStates(checks){
  const out={};
  for(const k of feedKeys){
@@ -97,7 +129,11 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
    eventRisk:str(context?.regime?.eventRisk,30)},
   decision:{classification:'UNVALIDATED_V3_BASELINE_SHADOW',
    notice:str(report?.notice,280),observedEvents,
-   calibratedProbability:null,settlementVerified:false,exitFillVerified:false},
+   calibratedProbability:null,settlementVerified:false,exitFillVerified:false,
+   stopAudit:engineState?.lastStopAudit?.at>=startedAt&&
+    engineState?.lastStopAudit?.at<=finishedAt?
+    stopEvidence(engineState.lastStopAudit):null,
+   exitAtThisTick:mostRecentExit(engineState,startedAt,finishedAt)},
   paperSnapshot:{cash:num(engineState?.cash),realized:num(engineState?.realized),
    pendingCount:Array.isArray(engineState?.pending)?engineState.pending.length:null,
    openTicker:SERIES.test(engineState?.open?.ticker||'')?engineState.open.ticker:null},
