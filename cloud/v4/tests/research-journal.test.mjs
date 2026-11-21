@@ -74,7 +74,7 @@ test('stable highwater pagination does not fabricate missing historical observat
  const queries=[];
  const sql={exec:(q,...args)=>{
   queries.push({q,args});
-  if(q.includes('MAX(id) top'))return {toArray:()=>[{top:20}]};
+  if(q.includes('MAX(id)'))return {toArray:()=>[{top:20}]};
   if(q.includes('COUNT(*) n'))return {toArray:()=>[{n:18}]};
   if(q.includes('SELECT id,payload FROM research_ticks'))return {
    toArray:()=>[{id:10,payload:JSON.stringify(buildResearchTick(inputs))}]};
