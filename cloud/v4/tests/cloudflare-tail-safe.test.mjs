@@ -95,3 +95,17 @@ test('only actual Wrangler JSON event envelopes count as invocation records',()=
  const actual=JSON.stringify({logs:[],eventTimestamp:1795200000000});
  assert.equal(parseSafeTailEvent(actual).totalInvocation,1);
 });
+
+
+test('V4 REST depth event mirror retains only source-label codes, never book prices or account fields',()=>{
+ const recorded=parseSafeTailEvent(mk('REST_BOOK_SNAPSHOT|RECEIPT_ONLY'));
+ assert.equal(recorded.items.length,1);
+ assert.equal(recorded.items[0].kind,'REST_BOOK_SNAPSHOT');
+ const fault=parseSafeTailEvent(mk('REST_BOOK_FAULT|REST_BOOK_HTTP_429'));
+ assert.equal(fault.items[0].code,'REST_BOOK_HTTP_429');
+ assert.equal(v4AuditCode('REST_BOOK_SNAPSHOT','0.4200 private key'),'RECEIPT_ONLY');
+ assert.equal(v4AuditCode('REST_BOOK_FAULT','raw exception private key'),'REDACTED');
+ assert.equal(parseSafeTailEvent(mk('REST_BOOK_FAULT|PRIVATE_KEY_0.4200')).items.length,0);
+ assert.equal(v4AuditCode('STREAM_FAULT','WS_UPGRADE_RUNTIME_UNSUPPORTED'),'WS_UPGRADE_RUNTIME_UNSUPPORTED');
+ assert.equal(v4AuditCode('STREAM_FAULT','WS_UPGRADE_HEADER_REJECTED'),'WS_UPGRADE_HEADER_REJECTED');
+});
