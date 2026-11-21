@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify,constants,webcrypto} from 'node:crypto';
-import {wsAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,classifyNetworkException} from '../src/kalshi-ws-transport.js';
+import {wsAuthHeaders,readonlyRestAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,KALSHI_READONLY_REST_PATH,classifyNetworkException} from '../src/kalshi-ws-transport.js';
 const ticker='KXETH15M-26NOV210015-15';
 const ed=generateKeyPairSync('ed25519',{
   privateKeyEncoding:{type:'pkcs8',format:'pem'},
@@ -262,4 +262,16 @@ test('compatibility and primary endpoints remain hardcoded official Kalshi hostn
  assert.equal(new URL(KALSHI_WS_URL).pathname,KALSHI_SIGN_PATH);
  assert.equal(new URL(KALSHI_COMPAT_WS_URL).pathname,KALSHI_SIGN_PATH);
  assert.equal(new URL(KALSHI_COMPAT_WS_URL).protocol,'https:');
+});
+
+
+test('read-only signed REST probe uses its own allowlisted Kalshi endpoint and cannot reuse a WS signature',async()=>{
+ const now=1795200000000;
+ const headers=await readonlyRestAuthHeaders({...creds,now,subtle:webcrypto.subtle});
+ const signature=Buffer.from(headers['KALSHI-ACCESS-SIGNATURE'],'base64');
+ assert.equal(headers['KALSHI-ACCESS-KEY'],'read-scope-test-key');
+ assert.equal(verify(null,Buffer.from(now+'GET'+KALSHI_READONLY_REST_PATH),ed.publicKey,signature),true);
+ assert.equal(verify(null,Buffer.from(now+'GET'+KALSHI_SIGN_PATH),ed.publicKey,signature),false);
+ assert.equal(verify(null,Buffer.from(now+'POST'+KALSHI_READONLY_REST_PATH),ed.publicKey,signature),false);
+ assert.equal(KALSHI_READONLY_REST_PATH,'/trade-api/v2/portfolio/balance');
 });
