@@ -13,10 +13,14 @@ import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
 import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttps} from './kalshi-network-diagnostic.js';
 import {ensureStreamAudit,appendStreamSample,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
+import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
+ restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
+const REST_BOOK_INTERVAL_MS=15000;
+const REST_BOOK_RETRY_AFTER_429_MS=120000;
 const RELEASE_TAG='V4-FOUNDATION-20261121';
 const PHASE1_TAG='V3-PHASE1-FEED-RELIABILITY-20261120';
 const SOFT_GUARD_HOTFIX_TAG='V4-SHADOW-FOUNDATION-SOFT-GUARD-BYPASS-20261120';
@@ -85,6 +89,8 @@ export class ScoutEngineV4 extends DurableObject {
     ensureQuoteTable(this.ctx.storage.sql);
     ensureResearchJournal(this.ctx.storage.sql);
     ensureStreamAudit(this.ctx.storage.sql);
+    ensureRestBookArchive(this.ctx.storage.sql);
+    this.restBookCaptureEnabled=env.V4_REST_BOOK_CAPTURE_ENABLED==='true';
     // Zero connections unless the NEW V4-only feature flag is explicitly set.
     // The stream requires a dedicated READ-only Kalshi key, not a trading key.
     this.stream=null;this.streamLastWritten=0;this.streamLastQuoteKey=null;
@@ -431,6 +437,43 @@ export class ScoutEngineV4 extends DurableObject {
           at:Date.now(),detail:'Isolated stream path unavailable'});
       }
     }
+    // Isolated official REST depth archive; no influence on engine, paper, or P&L.
+    // Kalshi REST does NOT provide exchange event timestamps or sequence.
+    if(this.restBookCaptureEnabled&&this.stream&&market){
+      const live=this.stream.status(Date.now());
+      const usableWebSocket=live.connected===true&&
+        live.quote?.valid===true&&live.quote?.fresh===true;
+      const attemptAt=Date.now();
+      if(!usableWebSocket&&attemptAt-(s.lastRestBookAt||0)>=REST_BOOK_INTERVAL_MS&&
+         attemptAt>=(s.restBookBackoffUntil||0)){
+        s.lastRestBookAt=attemptAt; // persist throttle BEFORE outbound request
+        this.save(s,tickMeta);
+        try{
+          const result=await fetchOfficialRestBook(market.ticker);
+          if(result.ok){
+            appendRestBookSample(this.ctx.storage.sql,result.book);
+            s.lastRestBookStatus='REST_SNAPSHOT_RECORDED';
+            s.lastRestBookError=null;
+            s.lastRestBookReceivedAt=result.book.receivedAt;
+          }else{
+            s.lastRestBookStatus='REST_SNAPSHOT_UNAVAILABLE';
+            s.lastRestBookError=result.reason;
+            if(result.reason==='REST_BOOK_HTTP_429')
+              s.restBookBackoffUntil=Date.now()+REST_BOOK_RETRY_AFTER_429_MS;
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'REST_BOOK_FAULT',ticker:market.ticker,at:Date.now(),
+              detail:result.reason});
+          }
+        }catch{
+          s.lastRestBookStatus='REST_SNAPSHOT_UNAVAILABLE';
+          s.lastRestBookError='REST_BOOK_ARCHIVE_ERROR';
+          appendStreamEvent(this.ctx.storage.sql,{
+            kind:'REST_BOOK_FAULT',ticker:market.ticker,at:Date.now(),
+            detail:'REST_BOOK_ARCHIVE_ERROR'});
+        }
+        this.save(s,tickMeta);
+      }
+    }
   }
   async alarm(){
     const start=Date.now();
@@ -471,6 +514,12 @@ export class ScoutEngineV4 extends DurableObject {
         streamConnection:this.stream?this.stream.status(Date.now()):
           {connected:false,source:'NOT_CONFIGURED',reason:'V4 WebSocket feature flag disabled'},
         streamArchive:latestStreamStatus(this.ctx.storage.sql),
+        restBookCaptureEnabled:this.restBookCaptureEnabled,
+        restBookArchive:latestRestBookStatus(this.ctx.storage.sql),
+        lastRestBookAt:s.lastRestBookAt||null,
+        lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
+        lastRestBookStatus:s.lastRestBookStatus||'NOT_CAPTURED',
+        lastRestBookError:s.lastRestBookError||null,
         policyVersion:'V4-SHADOW-FOUNDATION',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
@@ -572,6 +621,19 @@ export class ScoutEngineV4 extends DurableObject {
           limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
+    }
+    if(path==='/v1/rest-book'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams,limitRaw=q.get('limit')||'60',
+        anchorRaw=q.get('anchor'),beforeRaw=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limitRaw)||(anchorRaw!==null&&!valid(anchorRaw))||
+         (beforeRaw!==null&&!valid(beforeRaw)))
+        return json({error:'Invalid V4 REST book archive request'},400);
+      try{
+        return json(restBookPage(this.ctx.storage.sql,{
+          limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
+          before:beforeRaw===null?null:Number(beforeRaw),ticker}));
+      }catch{return json({error:'Invalid REST book pagination'},400)}
     }
     if(path==='/v1/quote-archive'&&req.method==='GET'){
       const q=new URL(req.url).searchParams,rawLimit=q.get('limit')||'100',
