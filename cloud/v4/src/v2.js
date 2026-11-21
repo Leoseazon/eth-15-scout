@@ -4,6 +4,7 @@
  */
 import {PAPER_POLICY, entryBudget, entryGate, profitExitGate, assessDailyRisk} from './v3-policy.js';
 import {structuralEntry, structuralExit} from './structure.js';
+import {assessContractStop,advanceEarlyExitEvidence,STOP_EXPERIMENT_VERSION} from './stop-research.js';
 import {EARLY_POLICY,signalFamilies,settlementRewardQuality,earlyCountertrendGate,opportunityScore} from './early-opportunity.js';
 import {LATE_VALUE_POLICY,lateValueGate} from './late-value.js';
 import {HONEY_POLICY,honeyPotGate,honeyStopTriggered,honeyAuditReason} from './honey-pot.js';
@@ -309,7 +310,8 @@ function enter(m,side,signal,now,price,strategy='REVERSAL',riskMode='NORMAL',max
    signalFamilies:evidence?.signalFamilies??null,
    maximumSettlementRewardPerContract:evidence?.maxNetSettlementReward??null,
    breakEvenSettlementProbability:evidence?.breakEven??null,
-   status:'OPEN',bestBid:NaN,highestProfit:0};
+   status:'OPEN',bestBid:NaN,highestProfit:0,
+   earlyExitEvidence:null,stopExperimentVersion:STOP_EXPERIMENT_VERSION};
  state.open=position;
  state.blocked.push(m.ticker);
  // Retain one-entry-per-contract history for the whole paper journal.
@@ -397,7 +399,18 @@ function toPending(pos) {
       const proceeds=Number.isFinite(bid)&&Number.isFinite(bidDepth)&&bidDepth>=pos.qty?pos.qty*bid-fee(bid,pos.qty):NaN;
       pos.markPnl=Number.isFinite(proceeds)?Number((proceeds-pos.cost).toFixed(2)):NaN;
       if(Number.isFinite(proceeds)){
-        const gain=(bid-pos.entry)/pos.entry;
+        // Exact comparison uses fixed 4-decimal integer contract prices.
+        // A stop can fire after a gap at a worse price than its threshold;
+        // this is a diagnostic, NOT an exchange-supported stop order.
+        const stop=assessContractStop({
+          entry:pos.entry,bid,closeAt:Date.parse(pos.closeTime),at:now
+        });
+        state.lastStopAudit={
+          at:now,ticker:pos.ticker,side:pos.side,entry:pos.entry,bid,
+          qty:pos.qty,markPnl:pos.markPnl,
+          ...(stop||{}),version:STOP_EXPERIMENT_VERSION
+        };
+        pos.stopAtLastObservation=state.lastStopAudit;
         let why=null;
         const targetAction=profitExitGate(bid,remaining);
         // Order of importance: hard stop > 96¢ target > confirmed structure
@@ -406,30 +419,32 @@ function toPending(pos) {
         // Uses the executable BID; no fill is claimed without sufficient depth.
         if(pos.strategy==='HONEY-POT'&&honeyStopTriggered(pos.entry,bid))
           why='HONEY-POT stop: executable bid down 10% or more from entry price';
-        else if(remaining<PAPER_POLICY.stopLossArmedMinutes &&
-           gain<=-PAPER_POLICY.contractStopLossFraction)
+        else if(stop.triggered)
           why='Stop loss (−40% contract-price movement; final 6 minutes only)';
         else if(targetAction==='SELL')why='96¢ bid take-profit';
         else if(targetAction==='HOLD_PENDING'){
           notice='Final minute: 96¢+ bid, holding for official settlement (not inferred from Kraken).';
           pos.reversalConfirmations=0;
-        }else if(fresh&&m5&&one&&remaining<7&&context?.three&&context?.five&&
-          Number.isFinite(context?.oneClosedAt)){
+        }else if(fresh&&m5&&one&&remaining>0&&context?.three&&context?.five&&
+          Number.isSafeInteger(context?.oneClosedAt)){
+          // V4 experiment: begin evaluating adverse reversal IMMEDIATELY
+          // after purchase; require two consecutive, entirely post-entry
+          // CLOSED 1m bars plus corroborating 3m/5m structure failure.
           const q=judge(pos.side,one,m5,m,remaining);
           const structural=structuralExit(pos.side,context.three,context.five);
-          if(q.passed<=1&&structural.confirm){
-            // Two distinct CLOSED one-minute candles; repeated 30-second
-            // observations of one candle cannot trigger a panic exit.
-            if(pos.lastReversalCandleTs!==context.oneClosedAt){
-              pos.reversalConfirmations=(pos.reversalConfirmations||0)+1;
-              pos.lastReversalCandleTs=context.oneClosedAt;
-            }
-            if(pos.reversalConfirmations>=2)
-              why='Confirmed two-candle reversal and 3m/5m structure failure';
-          }else{
-            pos.reversalConfirmations=0;
-            pos.lastReversalCandleTs=null;
-          }
+          const previous=pos.earlyExitEvidence;
+          const evidence=advanceEarlyExitEvidence(previous,{
+            entryAt:pos.time,candleOpenSeconds:context.oneClosedAt,
+            evaluationAt:now,adverse:q.passed<=1,
+            structuralConfirm:structural.confirm
+          });
+          pos.earlyExitEvidence=evidence;
+          state.lastStopAudit={...state.lastStopAudit,
+            earlyExitEvidence:evidence,oneMinuteChecksPassed:q.passed,
+            structureExitConfirmed:structural.confirm,
+            structureExitReason:structural.reason};
+          if(evidence.trigger)
+            why='V4 EXPERIMENT: two consecutive post-entry adverse 1m candles with confirmed 3m/5m breakdown';
         }
         // A successful bid/depth check clears any previous warning.
         if(pos.exitRiskNotice){
