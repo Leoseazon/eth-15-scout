@@ -513,5 +513,43 @@ function toPending(pos) {
     }
     return {notice,remaining,marketTicker:m.ticker};
   }
-  return {step,fastScan};
+  // Gate 3 shadow probe. NO state writes, orders, simulated entries or P&L.
+  // This reuses the baseline candidate restrictions but NEVER evaluates a
+  // real trade. All quotes remain unverified possibly cached REST at this gate.
+  function probe(m,one,m5,{fresh=false,context=null,at=Date.now()}={}){
+    const version='V4-BASELINE-SHADOW-PROBE-20261121';
+    if(!m||!fresh||!one||!m5||!context?.three||!context?.five||
+       !Number.isFinite(context?.oneClosedAt))
+      return {version,status:'UNAVAILABLE',reason:'Missing fresh market or 1m/3m/5m context',
+        candidate:null,rejections:[],calibratedProbability:null,
+        executableFillVerified:false};
+    const remaining=(Date.parse(m.close_time)-at)/60000;
+    if(!Number.isFinite(remaining)||remaining>12.5||remaining<=1)
+      return {version,status:'WATCH',reason:'Outside eligible baseline entry window',
+        candidate:null,rejections:[],remaining,
+        calibratedProbability:null,executableFillVerified:false};
+    const rejections=[];
+    const strategy=remaining<PAPER_POLICY.minEntryMinutes?'HONEY':'STANDARD';
+    const result=strategy==='HONEY'?
+       chooseHoney(m,one,remaining,rejections,state.dailyRisk?.mode||'NORMAL'):
+       chooseCandidate(m,one,m5,remaining,rejections,context,state.dailyRisk?.mode||'NORMAL');
+    const candidate=result?{
+      ticker:m.ticker,side:result.side,ask:result.price,bid:result.bid,
+      baselineRankingScore:Number.isFinite(result.score)?result.score:null,
+      strategy:result.strategy,signalChecks:result.signal?.checks?.map(c=>({
+        name:c.name,passed:c.ok===true}))||[],
+      checksPassed:Number.isFinite(result.signal?.passed)?result.signal.passed:null,
+      signalFamilyBreadth:result.signalFamilies,
+      askSize:Number.isFinite(result.askSize)?result.askSize:null,
+      bidSize:Number.isFinite(result.bidSize)?result.bidSize:null,
+      breakEvenSettlementProbability:result.breakEven??null
+    }:null;
+    return {version,status:result?'HEURISTIC_CANDIDATE':'WATCH',
+      reason:result?'Baseline V3 candidate; execution and expectancy NOT validated':
+        'No baseline candidate qualified',
+      remaining,candidate,rejections:rejections.slice(0,8).map(x=>String(x).slice(0,210)),
+      calibratedProbability:null,executableFillVerified:false,
+      confidence:'UNTRAINED_AND_UNCALIBRATED'};
+  }
+  return {step,fastScan,probe};
 }
