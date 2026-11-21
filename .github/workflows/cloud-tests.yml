@@ -32,6 +32,7 @@ jobs:
       - run: node --check v4/src/settlement-math.js
       - run: node --check v4/src/kalshi-orderbook.js
       - run: node --check v4/src/kalshi-ws-transport.js
+      - run: node --check v4/src/kalshi-network-diagnostic.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
