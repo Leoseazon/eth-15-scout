@@ -17,8 +17,6 @@ const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const TAG='ETH15_V4_AUDIT|';
 const KINDS=new Set(['STREAM_FAULT','NETWORK_REST_CHECK','AUTH_REST_CHECK',
  'WS_HOST_HTTPS_CHECK','STREAM_SUBSCRIBED','BOOK_SNAPSHOT','STREAM_CONFIG_MISSING']);
-const NETWORK='(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED)';
-const STATUS='(?:HTTP_[1-5][0-9]{2}|NETWORK_'+NETWORK.slice('(?:'.length,-1)+')';
 const SUMMARY=/^PRIMARY_(?:HTTP_[1-5][0-9]{2}|NETWORK_(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED))\|COMPAT_(?:HTTP_[1-5][0-9]{2}|NETWORK_(?:CONNECT_FAILED|DNS_FAILED|TLS_FAILED|TIMEOUT|CONNECTION_LOST|FETCH_REJECTED))$/;
 const FAULTS=new Set([
  'NETWORK_CONNECT_FAILED','NETWORK_DNS_FAILED','NETWORK_TLS_FAILED','NETWORK_TIMEOUT',
@@ -56,8 +54,9 @@ export function parseSafeTailEvent(raw){
  let envelope;
  try{envelope=JSON.parse(raw)}catch{return null}
  if(!envelope||typeof envelope!=='object')return null;
- const timestamp=Number.isFinite(envelope.eventTimestamp)?
-  new Date(envelope.eventTimestamp).toISOString():null;
+ const stamp=Number.isSafeInteger(envelope.eventTimestamp)&&envelope.eventTimestamp>0&&
+  envelope.eventTimestamp<8.64e15?envelope.eventTimestamp:null;
+ const timestamp=stamp!==null?new Date(stamp).toISOString():null;
  const result=[];
  for(const entry of Array.isArray(envelope.logs)?envelope.logs.slice(0,150):[]){
   const args=Array.isArray(entry.message)?entry.message:
@@ -123,8 +122,8 @@ export async function capture({minutes=3,runner=spawn}={}){
  const child=runner(process.execPath,[bin,'tail',WORKER,'--format','json'],{
   cwd:ROOT,env:process.env,windowsHide:true,stdio:['ignore','pipe','pipe']
  });
- let total=0,items=[],rawErrCount=0,failed=false;
- child.stderr.on('data',()=>{rawErrCount++}); // Never display or persist stderr.
+ let total=0,items=[],failed=false;
+ child.stderr.on('data',()=>{}); // Intentionally never display or persist stderr.
  const lines=createInterface({input:child.stdout,crlfDelay:Infinity});
  lines.on('line',line=>{
   const event=parseSafeTailEvent(line);
