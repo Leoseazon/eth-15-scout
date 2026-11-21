@@ -30,6 +30,19 @@ export const PAPER_POLICY = Object.freeze({
 
 // The deployment must explicitly authorize PAPER simulation; no broker
 // integration exists and a missing flag cannot inherit a previous armed state.
+
+// Compare contract prices in Kalshi's 0.0001-dollar fixed-point units.
+// Floating-point (bid-entry)/entry can miss an exact 40% stop (45c -> 27c).
+// No change to the six-minute stop-arming rule or to the loss threshold.
+export function regularStopBreach(entry,bid){
+  if(!Number.isFinite(entry)||!Number.isFinite(bid)||entry<=0||
+     entry>1||bid<0||bid>1)return false;
+  const entryUnits=Math.round(entry*10000);
+  const bidUnits=Math.round(bid*10000);
+  const retainedUnits=Math.round((1-PAPER_POLICY.contractStopLossFraction)*10000);
+  return entryUnits>0&&bidUnits*10000<=entryUnits*retainedUnits;
+}
+
 export function paperEntryArmed(mode,monitoring){
   return mode==='enabled'&&monitoring===true;
 }
