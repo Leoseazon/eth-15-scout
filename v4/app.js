@@ -1150,4 +1150,11 @@ function renderStreamHealth(data){
  txt('v4-stream-received',Number.isSafeInteger(received)?
   ago(received)+' · '+(archive.latest?.ticker||'unknown contract'):
   'No authenticated book observation');
+ const rest=s.restBookArchive||{},restAt=rest.last?.receivedAt;
+ txt('v4-rest-book-count',s.restBookCaptureEnabled===true?
+   (Number.isFinite(rest.count)?rest.count.toLocaleString('en-US')+' stored · REST only':
+   'No official REST depth observations'):'Not enabled');
+ txt('v4-rest-book-received',Number.isSafeInteger(restAt)?
+   ago(restAt)+' · '+(rest.last?.ticker||'unknown contract')+
+   ' · receipt-only observation':'No direct REST depth observation');
 }
