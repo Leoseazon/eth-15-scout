@@ -738,9 +738,21 @@ function drawQuoteChart(){
  canvas.width=Math.floor(w*scale);canvas.height=Math.floor(h*scale);
  ctx.setTransform(scale,0,0,scale,0,0);ctx.clearRect(0,0,w,h);
  const ticker=lastPayload?.status?.lastMarket||lastPayload?.market?.contract?.ticker;
- const raw=Array.isArray(lastPayload?.quoteHistory)?lastPayload.quoteHistory:[];
+ // Use recorded WebSocket book levels only when they actually exist.
+ // Never claim a REST fallback observation is a real-time exchange tick.
+ const stream=Array.isArray(lastPayload?.streamHistory)?
+   lastPayload.streamHistory.filter(q=>q?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
+     q.ticker===ticker&&Number.isSafeInteger(q.receivedAt)):[]; 
+ const streaming=stream.length>0;
+ const raw=streaming?stream.map(q=>({
+   ticker:q.ticker,observed_at:q.receivedAt,
+   yes_bid:q.valid&&q.fresh?q.yesBid?.price??null:null,
+   no_bid:q.valid&&q.fresh?q.noBid?.price??null:null
+ })):(Array.isArray(lastPayload?.quoteHistory)?lastPayload.quoteHistory:[]);
  const data=raw.filter(q=>q?.ticker===ticker&&Number.isFinite(Number(q.observed_at)))
    .sort((a,b)=>Number(a.observed_at)-Number(b.observed_at));
+ txt('v4-quote-source',streaming?'Kalshi WebSocket book · read-only archive':
+   'REST snapshots · best effort · may be cached');
  const left=30,right=w-16,top=12,bottom=h-26;
  ctx.strokeStyle='#334663';ctx.lineWidth=1;ctx.fillStyle='#94a7c5';ctx.font='11px sans-serif';
  for(let i=0;i<=4;i++){
@@ -748,16 +760,18 @@ function drawQuoteChart(){
   ctx.beginPath();ctx.moveTo(left,y);ctx.lineTo(right,y);ctx.stroke();
   ctx.fillText(String(Math.round((1-i/4)*100))+'¢',0,y+4);
  }
- if(data.length<2){meta.textContent='Insufficient observations for a quote path. V4 data collection is not deployed.';return}
+ if(data.length<2){meta.textContent='Insufficient historical quote observations. V4 streaming may not be active.';return}
  const min=Number(data[0].observed_at),max=Number(data.at(-1).observed_at);
  function line(key,color){
-  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();let drawing=false,count=0;
+  ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();let drawing=false,count=0,lastX=0;
   for(const q of data){
    const n=Number(q[key]),valid=q[key]!==null&&q[key]!==undefined&&Number.isFinite(n)&&n>=0&&n<=1;
    if(!valid){drawing=false;continue}
    const x=left+(right-left)*(Number(q.observed_at)-min)/Math.max(1,max-min);
    const y=top+(bottom-top)*(1-n);
-   if(!drawing)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+   if(!drawing||x>lastX+Math.max(1,(right-left)*5000/Math.max(1,max-min)))ctx.moveTo(x,y);
+   else ctx.lineTo(x,y);
+   lastX=x;
    drawing=true;count++;
   }
   if(count>1)ctx.stroke();
@@ -767,7 +781,11 @@ function drawQuoteChart(){
  ctx.textAlign='right';ctx.fillText(new Date(max).toLocaleTimeString(),right,bottom+17);
  ctx.textAlign='start';
  const up=data.filter(q=>q.yes_bid!==null).length,no=data.filter(q=>q.no_bid!==null).length;
- meta.textContent='Recorded REST observations: '+data.length+' · UP bid values: '+up+' · DOWN bid values: '+no+' · Cyan: UP bid / Violet: DOWN bid. May be cached; these are not verified exchange-tick timestamps.';
+ meta.textContent=(streaming?'Recorded WebSocket observations: ':'Recorded REST observations: ')+
+  data.length+' · UP bid values: '+up+' · DOWN bid values: '+no+
+  ' · Cyan: UP bid / Violet: DOWN bid. '+
+  (streaming?'Historic snapshots of displayed bids; not proven fills or settlement values.':
+   'REST prices may be cached; no verified exchange event timestamps.');
 }
 
 
