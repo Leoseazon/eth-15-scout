@@ -28,6 +28,7 @@ function shouldSwitchHost(reason){
     ['HANDSHAKE_HTTP_502','HANDSHAKE_HTTP_503','HANDSHAKE_HTTP_504'].includes(reason);
 }
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
+export const KALSHI_READONLY_REST_PATH='/trade-api/v2/portfolio/balance';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
 // Error reason codes are safe for the private V4 audit database. Never persist
@@ -38,7 +39,9 @@ function base64(bytes){
     s+=String.fromCharCode(...bytes.subarray(i,i+8192));
   return btoa(s);
 }
-export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
+async function signedReadHeaders({keyId,privatePem,now,subtle,signPath}){
+  if(signPath!==KALSHI_SIGN_PATH&&signPath!==KALSHI_READONLY_REST_PATH)
+    throw authError('AUTH_PATH_NOT_ALLOWLISTED');
   if(typeof keyId!=='string'||!keyId.trim()||keyId.trim().length>200||
     typeof privatePem!=='string'||!Number.isSafeInteger(now)||now<=0)
     throw authError('CREDENTIALS_MISSING_OR_INVALID');
@@ -68,11 +71,18 @@ export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=cryp
   const timestamp=String(now);
   let signature;
   try{signature=new Uint8Array(await subtle.sign(method,
-    key,enc.encode(timestamp+'GET'+KALSHI_SIGN_PATH)))}
+    key,enc.encode(timestamp+'GET'+signPath)))}
   catch{throw authError('KEY_SIGNING_FAILED')}
   return {'KALSHI-ACCESS-KEY':keyId.trim(),
     'KALSHI-ACCESS-SIGNATURE':base64(signature),
     'KALSHI-ACCESS-TIMESTAMP':timestamp};
+}
+export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
+  return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_SIGN_PATH});
+}
+export async function readonlyRestAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
+  // Dedicated read-only endpoint with no body parsing, trading or transfers.
+  return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_READONLY_REST_PATH});
 }
 export class KalshiReadOnlySocket {
   constructor({fetcher=fetch,onObservation=()=>{},onFault=()=>{}}={}){
