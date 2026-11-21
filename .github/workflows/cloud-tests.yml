@@ -30,6 +30,7 @@ jobs:
       - run: node --check v4/src/quote-recorder.js
       - run: node --check v4/src/settlement-math.js
       - run: node --check v4/src/kalshi-orderbook.js
+      - run: node --check v4/src/kalshi-ws-transport.js
       - run: node --check ../v4/app.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
