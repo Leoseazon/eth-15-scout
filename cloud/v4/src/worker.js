@@ -11,6 +11,7 @@ import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js'
 import {paperResults,reconcilePending} from './paper-ledger.js';
 import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
+import {probeKalshiPublicRest} from './kalshi-network-diagnostic.js';
 import {ensureStreamAudit,appendStreamSample,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
@@ -384,6 +385,26 @@ export class ScoutEngineV4 extends DurableObject {
           if(started)appendStreamEvent(this.ctx.storage.sql,{
             kind:'STREAM_SUBSCRIBED',ticker:market.ticker,at:Date.now(),
             detail:previous&&previous!==market.ticker?'Next 15-minute window':'Read-only subscription'});
+          // A bounded public-REST comparison distinguishes broad outbound
+          // Cloudflare routing failure from a WebSocket-specific failure.
+          // Never send an API key/signature or read response bodies.
+          const failed=this.stream.status(Date.now());
+          if(failed.attempts>=3&&
+              /^NETWORK_/.test(failed.lastFailure||'')&&
+              Date.now()-(s.lastNetworkProbeAt||0)>=10*60*1000){
+            s.lastNetworkProbeAt=Date.now();
+            this.save(s,tickMeta); // persist cooldown BEFORE probing
+            try{
+              const checks=await probeKalshiPublicRest();
+              appendStreamEvent(this.ctx.storage.sql,{
+                kind:'NETWORK_REST_CHECK',ticker:market.ticker,at:Date.now(),
+                detail:checks.map(x=>x.endpoint+'_'+x.result).join('|')});
+            }catch{
+              appendStreamEvent(this.ctx.storage.sql,{
+                kind:'NETWORK_REST_CHECK',ticker:market.ticker,at:Date.now(),
+                detail:'DIAGNOSTIC_UNAVAILABLE'});
+            }
+          }
         }else if(market&&(!keyId||!privatePem)){
           if(this.streamLastFault!=='READ_CREDENTIALS_UNAVAILABLE'){
             appendStreamEvent(this.ctx.storage.sql,{
