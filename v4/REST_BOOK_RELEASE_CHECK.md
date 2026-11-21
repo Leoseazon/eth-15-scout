@@ -41,8 +41,8 @@ Cloudflare → Durable Objects → `ScoutEngineV4` → Data Studio → instance 
 SELECT
   (SELECT COUNT(*) FROM v4_rest_book_samples) AS official_rest_books,
   (SELECT datetime(MAX(received_at)/1000,'unixepoch') FROM v4_rest_book_samples) AS latest_rest_utc,
-  (SELECT COUNT(*) FROM v4_stream_samples) AS verified_ws_book_observations,
-  (SELECT MAX(detail) FROM v4_stream_events WHERE kind='REST_BOOK_FAULT') AS latest_rest_error;
+  (SELECT COUNT(*) FROM v4_stream_samples) AS ws_book_samples_not_all_verified,
+  (SELECT detail FROM v4_stream_events WHERE kind='REST_BOOK_FAULT' ORDER BY id DESC LIMIT 1) AS latest_rest_error;
 ```
 
 Then inspect safe events, if needed:
