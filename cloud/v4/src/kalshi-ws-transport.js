@@ -150,6 +150,11 @@ export class KalshiReadOnlySocket {
     let outcome;
     try{outcome=this.book.apply(packet,receivedAt)}
     catch{this.fault('INVALID_BOOK_FRAME',receivedAt);return;}
+    if(outcome?.gap){
+      // Audit every sequence discontinuity, even when the next delta is
+      // discarded while waiting for a clean replacement snapshot.
+      try{this.onFault('SEQUENCE_GAP')}catch{}
+    }
     if(outcome?.accepted){
       if(outcome.snapshot)this.attempts=0; // A usable snapshot, not just a handshake, proves recovery.
       try{this.onObservation({result:outcome,quote:this.book.view(this.ticker,receivedAt),
