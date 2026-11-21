@@ -150,3 +150,10 @@ V4's Worker, recorder, read-only shadow engine and tests have been deployed or b
 
 ## Prioritized build order
 Isolation > timestamps/feed correctness > recorder > settlement arithmetic > bid/ask and execution correctness > forecast models > shadow validation > V4 paper performance.
+
+## Research note — Kalshi MCP options (2026-11-21)
+- The independently operated `https://kalshi-mcp.com/` advertises public orderbook snapshots, historical candles, settlement-rule audit, and optional private account/trading tools. Its published tool catalog does **not** establish continuous exchange WebSocket order-book streaming suitable for a 15-second or faster durable capture system. Its calls/history are quota-limited. This is a discretionary research/comparison tool only, not a V4 production source.
+- This service explicitly describes itself as unaffiliated with Kalshi; **never** submit V4's read-only API ID or private key to it, and do not connect a trading-enabled key. It may store supplied credentials server-side, creating unnecessary third-party exposure.
+- Kalshi itself now offers an official conversational MCP at `https://api.elections.kalshi.com/mcp`, documented at `https://pro.kalshi.com/pro/updates/kalshi-mcp-server`. It can help an AI assistant occasionally research markets/positions/fills/settlements, but it is NOT evidence of a persistent raw WebSocket feed or timestamped order-book depth archive.
+- Keep Kalshi's direct authenticated WebSocket + public REST APIs as V4's primary source hierarchy, and treat any independent MCP checks as secondary, with exact observation timestamps and provenance. Never substitute an MCP snapshot for a verified WS event or official settlement print.
+- The current isolated V4 GitHub branch already includes the next blocked diagnostic: an authenticated **read-only REST** probe that records only the HTTP status and uncredentialed HTTPS checks of both WebSocket hosts. This code passed CI but still requires an explicitly approved V4-only Cloudflare deploy and live follow-up evidence before changing transport architecture.
