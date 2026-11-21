@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify,constants,webcrypto} from 'node:crypto';
-import {wsAuthHeaders,readonlyRestAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,KALSHI_READONLY_REST_PATH,classifyNetworkException} from '../src/kalshi-ws-transport.js';
+import {wsAuthHeaders,readonlyRestAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,KALSHI_READONLY_REST_PATH,classifyNetworkException,classifyWebSocketUpgradeException} from '../src/kalshi-ws-transport.js';
 const ticker='KXETH15M-26NOV210015-15';
 const ed=generateKeyPairSync('ed25519',{
   privateKeyEncoding:{type:'pkcs8',format:'pem'},
@@ -274,4 +274,36 @@ test('read-only signed REST probe uses its own allowlisted Kalshi endpoint and c
  assert.equal(verify(null,Buffer.from(now+'GET'+KALSHI_SIGN_PATH),ed.publicKey,signature),false);
  assert.equal(verify(null,Buffer.from(now+'POST'+KALSHI_READONLY_REST_PATH),ed.publicKey,signature),false);
  assert.equal(KALSHI_READONLY_REST_PATH,'/trade-api/v2/portfolio/balance');
+});
+
+
+test('specific WebSocket upgrade errors map to stable reason codes without leaking raw exception text',()=>{
+ const tests=[
+  ['Invalid Upgrade header for SECRET','WS_UPGRADE_HEADER_REJECTED'],
+  ['WebSocket upgrade not implemented - PRIVATE KEY','WS_UPGRADE_RUNTIME_UNSUPPORTED'],
+  ['unsupported protocol scheme SECRET','WS_SCHEME_REJECTED'],
+  ['outbound request limit exceeded SECRET','WS_WORKER_SUBREQUEST_LIMIT'],
+  ['outbound connection blocked SECRET','NETWORK_EGRESS_BLOCKED'],
+  ['unknown private key = SECRET','NETWORK_CONNECT_FAILED']
+ ];
+ for(const [message,expected] of tests){
+  const code=classifyWebSocketUpgradeException({name:'TypeError',message});
+  assert.equal(code,expected);
+  assert.doesNotMatch(code,/SECRET|private key/i);
+ }
+ for(const [cause,expected] of [['EAI_AGAIN','NETWORK_DNS_FAILED'],
+  ['ETIMEDOUT','NETWORK_TIMEOUT'],['ECONNREFUSED','NETWORK_FETCH_REJECTED']]){
+  assert.equal(classifyWebSocketUpgradeException({
+   name:'TypeError',message:'Request failed PRIVATE KEY',cause:{code:cause}
+  }),expected);
+ }
+});
+test('an unsupported Cloudflare WebSocket upgrade is classified separately from DNS and HTTP 401',async()=>{
+ const client=new KalshiReadOnlySocket({
+  fetcher:async()=>{throw TypeError('WebSocket upgrade not implemented SECRET')}
+ });
+ assert.equal(await client.ensure(ticker,creds,Date.now()),false);
+ assert.equal(client.status().lastFailure,'WS_UPGRADE_RUNTIME_UNSUPPORTED');
+ assert.equal(client.status().lastNetworkDiagnostic,'WS_UPGRADE_RUNTIME_UNSUPPORTED');
+ assert.equal(client.status().endpoint,'PRIMARY');
 });
