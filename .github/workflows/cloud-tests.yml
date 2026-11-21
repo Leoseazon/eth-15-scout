@@ -24,3 +24,11 @@ jobs:
       - run: node --check viewer-worker.js
       - run: node --test tests/viewer.test.mjs
       - run: npx wrangler deploy --config wrangler.viewer.toml --dry-run --outdir .cloudflare-build-viewer
+      - run: node --check v4/src/worker.js
+      - run: node --check v4/viewer-worker.js
+      - run: node --check v4/viewer-auth.js
+      - run: node --check v4/src/quote-recorder.js
+      - run: node --check v4/src/settlement-math.js
+      - run: node --check ../v4/app.js
+      - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
+      - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
