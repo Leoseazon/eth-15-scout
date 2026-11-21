@@ -110,6 +110,8 @@ Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's 
 - [x] Audit host switches using WS_FALLBACK_COMPAT_SELECTED and WS_FALLBACK_PRIMARY_SELECTED; log bounded NETWORK_REST_CHECK results in existing V4-only history.
 - [ ] After passing CI and operator's dry-run review, deploy this V4-only read-only fix and inspect real source-tagged error events.
 - [ ] Validate HTTP 101 handshake, live order-book snapshots and multi-window continuity. A successful public REST check is NOT proof of WebSocket connectivity.
+- [x] After both unauthenticated public REST hosts returned HTTP 200 but neither WebSocket host established a connection, add two **V4-only, once-per-10-minutes** probes: authenticated read-only Kalshi GET /portfolio/balance (response discarded, status only) and an uncredentialed non-Upgrade HTTPS GET against both official WebSocket hostnames. This distinguishes key authorization from WebSocket upgrade/host routing; NEVER store balances, signatures, keys, or raw exception strings.
+- [ ] Observe AUTH_REST_CHECK and WS_HOST_HTTPS_CHECK events in production before deciding between WebSocket transport repair, permission issue, or separate relay. Successful REST auth does not prove a WS handshake.
 - [ ] If both WS hosts remain unreachable, investigate Cloudflare egress and service policy; assess secure separate relay only with authorization and data/license review.
 - [ ] Review market-data storage/retention rights before scaling historical collection.
 
