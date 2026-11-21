@@ -141,7 +141,8 @@ export async function capture({minutes=3,runner=spawn}={}){
  const text=reportText({startedAt,finishedAt:new Date().toISOString(),
   total,items,tailOk:!failed});
  const dir=existsSync(join(homedir(),'Downloads'))?join(homedir(),'Downloads'):homedir();
- const filepath=join(dir,'ETH15-V4-Cloudflare-ReadOnly-Report.txt');
+ const stamp=startedAt.replace(/[-:]/g,'').replace(/\.\d{3}Z$/,'Z');
+ const filepath=join(dir,'ETH15-V4-Cloudflare-ReadOnly-'+stamp+'.txt');
  await writeFile(filepath,text,{encoding:'utf8',mode:0o600});
  process.stdout.write('Read-only V4 report saved to: '+filepath+'\n');
  process.stdout.write('Safe events: '+items.length+'; invocation envelopes: '+total+'\n');
