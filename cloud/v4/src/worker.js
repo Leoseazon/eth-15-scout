@@ -452,6 +452,9 @@ export class ScoutEngineV4 extends DurableObject {
           const result=await fetchOfficialRestBook(market.ticker);
           if(result.ok){
             appendRestBookSample(this.ctx.storage.sql,result.book);
+            appendStreamEvent(this.ctx.storage.sql,{
+              kind:'REST_BOOK_SNAPSHOT',ticker:market.ticker,at:Date.now(),
+              detail:'RECEIPT_ONLY'});
             s.lastRestBookStatus='REST_SNAPSHOT_RECORDED';
             s.lastRestBookError=null;
             s.lastRestBookReceivedAt=result.book.receivedAt;
