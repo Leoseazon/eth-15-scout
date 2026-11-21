@@ -224,12 +224,15 @@ export class ScoutEngineV4 extends DurableObject {
       }
     }
     s.lastFeedChecks=feedChecks;
+    let quoteObservedAt=null;
     if(market){
-      try{recordQuote(this.ctx.storage.sql,{
-        market,observedAt:Date.now(),
-        proxyRetrievedAt:s.lastQuoteRetrievedAt,krakenSpot:tickerSpot
-      });}
-      catch(e){feedIssues.push('recorder: '+safeErr(e));}
+      try{
+        const receivedAt=Date.now();
+        if(recordQuote(this.ctx.storage.sql,{
+          market,observedAt:receivedAt,
+          proxyRetrievedAt:s.lastQuoteRetrievedAt,krakenSpot:tickerSpot
+        }))quoteObservedAt=receivedAt;
+      }catch(e){feedIssues.push('recorder: '+safeErr(e));}
     }
     error=feedIssues.length?feedIssues.slice(0,3).join('; ').slice(0,200):null;
     // ONE light context refresh per Houston day (retry at most each 30m
@@ -295,7 +298,7 @@ export class ScoutEngineV4 extends DurableObject {
     try{
       const research=recordResearchTick(this.ctx.storage.sql,{
         startedAt:now,finishedAt:Date.now(),market,
-        quoteRetrievedAt:s.lastQuoteRetrievedAt,spot:tickerSpot,
+        quoteRetrievedAt:s.lastQuoteRetrievedAt,quoteObservedAt,spot:tickerSpot,
         one,five:m5,context,feedChecks,feedIssues,report,
         engineState:s,lastError:error
       });
