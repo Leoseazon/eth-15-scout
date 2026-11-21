@@ -43,12 +43,14 @@ export function entryBudget(cash, riskPercent = PAPER_POLICY.defaultRiskPercent,
 }
 
 // This is an entry-risk brake, not a stop order and not a calibrated trading edge.
-// Both soft and hard thresholds are latched for the Houston trading day: a
-// temporary rebound in a marked/open position cannot re-enable risky entries.
+// Both risk thresholds normally latch for the Houston trading day. An explicit
+// paper-only softGuardEnabled:false bypasses SOFT (including its prior latch),
+// but never bypasses an existing or newly triggered HARD halt.
 // Worst-case unresolved pending losses are included in risk EXPOSURE, not
 // misrepresented as realized outcomes.
 export function assessDailyRisk({
-  initial, realizedToday=0, openLoss=0, pendingExposure=0, previousMode='NORMAL'
+  initial, realizedToday=0, openLoss=0, pendingExposure=0, previousMode='NORMAL',
+  softGuardEnabled=true
 }) {
   if (![initial,realizedToday,openLoss,pendingExposure].every(Number.isFinite) ||
       initial <= 0 || pendingExposure < 0)
@@ -57,10 +59,13 @@ export function assessDailyRisk({
   const netRiskPnl=realizedToday+negativeOpen-pendingExposure;
   const hard=netRiskPnl<=-initial*PAPER_POLICY.dailyHardLossFraction||
     previousMode==='HARD';
-  const soft=hard||netRiskPnl<=-initial*PAPER_POLICY.dailySoftLossFraction||
-    previousMode==='SOFT';
+  const soft=softGuardEnabled!==false && (hard||
+    netRiskPnl<=-initial*PAPER_POLICY.dailySoftLossFraction||
+    previousMode==='SOFT');
   const mode=hard?'HARD':soft?'SOFT':'NORMAL';
   return {mode,canEnter:mode!=='HARD',netRiskPnl,
+    softGuardEnabled:softGuardEnabled!==false,
+    softThresholdExceeded:netRiskPnl<=-initial*PAPER_POLICY.dailySoftLossFraction,
     realizedToday,openLoss:negativeOpen,pendingExposure,
     softLoss:initial*PAPER_POLICY.dailySoftLossFraction,
     hardLoss:initial*PAPER_POLICY.dailyHardLossFraction,
