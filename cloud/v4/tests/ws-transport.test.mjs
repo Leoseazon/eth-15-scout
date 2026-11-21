@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify,constants,webcrypto} from 'node:crypto';
-import {wsAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_SIGN_PATH} from '../src/kalshi-ws-transport.js';
+import {wsAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,classifyNetworkException} from '../src/kalshi-ws-transport.js';
 const ticker='KXETH15M-26NOV210015-15';
 const ed=generateKeyPairSync('ed25519',{
   privateKeyEncoding:{type:'pkcs8',format:'pem'},
@@ -189,4 +189,77 @@ test('handshake 101 without upgrade socket reports safe and distinct failure',as
  const client=new KalshiReadOnlySocket({fetcher:async()=>({status:101})});
  assert.equal(await client.ensure(ticker,creds,Date.now()),false);
  assert.equal(client.status().lastFailure,'UPGRADE_SOCKET_MISSING');
+});
+
+
+test('Classify only safe network codes and never persist raw exception containing secret-looking strings',()=>{
+ const cases=[
+  [{name:'AbortError',message:'secret-token'},'NETWORK_TIMEOUT'],
+  [{name:'TypeError',message:'fetch failed'},'NETWORK_FETCH_REJECTED'],
+  [{name:'TypeError',message:'TLS handshake failed for SECRET'},'NETWORK_TLS_FAILED'],
+  [{name:'TypeError',message:'DNS ENOTFOUND SECRET'},'NETWORK_DNS_FAILED'],
+  [{name:'TypeError',message:'Network connection lost SECRET'},'NETWORK_CONNECTION_LOST'],
+  [{name:'TypeError',message:'unexpected-secret-value'},'NETWORK_CONNECT_FAILED']
+ ];
+ for(const [err,code] of cases){
+  const result=classifyNetworkException(err);
+  assert.equal(result,code);
+  assert.doesNotMatch(result,/SECRET|token|unexpected-secret/i);
+ }
+});
+
+test('two consecutive primary network failures select official compatibility host with identical signing path',async()=>{
+ const urls=[],reasons=[];
+ const client=new KalshiReadOnlySocket({
+  fetcher:async url=>{
+   urls.push(url);
+   if(url===KALSHI_WS_URL)throw new TypeError('Network connection lost');
+   return {status:101,webSocket:new FakeSocket()};
+  },onFault:r=>reasons.push(r)});
+ const t=Date.now();
+ assert.equal(await client.ensure(ticker,creds,t),false);
+ assert.equal(client.status(t).endpoint,'PRIMARY');
+ assert.equal(await client.ensure(ticker,creds,t+3000),false);
+ assert.equal(client.status(t+3000).endpoint,'COMPAT');
+ assert.ok(reasons.includes('WS_FALLBACK_COMPAT_SELECTED'));
+ assert.equal(await client.ensure(ticker,creds,t+7500),true);
+ assert.equal(client.status(t+7500).connected,true);
+ assert.deepEqual(urls,[KALSHI_WS_URL,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL]);
+ client.stop();
+});
+
+test('HTTP 401 and 403 never trigger alternate-host retries or recreate keys',async()=>{
+ for(const status of [401,403]){
+  const urls=[];
+  const client=new KalshiReadOnlySocket({fetcher:async url=>{
+   urls.push(url);return {status,webSocket:null};
+  }});
+  let t=Date.now();
+  for(let i=0;i<4;i++){
+   assert.equal(await client.ensure(ticker,creds,t),false);
+   t+=65000;
+  }
+  assert.ok(urls.every(url=>url===KALSHI_WS_URL));
+  assert.equal(client.status(t).endpoint,'PRIMARY');
+  assert.equal(client.status(t).lastFailure,'HANDSHAKE_HTTP_'+status);
+ }
+});
+test('429 backoff persists for at least two minutes and does not switch hosts',async()=>{
+ const urls=[];
+ const client=new KalshiReadOnlySocket({fetcher:async url=>{
+   urls.push(url);return {status:429,webSocket:null};
+ }});
+ const t=Date.now();
+ assert.equal(await client.ensure(ticker,creds,t),false);
+ assert.equal(client.status(t).retryAfter,t+120000);
+ assert.equal(await client.ensure(ticker,creds,t+60000),false);
+ assert.equal(urls.length,1);
+ assert.equal(client.status(t).endpoint,'PRIMARY');
+});
+test('compatibility and primary endpoints remain hardcoded official Kalshi hostnames',()=>{
+ assert.equal(new URL(KALSHI_WS_URL).hostname,'external-api-ws.kalshi.com');
+ assert.equal(new URL(KALSHI_COMPAT_WS_URL).hostname,'api.elections.kalshi.com');
+ assert.equal(new URL(KALSHI_WS_URL).pathname,KALSHI_SIGN_PATH);
+ assert.equal(new URL(KALSHI_COMPAT_WS_URL).pathname,KALSHI_SIGN_PATH);
+ assert.equal(new URL(KALSHI_COMPAT_WS_URL).protocol,'https:');
 });
