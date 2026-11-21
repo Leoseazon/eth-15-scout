@@ -435,3 +435,14 @@ body.unauthenticated #performance{display:none}
 .stop-audit-row strong{font-size:12px;color:#e1f0f8}
 .stop-audit-row small{color:#88a4c3}
 @media(max-width:680px){.stop-analysis-heading{flex-direction:column}}
+
+
+/* Authenticated V4 book-feed reliability panel; does not imply a live trade. */
+.v4-stream-health{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+ padding:10px 16px 18px}
+.v4-stream-health>span{display:flex;flex-direction:column;gap:5px;
+ border:1px solid #29435f;border-radius:9px;background:#101c30;padding:11px}
+.v4-stream-health strong{font-size:10px;color:#a4bcd5}
+.v4-stream-health small{font-size:12px;color:#d7ebf6;overflow-wrap:anywhere}
+@media(max-width:810px){.v4-stream-health{grid-template-columns:1fr 1fr}}
+@media(max-width:470px){.v4-stream-health{grid-template-columns:1fr}}
