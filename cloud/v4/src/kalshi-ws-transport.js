@@ -2,14 +2,13 @@
  * V4 Gate 2B: read-only authenticated Kalshi WebSocket transport prototype.
  * NOT connected to running Worker; requires separate deployment review.
  * Cloudflare outbound WebSocket via fetch(https, {Upgrade:'websocket', headers}).
- * A scoped MARKET-DATA-ONLY Kalshi RSA API key is required; never use live order APIs.
+ * Dedicated Kalshi READ-SCOPE-ONLY key is required; no trading/write scopes.
  */
 import {KalshiBookStream,subscribeOrderbook,requestSnapshot} from './kalshi-orderbook.js';
 export const KALSHI_WS_URL='https://external-api-ws.kalshi.com/trade-api/ws/v2';
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
-const keyCache=new Map(); // Worker-lifetime only, no disk, never log key material.
 function base64(bytes){
   let s='';for(let i=0;i<bytes.length;i+=8192)
     s+=String.fromCharCode(...bytes.subarray(i,i+8192));
@@ -23,11 +22,20 @@ export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=cryp
   const body=pem.replace(/^-----BEGIN PRIVATE KEY-----\s*/,'').replace(/\s*-----END PRIVATE KEY-----$/,'').replace(/\s+/g,'');
   if(!/^[A-Za-z0-9+/]+={0,2}$/.test(body)||body.length>16384)
     throw new TypeError('Invalid PKCS8 private key envelope');
-  // Deliberately no persistent private key cache; import only for this handshake.
+  // Kalshi recommends Ed25519 PKCS#8; self-generated RSA PKCS#8 also works.
+  // Kalshi-issued RSA PKCS#1 keys must be converted to PKCS#8 offline.
+  // No persistent key cache and no secret logging.
   const binary=Uint8Array.from(atob(body),c=>c.charCodeAt(0));
-  const key=await subtle.importKey('pkcs8',binary.buffer,{name:'RSA-PSS',hash:'SHA-256'},false,['sign']);
+  let key,method;
+  try{
+    key=await subtle.importKey('pkcs8',binary.buffer,{name:'Ed25519'},false,['sign']);
+    method={name:'Ed25519'};
+  }catch{
+    key=await subtle.importKey('pkcs8',binary.buffer,{name:'RSA-PSS',hash:'SHA-256'},false,['sign']);
+    method={name:'RSA-PSS',saltLength:32};
+  }
   const timestamp=String(now);
-  const signature=new Uint8Array(await subtle.sign({name:'RSA-PSS',saltLength:32},
+  const signature=new Uint8Array(await subtle.sign(method,
     key,enc.encode(timestamp+'GET'+KALSHI_SIGN_PATH)));
   return {'KALSHI-ACCESS-KEY':keyId,
     'KALSHI-ACCESS-SIGNATURE':base64(signature),
