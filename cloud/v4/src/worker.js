@@ -572,8 +572,15 @@ export class ScoutEngineV4 extends DurableObject {
     else if(path==='/v1/arm'||path==='/v1/pause')
       return json({error:'V4 foundation is hard-disarmed by code; paper entry activation is unavailable',
         paperOnly:true,armed:s.armed},409);
-    else if(path==='/v1/stop'){s.monitoring=false;s.armed=false;this.save(s);
-      await this.ctx.storage.deleteAlarm()}
+    else if(path==='/v1/stop'){
+      // Stopping V4 monitoring must also terminate the paid outbound stream.
+      // This is a server-admin action; no viewer/public endpoint exposes it.
+      this.stream?.stop();
+      s.monitoring=false;s.armed=false;this.save(s);
+      await this.ctx.storage.deleteAlarm();
+      if(this.stream)appendStreamEvent(this.ctx.storage.sql,{
+        kind:'STREAM_STOPPED',at:Date.now(),detail:'V4 monitoring stopped by admin'});
+    }
     else return json({error:'Not found'},404);
     return json({ok:true,monitoring:s.monitoring,armed:s.armed});
   }
