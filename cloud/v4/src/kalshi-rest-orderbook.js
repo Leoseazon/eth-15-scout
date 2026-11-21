@@ -29,7 +29,7 @@ function parseLadder(levels){
    throw TypeError('REST prices must be strictly ascending; counts positive');
   previous=p;
   // Original fixed-point values preserved without any float reinterpretation.
-  return {price:p,sizeFp:(size/100).toFixed(2)};
+  return {price:p,sizeFp:String(Math.floor(size/100))+'.'+String(size%100).padStart(2,'0')};
  });
 }
 function best(ladder){return ladder.length?ladder.at(-1):null}
@@ -56,8 +56,8 @@ export function parseOfficialRestBook(data,{ticker,requestedAt,receivedAt,depth=
   // Kalshi's REST response does not identify source event time or sequence.
   exchangeEventAt:null,sequence:null,verifiedExchangeAge:false,
   latestAtTimeOfRequest:false,
-  yesLevels:yes.map(x=>[Number((x.price/10000).toFixed(4)).toFixed(4),x.sizeFp]),
-  noLevels:no.map(x=>[Number((x.price/10000).toFixed(4)).toFixed(4),x.sizeFp]),
+  yesLevels:yes.map(x=>[String(Math.floor(x.price/10000))+'.'+String(x.price%10000).padStart(4,'0'),x.sizeFp]),
+  noLevels:no.map(x=>[String(Math.floor(x.price/10000))+'.'+String(x.price%10000).padStart(4,'0'),x.sizeFp]),
   yesBid,noBid,yesAsk,noAsk,
   empty:yes.length===0&&no.length===0,
   lockedOrCrossed,valid:true,
