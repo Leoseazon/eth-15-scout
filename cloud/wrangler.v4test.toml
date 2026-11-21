@@ -2,12 +2,17 @@
 name = "eth-15-scout-cloud-v4test"
 main = "v4/src/worker.js"
 compatibility_date = "2026-11-18"
+# Preserve V4-only dashboard variables, including the user-enabled streaming flag.
+# Newly created Workers remain disabled unless the flag is explicitly set.
+keep_vars = true
 workers_dev = false
 
 [vars]
 MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
 SCOUT_V4_PAPER_MODE = "disabled"
-V4_STREAM_CAPTURE_ENABLED = "false" # Requires separate isolated deployment approval and read-scoped Kalshi secrets
+# V4_STREAM_CAPTURE_ENABLED intentionally NOT declared here.
+# Missing flag is fail-closed (no WebSocket). Production flag is managed in
+# the V4 Cloudflare dashboard, which keep_vars retains during code deploy.
 
 [[durable_objects.bindings]]
 name = "SCOUT_V4"
