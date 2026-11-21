@@ -1,11 +1,32 @@
 /*
- * V4 Gate 2B: read-only authenticated Kalshi WebSocket transport prototype.
- * NOT connected to running Worker; requires separate deployment review.
+ * V4 read-only authenticated Kalshi WebSocket transport.
+ * Connected only to the isolated V4 Durable Object, never to V3 paper trading.
  * Cloudflare outbound WebSocket via fetch(https, {Upgrade:'websocket', headers}).
  * Dedicated Kalshi READ-SCOPE-ONLY key is required; no trading/write scopes.
  */
 import {KalshiBookStream,subscribeOrderbook,requestSnapshot} from './kalshi-orderbook.js';
+// Kalshi officially documents both production hosts. No arbitrary host input.
 export const KALSHI_WS_URL='https://external-api-ws.kalshi.com/trade-api/ws/v2';
+export const KALSHI_COMPAT_WS_URL='https://api.elections.kalshi.com/trade-api/ws/v2';
+const KALSHI_WS_ENDPOINTS=Object.freeze([KALSHI_WS_URL,KALSHI_COMPAT_WS_URL]);
+export function classifyNetworkException(err){
+  // This function inspects exceptions locally but persists ONLY fixed labels.
+  // Never record raw error messages, causes, stack traces, headers or responses.
+  const name=typeof err?.name==='string'?err.name:'';
+  const description=typeof err?.message==='string'?err.message.toLowerCase():'';
+  if(name==='AbortError'||/timed? ?out|timeout/.test(description))return 'NETWORK_TIMEOUT';
+  if(/dns|enotfound|eai_again|name resolution/.test(description))return 'NETWORK_DNS_FAILED';
+  if(/tls|ssl|certificate|cert_/.test(description))return 'NETWORK_TLS_FAILED';
+  if(/network connection lost|connection reset|econnreset|unexpected eof/.test(description))
+    return 'NETWORK_CONNECTION_LOST';
+  if(/fetch failed|connection refused|econnrefused/.test(description))
+    return 'NETWORK_FETCH_REJECTED';
+  return 'NETWORK_CONNECT_FAILED';
+}
+function shouldSwitchHost(reason){
+  return /^NETWORK_/.test(reason)||
+    ['HANDSHAKE_HTTP_502','HANDSHAKE_HTTP_503','HANDSHAKE_HTTP_504'].includes(reason);
+}
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
@@ -60,6 +81,8 @@ export class KalshiReadOnlySocket {
     this.lastMessageAt=null;this.lastSubscriptionAt=null;
     this.attempts=0;this.retryAfter=0;this.commandId=1;
     this.connecting=false;this.resyncAt=0;this.lastFailure=null;this.generation=0;
+    this.endpointIndex=0;this.endpointFailureStreak=0;
+    this.lastAttemptEndpoint=null;this.lastHttpStatus=null;
   }
   fault(reason,at=Date.now()){
     this.book.invalidate(reason);
@@ -69,19 +92,36 @@ export class KalshiReadOnlySocket {
   socketClosed(reason,at=Date.now()){
     this.book.disconnected();this.socket=null;this.lastFailure=reason;
     this.attempts++;
-    this.retryAfter=at+Math.min(60000,1000*2**Math.min(this.attempts,6));
+    // Kalshi's 429 is either a connection cap or a reconnect-rate limit.
+    // Never route around an auth refusal or rate limit by switching hosts.
+    const delay=Math.min(60000,1000*2**Math.min(this.attempts,6));
+    this.retryAfter=at+Math.max(reason==='HANDSHAKE_HTTP_429'?120000:0,delay);
     try{this.onFault(reason)}catch{}
+    if(shouldSwitchHost(reason)){
+      this.endpointFailureStreak++;
+      if(this.endpointFailureStreak>=2){
+        this.endpointFailureStreak=0;
+        this.endpointIndex=(this.endpointIndex+1)%KALSHI_WS_ENDPOINTS.length;
+        // A fixed enum, never a dynamic or secret-bearing endpoint string.
+        try{this.onFault(this.endpointIndex===1?
+          'WS_FALLBACK_COMPAT_SELECTED':'WS_FALLBACK_PRIMARY_SELECTED')}catch{}
+      }
+    }else this.endpointFailureStreak=0;
   }
   stop(){
     this.generation++;this.connecting=false;
     const ws=this.socket;this.socket=null;this.book.disconnected();this.ticker=null;
     this.retryAfter=0;this.attempts=0;this.resyncAt=0;
+    this.endpointFailureStreak=0;
     try{ws?.close(1000,'V4 shadow stream stopped')}catch{}
   }
   status(now=Date.now()){
     return {connected:!!this.socket&&this.socket.readyState===1,
       targetTicker:this.ticker,attempts:this.attempts,retryAfter:this.retryAfter,
       lastMessageAt:this.lastMessageAt,lastFailure:this.lastFailure,
+      endpoint:this.endpointIndex===0?'PRIMARY':'COMPAT',
+      lastAttemptEndpoint:this.lastAttemptEndpoint,
+      lastHttpStatus:this.lastHttpStatus,
       needResync:this.book.needsResync,sequenceGaps:this.book.gaps,
       quote:this.ticker?this.book.view(this.ticker,now):null,
       source:'Authenticated Kalshi WebSocket; read-only observations'};
@@ -98,7 +138,10 @@ export class KalshiReadOnlySocket {
       const headers=await wsAuthHeaders({...credentials,now:at});
       if(this.generation!==generation)return false; // Stopped or switched while signing.
       stage='NETWORK_CONNECT';
-      const response=await this.fetcher(KALSHI_WS_URL,{headers:{...headers,Upgrade:'websocket'}});
+      const endpoint=KALSHI_WS_ENDPOINTS[this.endpointIndex];
+      this.lastAttemptEndpoint=this.endpointIndex===0?'PRIMARY':'COMPAT';
+      this.lastHttpStatus=null;
+      const response=await this.fetcher(endpoint,{headers:{...headers,Upgrade:'websocket'}});
       if(this.generation!==generation){
         try{response.webSocket?.accept();response.webSocket?.close(1000,'V4 cancelled')}catch{}
         return false;
@@ -106,6 +149,7 @@ export class KalshiReadOnlySocket {
       if(response.status!==101){
         const status=Number.isInteger(response.status)&&response.status>=100&&response.status<=599?
           response.status:'UNKNOWN';
+        this.lastHttpStatus=status;
         this.socketClosed('HANDSHAKE_HTTP_'+status,at);
         return false;
       }
@@ -128,7 +172,7 @@ export class KalshiReadOnlySocket {
     }catch(err){
       // No raw error.message, Kalshi response body or credential in storage.
       const code=typeof err?.kalshiCode==='string'?err.kalshiCode:
-        stage==='NETWORK_CONNECT'?'NETWORK_CONNECT_FAILED':
+        stage==='NETWORK_CONNECT'?classifyNetworkException(err):
         stage==='SOCKET_SETUP'?'SOCKET_SETUP_FAILED':
         stage==='SUBSCRIPTION_SEND'?'SUBSCRIPTION_SEND_FAILED':
         'AUTH_SIGNING_FAILED';
@@ -183,7 +227,9 @@ export class KalshiReadOnlySocket {
       try{this.onFault('SEQUENCE_GAP')}catch{}
     }
     if(outcome?.accepted){
-      if(outcome.snapshot)this.attempts=0; // A usable snapshot, not just a handshake, proves recovery.
+      if(outcome.snapshot){
+        this.attempts=0;this.endpointFailureStreak=0;
+      } // Usable snapshot, not handshake, proves recovery.
       try{this.onObservation({result:outcome,quote:this.book.view(this.ticker,receivedAt),
         type:packet.type,receivedAt})}catch{this.fault('OBSERVATION_HANDLER_FAILURE',receivedAt)}
     }
