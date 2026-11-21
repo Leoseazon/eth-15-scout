@@ -3,7 +3,7 @@
  */
 import { DurableObject } from 'cloudflare:workers';
 import {freshPaperState,makeV2Engine,indicators} from './v2.js';
-import {ensureQuoteTable,recordQuote,recentQuotes} from './quote-recorder.js';
+import {ensureQuoteTable,recordQuote,recentQuotes,quoteArchivePage} from './quote-recorder.js';
 import {ensureResearchJournal,recordResearchTick,researchPage} from './research-journal.js';
 import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './structure.js';
 import {settlementClockPhase} from './v3-policy.js';
@@ -448,6 +448,20 @@ export class ScoutEngineV4 extends DurableObject {
       return json({readOnly:true,paperOnly:true,version:'V4',
         source:'REST proxy: quote receipt timestamp is not true exchange event time',
         quotes:recentQuotes(this.ctx.storage.sql,{ticker,limit})});
+    }
+    if(path==='/v1/quote-archive'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams,rawLimit=q.get('limit')||'100',
+        rawOffset=q.get('offset')||'0',rawAnchor=q.get('anchor');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(rawLimit)||!valid(rawOffset)||
+         (rawAnchor!==null&&!valid(rawAnchor)))
+        return json({error:'Invalid quote archive request'},400);
+      try{
+        return json({paperOnly:true,readOnly:true,version:'V4',
+          ...quoteArchivePage(this.ctx.storage.sql,{
+            limit:Number(rawLimit),offset:Number(rawOffset),
+            anchor:rawAnchor===null?null:Number(rawAnchor)})});
+      }catch{return json({error:'Invalid quote archive pagination'},400)}
     }
     if(path==='/v1/history'&&req.method==='GET'){
       const sql=this.ctx.storage.sql;
