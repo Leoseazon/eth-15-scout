@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'cloud/**'
+      - 'v4/**'
       - '.github/workflows/cloud-tests.yml'
   workflow_dispatch:
 jobs:
@@ -24,3 +25,22 @@ jobs:
       - run: node --check viewer-worker.js
       - run: node --test tests/viewer.test.mjs
       - run: npx wrangler deploy --config wrangler.viewer.toml --dry-run --outdir .cloudflare-build-viewer
+      - run: node --check v4/src/worker.js
+      - run: node --check v4/viewer-worker.js
+      - run: node --check v4/viewer-auth.js
+      - run: node --check v4/src/quote-recorder.js
+      - run: node --check v4/src/settlement-math.js
+      - run: node --check v4/src/kalshi-orderbook.js
+      - run: node --check v4/src/kalshi-ws-transport.js
+      - run: node --check v4/src/kalshi-network-diagnostic.js
+      - run: node --check v4/src/kalshi-rest-orderbook.js
+      - run: node --check v4/src/stop-research.js
+      - run: node --check v4/src/research-journal.js
+      - run: node --check v4/src/stream-audit.js
+      - run: node --check v4/tools/read-only-cloudflare-tail.mjs
+      - run: node --check v4/src/paper-execution-research.js
+      - run: node --check ../v4/stop-postmortem.js
+      - run: node --check v4/src/v2.js
+      - run: node --check ../v4/app.js
+      - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
+      - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
