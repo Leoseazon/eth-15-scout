@@ -158,7 +158,7 @@ test('sanitized diagnostic differentiates malformed PEM, unsupported keys and HT
   fetcher:async()=>{throw Error('private key must never appear in logs')},
   onFault:reason=>reasons.push(reason)});
  const now=Date.now();
- const invalid={keyId:'test',privatePem:'-----BEGIN PRIVATE KEY-----\ninvalid\n-----END PRIVATE KEY-----'};
+ const invalid={keyId:'test',privatePem:'-----BEGIN PRIVATE KEY-----\n***not-base64***\n-----END PRIVATE KEY-----'};
  assert.equal(await broken.ensure(ticker,invalid,now),false);
  assert.equal(broken.status(now).lastFailure,'KEY_PEM_BASE64_INVALID');
  assert.ok(reasons.every(r=>!r.includes('invalid')));
