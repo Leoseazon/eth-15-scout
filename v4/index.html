@@ -152,6 +152,12 @@
     <span id="research-count" class="badge neutral">Not collecting yet</span>
   </div>
   <p class="section-helper">Each engine check is logged with the available prices, Kraken reference, signal context, feed health, timestamps and the reason for watching or not entering. Missing data stays missing. V3 trade, PASS, WATCH and settlement journals are preserved separately.</p>
+  <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
+    <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
+    <span><strong>Recorded book observations</strong><small id="v4-stream-count">—</small></span>
+    <span><strong>Stream sequence gaps</strong><small id="v4-stream-gaps">—</small></span>
+    <span><strong>Last book receipt</strong><small id="v4-stream-received">No authenticated observation</small></span>
+  </div>
   <div class="research-grid-head"><span>OBSERVED (CT)</span><span>CONTRACT</span><span>FEEDS / QUOTE</span><span>DECISION EVIDENCE</span></div>
   <div id="research-list" class="research-list" aria-live="polite">
     <div class="empty-state">V4 is still in development. Research observations begin only after the separate V4 recorder is deployed and monitoring is enabled.</div>
