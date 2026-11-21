@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import {restBookUrl,parseOfficialRestBook,fetchOfficialRestBook,
  ensureRestBookArchive,appendRestBookSample,restBookPage,latestRestBookStatus}
  from '../src/kalshi-rest-orderbook.js';
@@ -145,4 +147,22 @@ test('REST book cursor pages are stable under new records and no user SQL inject
  assert.equal(summary.count,0);
  assert.equal(summary.last,null);
  assert.equal(summary.isWebSocket,false);
+});
+
+
+test('V4 Worker uses REST depth only AFTER engine decision, with hard-disarmed paper flag',()=>{
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ const worker=readFileSync(root+'src/worker.js','utf8');
+ const config=readFileSync(root+'../wrangler.v4test.toml','utf8');
+ assert.match(worker,/ensureRestBookArchive\(this\.ctx\.storage\.sql\)/);
+ assert.match(worker,/if\(this\.restBookCaptureEnabled&&this\.stream&&market\)/);
+ assert.match(worker,/REST_BOOK_INTERVAL_MS=15000/);
+ assert.match(worker,/REST_BOOK_RETRY_AFTER_429_MS=120000/);
+ assert.match(worker,/path==='\/v1\/rest-book'&&req\.method==='GET'/);
+ assert.ok(worker.indexOf('engine.step(market,one,m5,fresh,context)')<
+  worker.indexOf('const result=await fetchOfficialRestBook(market.ticker)'));
+ assert.match(worker,/s\.armed=false/);
+ assert.match(config,/SCOUT_V4_PAPER_MODE = "disabled"/);
+ assert.match(config,/V4_REST_BOOK_CAPTURE_ENABLED = "true"/);
+ assert.doesNotMatch(worker,/https:\/\/api\.kalshi\.com\/.*\/orders/);
 });
