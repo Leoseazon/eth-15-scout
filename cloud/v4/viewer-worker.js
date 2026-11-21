@@ -134,7 +134,7 @@ export default {
    return respond({ok:true,readOnly:true,paperOnly:true,
      token:session.token,expiresAt:session.expiresAt},200,origin);
   }
-  if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive','/api/v4/stream'].includes(path)||req.method!=='GET')
+  if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive','/api/v4/stream','/api/v4/rest-book'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
   if(!env.SCOUT_V4||!credentialsConfigured(env))
    return respond({error:'Viewer not configured'},503,origin);
@@ -160,7 +160,7 @@ export default {
      const data=await result.json();
      return respond({...data,version:'V4',source:'Durable Object append-only journal'},200,origin);
    }
-   if(path==='/api/v4/stream'){
+   if(path==='/api/v4/stream'||path==='/api/v4/rest-book'){
      const q=new URL(req.url).searchParams,limit=q.get('limit')||'60',
        anchor=q.get('anchor'),before=q.get('before'),ticker=q.get('ticker');
      const valid=v=>/^\d{1,15}$/.test(v);
@@ -172,8 +172,9 @@ export default {
      if(anchor!==null)params.set('anchor',anchor);
      if(before!==null)params.set('before',before);
      if(ticker!==null)params.set('ticker',ticker);
-     const result=await stub.fetch('https://internal/v1/stream?'+params.toString());
-     if(!result.ok)return respond({error:'Read-only stream archive unavailable'},502,origin);
+     const internal=path==='/api/v4/stream'?'/v1/stream':'/v1/rest-book';
+     const result=await stub.fetch('https://internal'+internal+'?'+params.toString());
+     if(!result.ok)return respond({error:'Read-only market archive unavailable'},502,origin);
      return respond({...await result.json(),version:'V4',
        paperOnly:true,readOnly:true},200,origin);
    }
@@ -192,12 +193,13 @@ export default {
      const data=await result.json();
      return respond({...data,readOnly:true,paperOnly:true,version:'V4'},200,origin);
    }
-   const [st,history,journal,quotes,research,stream]=await Promise.all([
+   const [st,history,journal,quotes,research,stream,restBook]=await Promise.all([
     stub.fetch('https://internal/v1/status'),stub.fetch('https://internal/v1/history'),
     stub.fetch('https://internal/v1/journal?limit=70&offset=0'),
     stub.fetch('https://internal/v1/quotes?limit=240'),
     stub.fetch('https://internal/v1/research?limit=28&offset=0'),
-    stub.fetch('https://internal/v1/stream?limit=100')
+    stub.fetch('https://internal/v1/stream?limit=100'),
+    stub.fetch('https://internal/v1/rest-book?limit=100')
    ]);
    if(!st.ok||!history.ok)
     throw new Error('Private paper engine read unavailable');
@@ -206,6 +208,7 @@ export default {
    const quoteData=quotes.ok?await quotes.json():null;
    const researchData=research.ok?await research.json():null;
    const streamData=stream.ok?await stream.json():null;
+   const restBookData=restBook.ok?await restBook.json():null;
    // Market context is independent of the bot tick: errors do not prevent
    // account and paper history from loading.
    let market=null,marketError=null;
@@ -286,7 +289,11 @@ export default {
     streamHistory:streamData?.items||[],
     streamArchiveTotal:streamData?.total??null,
     streamArchiveAnchor:streamData?.anchor??null,
-    streamAvailable:!!streamData},200,origin);
+    streamAvailable:!!streamData,
+    restBookHistory:restBookData?.items||[],
+    restBookArchiveTotal:restBookData?.total??null,
+    restBookArchiveAnchor:restBookData?.anchor??null,
+    restBookAvailable:!!restBookData},200,origin);
   }catch(e){
    return respond({error:'V4 paper feed temporarily unavailable'},502,origin);
   }
