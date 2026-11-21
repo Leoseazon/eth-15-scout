@@ -744,11 +744,15 @@ function drawQuoteChart(){
  const stream=Array.isArray(lastPayload?.streamHistory)?
    lastPayload.streamHistory.filter(q=>q?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
      q.ticker===ticker&&Number.isSafeInteger(q.receivedAt)):[]; 
- const streaming=stream.length>0;
  const officialRest=Array.isArray(lastPayload?.restBookHistory)?
    lastPayload.restBookHistory.filter(q=>
      q?.source==='KALSHI_OFFICIAL_REST_ORDERBOOK'&&q.ticker===ticker&&
      Number.isSafeInteger(q.receivedAt)):[];
+ // Keep historical REST and WebSocket series independent. Show the source
+ // with the most recent observation for this contract, never fuse timelines.
+ const latestStreamAt=Math.max(0,...stream.map(q=>q.receivedAt));
+ const latestRestAt=Math.max(0,...officialRest.map(q=>q.receivedAt));
+ const streaming=stream.length>0&&latestStreamAt>=latestRestAt;
  const directRest=!streaming&&officialRest.length>0;
  const raw=streaming?stream.map(q=>({
    ticker:q.ticker,observed_at:q.receivedAt,
