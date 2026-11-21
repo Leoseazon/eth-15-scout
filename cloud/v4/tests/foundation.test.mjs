@@ -64,3 +64,14 @@ test('V4 hard-disarms paper entries and references only its own Durable Object',
  assert.doesNotMatch(worker,/SCOUT\.getByName\('single-paper-scout'\)/);
  assert.doesNotMatch(worker,/portfolio\/orders/);
 });
+
+test('V4 Wrangler preserves separately approved dashboard-only streaming opt-in and hard-disarmed paper policy',()=>{
+ const root=fileURLToPath(new URL('../',import.meta.url));
+ const config=readFileSync(root+'../wrangler.v4test.toml','utf8');
+ assert.match(config,/name = "eth-15-scout-cloud-v4test"/);
+ assert.match(config,/keep_vars = true/);
+ assert.match(config,/SCOUT_V4_PAPER_MODE = "disabled"/);
+ assert.doesNotMatch(config,/^V4_STREAM_CAPTURE_ENABLED\s*=/m);
+ assert.doesNotMatch(config,/^KALSHI_V4_READ_PRIVATE_KEY\s*=/m);
+ assert.doesNotMatch(config,/^KALSHI_V4_READ_KEY_ID\s*=/m);
+});
