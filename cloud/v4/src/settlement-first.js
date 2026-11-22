@@ -25,9 +25,11 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
     index.price<=0||index.sourceAt>now+3000||now-index.sourceAt>15000)
   return watch('FRESH_OFFICIAL_ETHUSD_RTI_REQUIRED',{remainingSeconds,target});
  if(!one||!five||!context?.three||!context?.five||
-    !Number.isFinite(one.sd)||one.sd<=0||!Number.isFinite(one.last)||
-    !Number.isFinite(one.rNow)||!Number.isFinite(one.mNow)||
-    !Number.isFinite(one.sNow)||!Number.isFinite(five.rsi))
+    ![one.sd,one.last,one.e8,one.e21,one.rNow,one.mNow,
+      one.sNow,one.three,five.rsi,five.e21,five.e50].every(Number.isFinite)||
+    one.sd<=0||
+    !['UP','DOWN','NEUTRAL'].includes(context.three.trend)||
+    !['UP','DOWN','NEUTRAL'].includes(context.five.trend))
   return watch('COMPLETE_CLOSED_1M_3M_5M_INDICATORS_REQUIRED',{remainingSeconds,target});
  if(book?.source!=='KALSHI_WEBSOCKET_ORDERBOOK'||book.ticker!==market.ticker||
     book.valid!==true||book.fresh!==true||book.crossed===true||
