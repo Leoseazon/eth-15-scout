@@ -23,6 +23,7 @@ import {settlementFirstPaperStep} from './settlement-first-paper.js';
 import {ensureSettlementPredictions,appendSettlementPrediction,
  reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
 import {SETTLEMENT_FIRST_VERSION} from './settlement-first.js';
+import {scoreHeldConfidence} from './buy-confidence.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
@@ -365,8 +366,12 @@ export class ScoutEngineV4 extends DurableObject {
       const entrySourcesReady=s.armed&&!s.open&&marketReady&&
         !!one&&!!m5&&!!context.three&&!!context.five&&
         !s.blocked.includes(market.ticker)&&bookReady;
-      // The latest-value REST access is only a check; not archival streaming.
-      if(entrySourcesReady){
+      const confidenceSourcesReady=s.open?.strategy==='V4_SETTLEMENT_FIRST'&&
+        market?.ticker===s.open.ticker&&!!one&&!!m5&&
+        !!context.three&&!!context.five&&bookReady;
+      // The latest-value REST request is also a source for live position
+      // confidence. It does NOT change the entry or exit decision rules.
+      if(entrySourcesReady||confidenceSourcesReady){
         const verified=await checkCFValuesAccess({
           keyId:this.env.KALSHI_V4_READ_KEY_ID,
           privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
@@ -415,6 +420,35 @@ export class ScoutEngineV4 extends DurableObject {
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+      // Read-only observation: confidence is computed AFTER the normal paper
+      // step so it cannot veto buys, override 96c/stop exits or alter cash.
+      if(s.open?.strategy==='V4_SETTLEMENT_FIRST'){
+        const pos=s.open;
+        const checkedAt=Date.now();
+        let live;
+        try{
+          live=scoreHeldConfidence({position:pos,index,one,five:m5,
+            context,book:decisionBook,now:checkedAt});
+        }catch{
+          live={status:'UNAVAILABLE',reason:'CONFIDENCE_EVALUATION_ERROR',
+            value:null,calibrated:false,winProbability:null};
+        }
+        const previous=Array.isArray(pos.confidenceHistory)?
+          pos.confidenceHistory.at(-1):null;
+        if(live.status==='CURRENT'&&Number.isInteger(live.value)){
+          live.deltaFromEntry=Number.isInteger(pos.entryConfidence?.value)?
+            live.value-pos.entryConfidence.value:null;
+          live.deltaFromPrevious=Number.isInteger(previous?.value)?
+            live.value-previous.value:null;
+          if(!Array.isArray(pos.confidenceHistory))pos.confidenceHistory=[];
+          if(!previous||previous.value!==live.value||
+             checkedAt-previous.at>=60000){
+            pos.confidenceHistory.push({at:checkedAt,value:live.value});
+            pos.confidenceHistory=pos.confidenceHistory.slice(-60);
+          }
+        }
+        pos.liveConfidence=live;
       }
     }else{
       try{report=engine.step(market,one,m5,fresh,context)}
