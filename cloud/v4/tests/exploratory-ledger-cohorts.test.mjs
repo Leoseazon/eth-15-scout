@@ -8,10 +8,10 @@ test('V4 paper ledger keeps aggregate totals and separately reports both researc
  const sql={exec:(q,...args)=>{
   queries.push({q,args});
   if(q.startsWith('SELECT first_engine_tick_at'))return {toArray:()=>[]};
-  if(q.startsWith('SELECT COUNT(*) completed')&&q.includes('FROM trades WHERE json_extract(data'))
-   return {toArray:()=>[{completed:3,wins:2,losses:1,flats:0}]};
   if(q.includes('FROM trades WHERE json_extract(data')&&q.includes('strategyVersion'))
    return {toArray:()=>[{completed:3,wins:2,losses:1,netPnl:2.30}]};
+  if(q.startsWith('SELECT COUNT(*) completed')&&q.includes('FROM trades WHERE json_extract(data'))
+   return {toArray:()=>[{completed:3,wins:2,losses:1,flats:0}]};
   if(q.includes('conservativeCompleted')&&q.includes('exploratoryCompleted'))
    return {toArray:()=>[{conservativeCompleted:2,conservativeWins:1,
     conservativeLosses:1,conservativeNetPnl:1.80,exploratoryCompleted:1,
