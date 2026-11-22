@@ -6,15 +6,15 @@ param(
   [Parameter(Mandatory=$true)][string]$RepositoryPath
 )
 $ErrorActionPreference = 'Stop'
-function Must([string]$Executable,[string[]]$Args,[string]$Stage) {
+function Must([string]$Executable,[string[]]$CommandArgs,[string]$Stage) {
   Write-Host "==> $Stage" -ForegroundColor Cyan
-  & $Executable @Args
+  & $Executable @CommandArgs
   if($LASTEXITCODE -ne 0) { throw "STOPPED: $Stage failed (exit $LASTEXITCODE). Nothing after this stage was run." }
 }
 $original = Get-Location
 try {
   if(-not (Test-Path -LiteralPath $RepositoryPath -PathType Container)){throw "Repository folder missing"}
-  foreach($app in @('git','npm','npx')) {
+  foreach($app in @('git','node','npm','npx')) {
     if(-not (Get-Command $app -ErrorAction SilentlyContinue)){throw "Missing previously installed tool: $app"}
   }
   $head=(& git -C $RepositoryPath rev-parse HEAD | Out-String).Trim()
