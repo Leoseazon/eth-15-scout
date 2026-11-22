@@ -128,6 +128,35 @@
   </div>
   <p class="live-action-footnote">This is a <strong>simulated</strong> paper-trade monitor. It never places an actual Kalshi order. The UP/DOWN quote panels above may reflect a public REST snapshot; only fresh authenticated WebSocket order-book values can support a simulated paper decision. Check model version and data freshness before following any displayed trade.</p>
  </section>
+ <section id="performance" class="card account-card" aria-labelledby="account-title">
+  <div class="card-heading"><div><p class="eyebrow">SIMULATED ACCOUNT · V4 ONLY</p><h2 id="account-title">Paper performance</h2></div><span class="badge subtle">Paper only</span></div>
+  <div class="account-summary-body">
+   <div class="balance-main"><span class="mini-label">AVAILABLE PAPER CASH</span><strong id="cash-value">—</strong><span class="fine">Excludes open stake and pending settlements</span></div>
+   <div class="account-summary-stats">
+    <div class="account-row"><span>Starting bankroll</span><strong id="starting-value">—</strong></div>
+    <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
+    <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
+    <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
+    <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
+    <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
+   </div>
+   <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
+  </div>
+  <div class="observation-bar" aria-live="polite" aria-label="Context-aware V4 release and observation progress">
+   <div><span class="mini-label">CONTEXTUAL V4 · 50–100 COMPLETED PAPER TRADES</span>
+    <strong id="observation-progress">Awaiting V4 contextual paper trades</strong></div>
+   <div><span class="mini-label">HISTORICAL REFERENCE · SEPARATE V3 AUDIT</span>
+    <strong>34 prior V3 trades · not V4 performance</strong></div>
+   <div><span class="mini-label">FIRST CONTEXTUAL PAPER ENGINE TICK</span>
+    <strong id="release-first-tick">Awaiting verified V4 deployment</strong></div>
+   <div><span class="mini-label">OFFICIAL SETTLEMENT PREDICTIONS VERIFIED</span>
+    <strong id="revised-first-tick">Awaiting verified results</strong></div>
+   <div><span class="mini-label">LATEST CONTEXTUAL PAPER DECISION</span>
+    <strong id="latest-first-tick">Awaiting engine decision</strong></div>
+   <div><span class="mini-label">ENTRY FEED READINESS · ACTUAL REQUIRED SOURCES</span>
+    <strong id="feed-first-tick">Feed availability not verified</strong></div>
+  </div>
+ </section>
  <div class="main-grid">
   <section class="card chart-card" aria-labelledby="market-title">
     <div class="card-heading"><div><p class="eyebrow">MARKET MONITOR</p><h2 id="market-title">ETH / USD <span class="muted-normal">reference</span></h2></div><span class="badge neutral" id="market-feed-status">No data</span></div>
@@ -170,35 +199,6 @@
    </section>
   </aside>
  </div>
- <section id="performance" class="card account-card" aria-labelledby="account-title">
-  <div class="card-heading"><div><p class="eyebrow">SIMULATED ACCOUNT · V4 ONLY</p><h2 id="account-title">Paper performance</h2></div><span class="badge subtle">Paper only</span></div>
-  <div class="account-summary-body">
-   <div class="balance-main"><span class="mini-label">AVAILABLE PAPER CASH</span><strong id="cash-value">—</strong><span class="fine">Excludes open stake and pending settlements</span></div>
-   <div class="account-summary-stats">
-    <div class="account-row"><span>Starting bankroll</span><strong id="starting-value">—</strong></div>
-    <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
-    <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
-    <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
-    <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
-    <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
-   </div>
-   <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
-  </div>
-  <div class="observation-bar" aria-live="polite" aria-label="Context-aware V4 release and observation progress">
-   <div><span class="mini-label">CONTEXTUAL V4 · 50–100 COMPLETED PAPER TRADES</span>
-    <strong id="observation-progress">Awaiting V4 contextual paper trades</strong></div>
-   <div><span class="mini-label">HISTORICAL REFERENCE · SEPARATE V3 AUDIT</span>
-    <strong>34 prior V3 trades · not V4 performance</strong></div>
-   <div><span class="mini-label">FIRST CONTEXTUAL PAPER ENGINE TICK</span>
-    <strong id="release-first-tick">Awaiting verified V4 deployment</strong></div>
-   <div><span class="mini-label">OFFICIAL SETTLEMENT PREDICTIONS VERIFIED</span>
-    <strong id="revised-first-tick">Awaiting verified results</strong></div>
-   <div><span class="mini-label">LATEST CONTEXTUAL PAPER DECISION</span>
-    <strong id="latest-first-tick">Awaiting engine decision</strong></div>
-   <div><span class="mini-label">ENTRY FEED READINESS · ACTUAL REQUIRED SOURCES</span>
-    <strong id="feed-first-tick">Feed availability not verified</strong></div>
-  </div>
- </section>
  <section id="overview" class="overview">
   <div class="metric-grid">
    <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
