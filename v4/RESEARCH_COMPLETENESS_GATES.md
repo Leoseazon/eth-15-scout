@@ -64,3 +64,43 @@ Never paste Kalshi credentials into browsers, logs, chat or GitHub. The URL in a
 
 ## November 21 diagnostic correction
 The first V4 access check returned HTTP 200 but an `HTTP_200_UNREADABLE_DATA` status. The original `/values` endpoint returns approximately one hour of RTI readings, likely exceeding our 128 KiB response cap. Rather than remove the safety cap, the diagnostic now uses `/latest_values`, validates the index-specific value and source timestamp, and has a versioned cache key to bypass the earlier six-hour cached failure. This change requires a new V4-only engine deployment and updated website code. Do not infer live index availability or enable new research streams from the old HTTP 200 status.
+
+## Research-data authorization gate — mandatory before new recording
+The verified `ETHUSD_RTI` WebSocket/REST entitlement is only technical access, not a
+research-use or redistribution license. Kalshi's developer agreement (section 3.1)
+restricts collecting, caching, aggregating and storing API data outside facilitating
+a member's own trading. The Kalshi Data Terms separately restrict AI/ML uses,
+and CF Benchmarks states that use/distribution of its index data requires licensing.
+The extent to which a personal, paper-only shadow strategy or an automated analytical
+system qualifies requires written guidance from the providers.
+
+Sources:
+- https://kalshi-public-docs.s3.amazonaws.com/Kalshi-Developer-Agreement.pdf
+- https://kalshi-public-docs.s3.amazonaws.com/kalshi-data-terms-of-service.pdf
+- https://www.cfbenchmarks.com/legal/terms-of-service
+
+`V4_DATA_RESEARCH_AUTHORIZED=false` is the new default-deny gate. Merely switching
+`V4_RESEARCH_STREAM_ENABLED=true` or `V4_FULL_BOOK_ARCHIVE_ENABLED=true`
+does not activate new raw archives without the separate approval gate.
+Do not set it to true without reviewing the written scope of granted use,
+research purposes, retention window, external AI tooling, sharing, and cost limits.
+Older V4 sampled WebSocket/REST recording is not changed by this staged patch;
+its existing operation and archived content need their own permission review.
+
+## Continuous-stream audit findings
+- **Fixed in staged code:** Kalshi's `subscribed` ACK has the assigned SID at
+  `msg.sid`, not at top-level `sid`. The original supplementary recorder used
+  the wrong field and could not reliably request `indexlist`.
+- **Fixed in staged code:** a valid CF index frame can be archived only after
+  both the associated subscription ACK and an `indexlist` confirmation.
+- **Fixed in staged code:** the stream explicitly records a rollover disruption
+  when it closes/reconnects to track the next public-trades market.
+- **Still pending:** keeping the CF feed continuously connected across contract
+  changes while switching only the public trade subscription; cost-bounded
+  retention, replay gap detection, event-time alignment, downstream validation,
+  and authorized historical backfill.
+
+## Release state
+The permission and protocol fixes are V4-only changes in a draft research branch.
+Do not deploy them as authorization to retain or train on market data. The
+continuous feed and full-depth recorder stay off unless all release gates pass.
