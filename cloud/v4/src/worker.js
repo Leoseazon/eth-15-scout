@@ -100,8 +100,12 @@ export class ScoutEngineV4 extends DurableObject {
     ensureFullBookArchive(this.ctx.storage.sql);
     ensureIndependentResearch(this.ctx.storage.sql);
     this.researchStream=null;
-    // Disabled by default until Kalshi entitlement and retention permissions are verified.
-    if(env.V4_RESEARCH_STREAM_ENABLED==='true'){
+    // Formal permission gate is separate from each capture switch. Rest/pass-through
+    // and WebSocket entitlement alone do NOT permit bulk retention/model training.
+    this.dataResearchAuthorized=env.V4_DATA_RESEARCH_AUTHORIZED==='true';
+    this.fullBookRecordingEnabled=this.dataResearchAuthorized&&
+      env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true';
+    if(this.dataResearchAuthorized&&env.V4_RESEARCH_STREAM_ENABLED==='true'){
       const sql=this.ctx.storage.sql;
       this.researchStream=new KalshiResearchSocket({
         onCF:v=>appendCFValue(sql,v),
@@ -117,7 +121,7 @@ export class ScoutEngineV4 extends DurableObject {
     if(env.V4_STREAM_CAPTURE_ENABLED==='true'){
       this.stream=new KalshiReadOnlySocket({
         onObservation:sampledStreamRecorder(this.ctx.storage.sql),
-        onRawFrame:env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true'?
+        onRawFrame:this.fullBookRecordingEnabled?
           ({packet,receivedAt})=>appendFullBookFrame(this.ctx.storage.sql,packet,receivedAt):()=>{},
         onFault:reason=>{
           const at=Date.now();
@@ -545,7 +549,9 @@ export class ScoutEngineV4 extends DurableObject {
         supplementaryResearchConnection:this.researchStream?this.researchStream.status():
           {connected:false,reason:'V4 research feed disabled pending validation'},
         supplementaryResearch:independentResearchStatus(this.ctx.storage.sql),
-        fullBookArchiveEnabled:this.env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true',
+        fullBookArchiveEnabled:this.fullBookRecordingEnabled,
+        additionalDataRecordingAuthorized:this.dataResearchAuthorized,
+        additionalDataRecordingBlocked:!this.dataResearchAuthorized,
         fullBookArchive:fullBookArchiveStatus(this.ctx.storage.sql),
         lastRestBookAt:s.lastRestBookAt||null,
         lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
