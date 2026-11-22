@@ -3,7 +3,7 @@
  * NO real orders, no broker account, no AI training, no V3 strategy mutation.
  */
 import {assessDailyRisk,entryBudget,PAPER_POLICY} from './v3-policy.js';
-import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION,MAX_PAPER_ENTRY_ASK} from './settlement-first.js';
+import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION,MAX_PAPER_ENTRY_ASK,NORMAL_PREMIUM_ASK,exceptionalPremiumEligible} from './settlement-first.js';
 import {scoreBuyConfidence} from './buy-confidence.js';
 const valid=n=>Number.isFinite(n);
 const cents=n=>Math.ceil(Math.max(0,n)*100-1e-8)/100;
@@ -116,9 +116,12 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    note(s,now,'WATCH',d.reason,active.ticker);s.window.lastWatch=d.reason;}}
   return {status:'WATCH',notice:'PASS / WATCH: '+d.reason,candidate:d};
  }
- // Independent fail-closed execution guard: no >85c ask can debit paper cash.
+ // Independent fail-closed paper-debit guard: no ask above 87c, ever.
  if(!Number.isFinite(d.ask)||d.ask>MAX_PAPER_ENTRY_ASK)
-  return {status:'WATCH',notice:'Hard 85c paper BUY ceiling; no purchase',candidate:d};
+  return {status:'WATCH',notice:'Hard 87c paper BUY ceiling; no purchase',candidate:d};
+ // 85c is the normal premium limit; up to 87c is a conditional exception only.
+ if(d.ask>NORMAL_PREMIUM_ASK&&!exceptionalPremiumEligible(d))
+  return {status:'WATCH',notice:'85–87c exceptional premium conditions missing',candidate:d};
  let cap=d.ask<.20?.50:3;
  if(r.mode==='SOFT')cap=Math.min(cap,1.50);
  const budget=entryBudget(s.cash,s.risk,cap);
