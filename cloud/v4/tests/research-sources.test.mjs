@@ -156,3 +156,13 @@ test('research stream labels every contract rollover as a coverage interruption'
  assert.ok(events.includes('RESEARCH_STREAM_ROLLOVER'));
  sock.stop();
 });
+
+test('Kalshi public-trade error 14 without command ID is not misclassified as a CF fault',()=>{
+ const events=[];
+ const ws=new FakeSocket(),sock=new KalshiResearchSocket({
+  onEvent:kind=>events.push(kind)});
+ sock.socket=ws;sock.ticker=ticker;
+ sock.handleMessage(JSON.stringify({type:'error',msg:{code:14,
+  message:'market ticker required'}}),T+500,ws);
+ assert.deepEqual(events,['TRADE_SUBSCRIPTION_ERROR']);
+});
