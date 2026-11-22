@@ -19,8 +19,24 @@ export function paperResults(sql,releaseTag) {
     " FROM trades WHERE json_extract(data,'$.confirmed')=1 AND json_type(data,'$.pnl') IN ('integer','real')";
   const results=sql.exec(q,revisedAt||Number.MAX_SAFE_INTEGER,
     originalAt||Number.MAX_SAFE_INTEGER,latestAt||Number.MAX_SAFE_INTEGER).toArray()[0];
+  // Separate the contextual V4 observation cohort from obsolete V3-style
+  // eight-minute/honey-pot paper-exit milestones. Count both OFFICIAL SETTLEMENT
+  // and EARLY SALE as completed paper trades, but report direction accuracy
+  // from the independent settlement prediction ledger elsewhere.
+  const contextualRelease=releaseTag==='V4-CONTEXTUAL-VALUE-20261122';
+  const cohort=contextualRelease?sql.exec(
+    `SELECT COUNT(*) completed,
+      COALESCE(SUM(CASE WHEN json_extract(data,'$.pnl')>0 THEN 1 ELSE 0 END),0) wins,
+      COALESCE(SUM(CASE WHEN json_extract(data,'$.pnl')<0 THEN 1 ELSE 0 END),0) losses,
+      COALESCE(SUM(CASE WHEN json_extract(data,'$.exitType')='EARLY SALE' THEN 1 ELSE 0 END),0) earlySales,
+      COALESCE(SUM(CASE WHEN json_extract(data,'$.exitType')='OFFICIAL SETTLEMENT' THEN 1 ELSE 0 END),0) officialSettlements,
+      COALESCE(SUM(json_extract(data,'$.pnl')),0) netPnl
+      FROM trades WHERE json_extract(data,'$.strategyVersion')=?
+      AND json_extract(data,'$.confirmed')=1
+      AND json_type(data,'$.pnl') IN ('integer','real')`,
+    'V4-TARGET-CONTEXTUAL-VALUE-20261122').toArray()[0]:null;
   return {...results,revisedFirstTick:revisedAt,originalFirstTick:originalAt,
-    latestFirstTick:latestAt,
+    latestFirstTick:latestAt,contextualCohort:cohort,
     definition:'Realized, fee-adjusted per-position paper P/L (early exits independent of window outcome)'};
 }
 // Official Kalshi market finalization is required; never infer from spot ETH.
