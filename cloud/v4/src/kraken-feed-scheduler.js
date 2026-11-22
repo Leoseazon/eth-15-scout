@@ -1,12 +1,15 @@
 /* V4 PAPER-ONLY Kraken feed reliability. No trading, market or risk decisions.
- * Keep the 15s paper engine heartbeat. Cache ONLY the unchanged 5m provider
- * response in the isolated Durable Object's volatile memory (no DB writes);
+ * Keep the 15s paper engine heartbeat. Cache unchanged COMPLETED 1m and 5m
+ * Kraken candles in volatile DO memory only (no database writes).
  * every use is checked against both retrieval age and the most recently closed
  * 5m candle. If source freshness cannot be verified, return missing feed.
  */
 import {inspectFeedResults} from './feed-health.js';
 
-export const FIVE_CACHE_MAX_AGE_MS=60000;
+// Closed 5m OHLC cannot add a new completed bar before the next 5m boundary.
+// Revalidate exact latest-closed 5m candle on EVERY reuse; even a fresh TTL
+// must not authorize a stale bar at rollover. Avoid needless minute refreshes.
+export const FIVE_CACHE_MAX_AGE_MS=300000;
 // Reuse a confirmed *completed* one-minute candle only within the SAME bar.
 export const ONE_CACHE_MAX_AGE_MS=55000;
 export const FIVE_REFRESH_MIN_GAP_MS=15000;
