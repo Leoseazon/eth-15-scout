@@ -12,7 +12,7 @@ const book={ticker,source:'KALSHI_WEBSOCKET_ORDERBOOK',valid:true,fresh:true,
  crossed:false,receivedAt:T-1000,yesBid:{price:.43,sizeFp:'20.00'},
  yesAsk:{price:.45,sizeFp:'20.00'},noBid:{price:.55,sizeFp:'20.00'},
  noAsk:{price:.57,sizeFp:'20.00'}};
-const args={market,index,one,five,context,book,now:T};
+const args={market,index,one,five,context,book,now:T,onPrediction:()=>{}};
 const setup=()=>({...freshPaperState(),armed:true,monitoring:true,events:[],
  decisions:[],blocked:[],pending:[],trades:[]});
 test('paper buys actual target side, fee-inclusive <=$3, unique ticker and journal before cash debit',()=>{
@@ -105,4 +105,20 @@ test('V4 exit survives disarm and rejects non-WS sources even at a profitable pr
  assert.equal(validBook.status,'PAPER_SELL');
  assert.equal(s.open,null);
  assert.equal(s.trades.length,1);
+});
+
+test('missing required persistence callback cannot create a paper trade',()=>{
+ const s=setup(),data={...args};
+ delete data.onPrediction;
+ const r=settlementFirstPaperStep(s,data);
+ assert.equal(r.status,'WATCH');
+ assert.equal(s.cash,100);assert.equal(s.open,null);
+});
+test('a seemingly favorable ask without matching exit-side bid depth must PASS',()=>{
+ const s=setup();
+ const r=settlementFirstPaperStep(s,{...args,book:{
+  ...book,yesBid:{price:.43,sizeFp:'0.00'}
+ }});
+ assert.equal(r.status,'WATCH');
+ assert.equal(s.open,null);assert.equal(s.cash,100);
 });
