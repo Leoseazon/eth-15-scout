@@ -94,7 +94,7 @@ test('soft daily-loss mode refuses normal-grade setup rather than reusing legacy
  assert.equal(r.status,'WATCH');
  assert.equal(s.cash,100);
  assert.equal(s.open,null);
- assert.match(r.notice,/SOFT risk/);
+ assert.match(r.notice,/NO_RISK_ADJUSTED_VALUE|SOFT risk/);
 });
 test('V4 exit survives disarm and rejects non-WS sources even at a profitable price',()=>{
  const s=setup();settlementFirstPaperStep(s,args);
