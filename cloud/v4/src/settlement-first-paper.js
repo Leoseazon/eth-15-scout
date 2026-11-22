@@ -5,6 +5,7 @@
 import {assessDailyRisk,entryBudget,PAPER_POLICY} from './v3-policy.js';
 import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION,MAX_PAPER_ENTRY_ASK,NORMAL_PREMIUM_ASK,exceptionalPremiumEligible} from './settlement-first.js';
 import {scoreBuyConfidence} from './buy-confidence.js';
+import {priceAwareOpportunity} from './context-opportunity.js';
 const valid=n=>Number.isFinite(n);
 const cents=n=>Math.ceil(Math.max(0,n)*100-1e-8)/100;
 const dollar=n=>Number(n.toFixed(2));
@@ -106,11 +107,19 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  if(!active)return {status:'WATCH',notice:'No active KXETH15M market'};
  if(s.blocked.includes(active.ticker))return {status:'WATCH',
   notice:'One-entry-per-market enforced',ticker:active.ticker};
- const d=evaluateSettlementFirst({market:active,index,one,five,context,book,now});
+ const entryRoom=entryBudget(s.cash,s.risk,3);
+ const d=evaluateSettlementFirst({market:active,index,one,five,context,book,now,
+  budget:entryRoom,riskMode:r.mode});
  s.lastV4SettlementDecision={at:now,status:d.status,side:d.side,reason:d.reason,
   target:d.target??null,indexValue:d.indexValue??null,
   normalizedDistance:d.normalizedDistance??null,nonCalibratedScore:d.score??null,
-  contradictions:d.contradictionReasons??[],modelVersion:SETTLEMENT_FIRST_VERSION};
+  contradictions:d.contradictionReasons??[],modelVersion:SETTLEMENT_FIRST_VERSION,
+  contextualValue:d.contextualOpportunity?{
+   lowerScenario:d.contextualOpportunity.lowerScenario,
+   breakEven:d.contextualOpportunity.breakEven,
+   lowerScenarioNetProfit:d.contextualOpportunity.lowerScenarioNetProfit,
+   conservativeEdge:d.contextualOpportunity.conservativeEdge,
+   calibratedProbability:null}:null};
  if(d.status!=='CANDIDATE'){
   if(s.window){s.window.reason=d.reason;if(s.window.lastWatch!==d.reason){
    note(s,now,'WATCH',d.reason,active.ticker);s.window.lastWatch=d.reason;}}
@@ -127,19 +136,14 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  const budget=entryBudget(s.cash,s.risk,cap);
  let qty=Math.floor(budget/d.ask);
  while(qty>0&&qty*d.ask+fee(d.ask,qty)>budget)qty--;
- // Soft daily-loss mode: THREE distinct agreeing evidence families,
- // never 7 correlated checkboxes. Require stronger target geometry,
- // tighter spread, and 2x displayed liquidity than ordinary entries.
+ // Soft risk mode increases the required downside-adjusted opportunity,
+ // tightens liquidity and reduces stake; it does NOT count indicator votes.
  if(r.mode==='SOFT'){
-  const direction=d.side==='UP'?1:-1;
-  const strong=d.familySupport===3&&d.geometry*direction>=.30&&
-    d.momentum*direction>=.25&&d.structure*direction>=.25&&
-    Math.abs(d.score)>=.72&&d.contradictionReasons.length===0&&
-    valid(d.spread)&&d.spread<=.03&&
+  const strong=valid(d.spread)&&Math.round(d.spread*10000)<=300&&
     valid(d.askDepth)&&d.askDepth>=2*qty&&
     valid(d.bidDepth)&&d.bidDepth>=2*qty;
   if(!strong||qty<1){
-   const reason='SOFT risk: strong target, 3 agreeing families, <=3c spread and >=2x book depth required';
+   const reason='SOFT risk: <=3c spread and >=2x book depth required';
    if(s.window)s.window.reason=reason;
    return {status:'WATCH',notice:reason,candidate:d};
   }
@@ -150,7 +154,21 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   if(s.window)s.window.reason=reason;
   return {status:'WATCH',notice:reason,candidate:d};
  }
+ // Independent value check at the *actual* sized quantity and current book.
+ // Prevents a stale/synthetic candidate from debiting paper cash or bypassing
+ // the conservative fee-inclusive risk/reward hurdle.
+ const checked=priceAwareOpportunity({side:d.side,book,scenario:d.valueScenario,
+  remainingSeconds:d.remainingSeconds,budget,riskMode:r.mode});
+ if(checked.status!=='QUALIFIED'||checked.qty!==qty||
+    checked.ask!==d.ask||!valid(checked.lowerScenarioNetProfit)||
+    checked.lowerScenarioNetProfit<=0){
+  const reason='Contextual opportunity no longer supports risk-adjusted BUY';
+  if(s.window)s.window.reason=reason;
+  return {status:'WATCH',notice:reason,candidate:d};
+ }
  const entryFee=fee(d.ask,qty),cost=dollar(qty*d.ask+entryFee);
+ if(Math.abs(checked.allIn-(qty*d.ask+entryFee))>.00001)
+  throw Error('Contextual opportunity fee/size mismatch');
  if(cost>s.cash||cost>3.000001)throw Error('Paper stake ceiling violated');
  const entryConfidence=scoreBuyConfidence({
   side:d.side,score:d.score,geometry:d.geometry,momentum:d.momentum,
@@ -170,6 +188,9 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    heuristicScore:d.score,contradictionReasons:d.contradictionReasons,
    familySupport:d.familySupport,bookReceiptAt:d.bookReceiptAt,
    remainingSeconds:d.remainingSeconds},
+  contextualValue:{...checked,calibratedProbability:null,
+   model:'UNVALIDATED_GAUSSIAN_1M_KRAKEN_PROXY',
+   officialTarget:d.target,observedIndex:d.indexValue},
   entryQuoteSource:'KALSHI_WEBSOCKET_ORDERBOOK_DISPLAYED_ONLY',fillVerified:false,
   entryConfidence,
   liveConfidence:{...entryConfidence,status:'CURRENT',asOf:now,
@@ -195,6 +216,10 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   '; displayed book, not a confirmed execution',active.ticker);
  s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
   cost,entryFee,entry:d.ask,entryConfidenceScore:entryConfidence.value,
+  contextualValue:{lowerScenario:checked.lowerScenario,
+   conservativeEdge:checked.conservativeEdge,
+   lowerScenarioNetProfit:checked.lowerScenarioNetProfit,
+   breakEven:checked.breakEven,calibratedProbability:null},
   confidenceVersion:entryConfidence.version};
  risk(s,now);
  return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
