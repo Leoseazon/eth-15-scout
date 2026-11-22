@@ -31,10 +31,11 @@ test('new paper engine uses official RTI input and immutable prediction journal,
  assert.doesNotMatch(paper,/create_order|POST \/trade|\/portfolio\/orders/);
 });
 
-test('opt-in V4 paper release differs from default only in two explicit paper flags',()=>{
+test('V4 paper release adds only the two paper flags plus separately gated exploratory opt-in',()=>{
  const defaultText=readFileSync(root+'cloud/wrangler.v4test.toml','utf8');
  const paperText=readFileSync(root+'cloud/wrangler.v4paper.toml','utf8');
- const normalize=t=>t.split(String.fromCharCode(10)).filter(x=>!/^ *#/.test(x)&&x.trim()!=='')
+ const normalize=t=>t.split(String.fromCharCode(10)).filter(x=>!/^ *#/.test(x)&&x.trim()!==''&&
+   !/^V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = /.test(x))
   .map(x=>x.replace(/SCOUT_V4_PAPER_MODE = "(enabled|disabled)"/,
     'SCOUT_V4_PAPER_MODE = "PAPER_SWITCH"')
    .replace(/V4_SETTLEMENT_FIRST_EXPERIMENT = "(true|false)"/,
@@ -42,6 +43,8 @@ test('opt-in V4 paper release differs from default only in two explicit paper fl
  assert.equal(normalize(defaultText),normalize(paperText));
  assert.match(paperText,/SCOUT_V4_PAPER_MODE = "enabled"/);
  assert.match(paperText,/V4_SETTLEMENT_FIRST_EXPERIMENT = "true"/);
+ assert.doesNotMatch(defaultText,/V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "true"/);
+ assert.match(paperText,/V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "true"/);
  for(const [flag,value] of [
   ['V4_DATA_RESEARCH_AUTHORIZED','false'],
   ['V4_RESEARCH_STREAM_ENABLED','false'],
