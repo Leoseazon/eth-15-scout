@@ -6,6 +6,9 @@ import {assessDailyRisk,entryBudget,PAPER_POLICY} from './v3-policy.js';
 import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION,MAX_PAPER_ENTRY_ASK,NORMAL_PREMIUM_ASK,exceptionalPremiumEligible} from './settlement-first.js';
 import {scoreBuyConfidence} from './buy-confidence.js';
 import {priceAwareOpportunity} from './context-opportunity.js';
+import {shouldExploreForHourlySamples,EXPLORATORY_STAKE_CAP,
+ EXPLORATORY_VERSION,EXPLORATORY_MIN_CENTRAL_EDGE}
+ from './exploratory-policy.js';
 const valid=n=>Number.isFinite(n);
 const cents=n=>Math.ceil(Math.max(0,n)*100-1e-8)/100;
 const dollar=n=>Number(n.toFixed(2));
@@ -58,7 +61,7 @@ function closeEarly(s,pos,book,bid,why,now){
  return true;
 }
 export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
- now=Date.now(),onPrediction=null}={}){
+ now=Date.now(),onPrediction=null,explorationEnabled=false}={}){
  if(!s||typeof s!=='object')throw TypeError('Missing paper state');
  s.blocked??=[];s.pending??=[];s.trades??=[];s.decisions??=[];s.events??=[];
  const active=market&&/^KXETH15M-/.test(market.ticker||'')?market:null;
@@ -112,12 +115,30 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  if(s.blocked.includes(active.ticker))return {status:'WATCH',
   notice:'One-entry-per-market enforced',ticker:active.ticker};
  const entryRoom=entryBudget(s.cash,s.risk,3);
- const d=evaluateSettlementFirst({market:active,index,one,five,context,book,now,
+ // The original conservative trade always gets first choice with its FULL
+ // budget, original thresholds, and original exit rules.
+ const original=evaluateSettlementFirst({market:active,index,one,five,context,book,now,
   budget:entryRoom,riskMode:r.mode});
+ let d=original;
+ const wantsSample=original.status==='WATCH'&&
+  ['NO_RISK_ADJUSTED_VALUE_AT_CURRENT_ASK','PRICE_ABOVE_87C_HARD_BUY_LIMIT']
+   .includes(original.reason)&&
+  shouldExploreForHourlySamples(s,now,{
+   enabled:explorationEnabled,riskMode:r.mode});
+ if(wantsSample){
+  const sample=evaluateSettlementFirst({
+   market:active,index,one,five,context,book,now,
+   budget:Math.min(entryRoom,EXPLORATORY_STAKE_CAP),
+   riskMode:r.mode,allowExploration:true});
+  if(sample.status==='CANDIDATE'&&sample.researchMode==='EXPLORATORY')
+   d=sample;
+ }
+ const exploratory=d.status==='CANDIDATE'&&d.researchMode==='EXPLORATORY';
  s.lastV4SettlementDecision={at:now,status:d.status,side:d.side,reason:d.reason,
   target:d.target??null,indexValue:d.indexValue??null,
   normalizedDistance:d.normalizedDistance??null,nonCalibratedScore:d.score??null,
   contradictions:d.contradictionReasons??[],modelVersion:SETTLEMENT_FIRST_VERSION,
+  researchMode:exploratory?'EXPLORATORY':'CONSERVATIVE',
   contextualValue:d.contextualOpportunity?{
    lowerScenario:d.contextualOpportunity.lowerScenario,
    breakEven:d.contextualOpportunity.breakEven,
@@ -135,7 +156,7 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  // 85c is the normal premium limit; up to 87c is a conditional exception only.
  if(d.ask>NORMAL_PREMIUM_ASK&&!exceptionalPremiumEligible(d))
   return {status:'WATCH',notice:'85–87c exceptional premium conditions missing',candidate:d};
- let cap=d.ask<.20?.50:3;
+ let cap=d.ask<.20?.50:exploratory?EXPLORATORY_STAKE_CAP:3;
  if(r.mode==='SOFT')cap=Math.min(cap,1.50);
  const budget=entryBudget(s.cash,s.risk,cap);
  let qty=Math.floor(budget/d.ask);
@@ -162,10 +183,17 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  // Prevents a stale/synthetic candidate from debiting paper cash or bypassing
  // the conservative fee-inclusive risk/reward hurdle.
  const checked=priceAwareOpportunity({side:d.side,book,scenario:d.valueScenario,
-  remainingSeconds:d.remainingSeconds,budget,riskMode:r.mode});
+  remainingSeconds:d.remainingSeconds,budget,riskMode:r.mode,
+  mode:exploratory?'EXPLORATORY':'CONSERVATIVE'});
+ const valueStillValid=exploratory?
+  checked.researchMode==='EXPLORATORY'&&
+  checked.conservativeValuePassed===false&&
+  valid(checked.centralScenarioNetProfit)&&checked.centralScenarioNetProfit>0&&
+  valid(checked.centralEdge)&&
+  checked.centralEdge+1e-9>=EXPLORATORY_MIN_CENTRAL_EDGE:
+  valid(checked.lowerScenarioNetProfit)&&checked.lowerScenarioNetProfit>0;
  if(checked.status!=='QUALIFIED'||checked.qty!==qty||
-    checked.ask!==d.ask||!valid(checked.lowerScenarioNetProfit)||
-    checked.lowerScenarioNetProfit<=0){
+    checked.ask!==d.ask||!valueStillValid){
   const reason='Contextual opportunity no longer supports risk-adjusted BUY';
   if(s.window)s.window.reason=reason;
   return {status:'WATCH',notice:reason,candidate:d};
@@ -184,6 +212,8 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  if(!entryConfidence)return {status:'WATCH',
   notice:'Buy-confidence inputs unavailable; no paper entry'};
  const pos={ticker:active.ticker,side:d.side,qty,entry:d.ask,entryFee,
+  researchMode:exploratory?'EXPLORATORY':'CONSERVATIVE',
+  researchCohort:exploratory?EXPLORATORY_VERSION:'V4-CONSERVATIVE-VALUE',
   cost,time:now,target:d.target,indexValue:d.indexValue,
   indexSourceAt:d.indexSourceAt,closeTime:active.close_time,
   strategy:'V4_SETTLEMENT_FIRST',strategyVersion:SETTLEMENT_FIRST_VERSION,
@@ -214,19 +244,24 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  }
  s.cash=dollar(s.cash-cost);s.open=pos;s.blocked.push(active.ticker);
  if(s.window)s.window.entered=true;
- note(s,now,'PAPER BUY','Settled-side hypothesis '+d.side+' '+qty+' @ '+
+ note(s,now,'PAPER BUY',(exploratory?
+  'EXPLORATORY RESEARCH SAMPLE — NOT A CONSERVATIVE BUY SIGNAL; ':
+  '')+'Settled-side hypothesis '+d.side+' '+qty+' @ '+
   d.ask.toFixed(4)+'; all-in $'+cost.toFixed(2)+
   '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
   '; displayed book, not a confirmed execution',active.ticker);
  s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
   cost,entryFee,entry:d.ask,entryConfidenceScore:entryConfidence.value,
+  researchMode:pos.researchMode,
   contextualValue:{lowerScenario:checked.lowerScenario,
    conservativeEdge:checked.conservativeEdge,
    lowerScenarioNetProfit:checked.lowerScenarioNetProfit,
    breakEven:checked.breakEven,calibratedProbability:null},
   confidenceVersion:entryConfidence.version};
  risk(s,now);
- return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
+ return {status:'PAPER_BUY',notice:(exploratory?
+  'EXPLORATORY RESEARCH SAMPLE — NOT A CONSERVATIVE TRADE; ':
+  'Experimental settlement-first paper ')+d.side+
   ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees; '+
   'BUY confidence '+entryConfidence.value+'/100 (not win probability)',
   ticker:active.ticker,position:pos};

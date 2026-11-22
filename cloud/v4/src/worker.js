@@ -429,6 +429,11 @@ export class ScoutEngineV4 extends DurableObject {
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book:decisionBook,now:Date.now(),
+          // Explicit V4 paper-only opt-in. OFF by default in all other
+          // deployments, no real-money capability exists.
+          explorationEnabled:this.env.V4_EXPLORATORY_PAPER_SAMPLING_ENABLED==='true'&&
+            this.env.SCOUT_V4_PAPER_MODE==='enabled'&&
+            this.env.V4_SETTLEMENT_FIRST_EXPERIMENT==='true',
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         // Fail closed and send a sanitized code to the existing red health strip.

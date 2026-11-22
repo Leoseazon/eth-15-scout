@@ -35,6 +35,8 @@ export function appendSettlementPrediction(sql,pos){
   JSON.stringify({ticker:pos.ticker,side:pos.side,time:pos.time,
    target:pos.target,indexValue:pos.indexValue,indexSourceAt:pos.indexSourceAt,
    entry:pos.entry,cost:pos.cost,qty:pos.qty,strategyVersion:pos.strategyVersion,
+   researchMode:pos.researchMode==='EXPLORATORY'?'EXPLORATORY':'CONSERVATIVE',
+   researchCohort:pos.researchCohort||null,
    evidence:pos.modelEvidence||null,
    entryConfidence:pos.entryConfidence||null,
    executionVerified:false,calibratedProbability:null}));
