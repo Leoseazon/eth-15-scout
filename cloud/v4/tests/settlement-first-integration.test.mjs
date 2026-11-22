@@ -74,3 +74,33 @@ test('official index and book are fail-closed, status may not claim an old index
  assert.match(worker,/paperFeedHealth:/);
  assert.match(worker,/Date\.now\(\)-s\.lastOfficialIndexCheck\.at<=30000/);
 });
+
+test('open V4 paper positions have a Kalshi WebSocket protective-exit fast path before ALL Kraken requests',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ const fast=worker.indexOf('FAST PAPER EXIT PATH');
+ const upstream=worker.indexOf('const batch=await collectMarketFeeds(',fast);
+ assert.ok(fast>0&&upstream>fast);
+ const snippet=worker.slice(fast,upstream);
+ assert.match(snippet,/s\.open\?\.strategy==='V4_SETTLEMENT_FIRST'/);
+ assert.match(snippet,/this\.stream\?\.status\(Date\.now\(\)\)\?\.quote/);
+ assert.match(snippet,/settlementFirstPaperStep\(s,/);
+ assert.match(snippet,/if\(exit\.status==='PAPER_SELL'\|\|s\.open===null\)/);
+ assert.match(snippet,/this\.save\(s,/);
+});
+test('experimental decision path does NOT evaluate redundant V3 seven-vote probe',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ const i=worker.indexOf('// Exactly ONE active decision philosophy');
+ const j=worker.indexOf('// Never block decisions on Kalshi settlement-data availability.',i);
+ const relevant=worker.slice(i,j);
+ assert.match(relevant,/if\(this\.paperExperimentAllowed\|\|continueV4Position\)/);
+ assert.match(relevant,/else\{/);
+ assert.match(relevant,/engine\.probe\(/);
+});
+test('no auxiliary research journal is allowed to claim paper buy before account transaction commits',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ const tick=worker.slice(worker.indexOf('async tick(){'),worker.indexOf('async alarm(){'));
+ const primary=tick.indexOf('// Commit the official-target prediction');
+ const save=tick.indexOf('this.save(s,tickMeta)',primary);
+ const research=tick.indexOf('recordResearchTick(',primary);
+ assert.ok(primary>0&&save>primary&&research>save);
+});
