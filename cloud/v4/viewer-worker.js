@@ -135,7 +135,7 @@ export default {
      token:session.token,expiresAt:session.expiresAt},200,origin);
   }
   if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive','/api/v4/stream','/api/v4/rest-book',
-     '/api/v4/benchmark','/api/v4/public-trades','/api/v4/full-book','/api/v4/cf-access','/api/v4/cf-ws-verify'].includes(path)||req.method!=='GET')
+     '/api/v4/benchmark','/api/v4/public-trades','/api/v4/full-book','/api/v4/cf-access','/api/v4/cf-ws-verify','/api/v4/storage-inventory'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
   if(!env.SCOUT_V4||!credentialsConfigured(env))
    return respond({error:'Viewer not configured'},503,origin);
@@ -168,6 +168,12 @@ export default {
      const result=await probe.fetch('https://internal/v1/cf-ws-verify');
      if(!result.ok)return respond({error:'Live CF verification unavailable'},502,origin);
      return respond({...await result.json(),paperOnly:true,readOnly:true},200,origin);
+   }
+   if(path==='/api/v4/storage-inventory'){
+     // No raw market records. Authenticated metadata inventory, no database writes.
+     const result=await stub.fetch('https://internal/v1/storage-inventory');
+     if(!result.ok)return respond({error:'V4 storage inventory unavailable'},502,origin);
+     return respond({...await result.json(),readOnly:true,paperOnly:true},200,origin);
    }
    if(path==='/api/v4/cf-access'){
      const result=await stub.fetch('https://internal/v1/cf-access');
