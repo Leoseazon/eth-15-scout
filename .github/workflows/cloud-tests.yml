@@ -38,6 +38,7 @@ jobs:
       - run: node --check v4/src/research-socket.js
       - run: node --check v4/src/full-book-archive.js
       - run: node --check v4/src/cf-access.js
+      - run: node --check v4/src/cf-ws-probe.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
