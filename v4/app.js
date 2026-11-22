@@ -57,6 +57,7 @@ function reset(message='You have signed out. Use your same username and password
  connectionVisible(true);txt('sync-label','Not connected');txt('updated-label','No data loaded');
  txt('mode-badge','Disconnected');cls('mode-badge','neutral');
  connectMessage(message);
+ document.dispatchEvent(new CustomEvent('v4:dashboard-reset'));
 }
 function sanitizeErr(response){
  if(response.status===401)return 'Your session expired. Please sign in again using the same username and password.';
@@ -111,6 +112,7 @@ async function load(){
   txt('sync-label','Connection issue');
   if(!lastPayload)connectionVisible(true);
   connectMessage(msg,true);
+  document.dispatchEvent(new CustomEvent('v4:dashboard-error'));
   if(lastPayload)txt('updated-label','Last successful update '+ago(lastPayload.receivedAt)+' · retrying');
  }finally{busy=false}
 }
@@ -214,6 +216,16 @@ function renderLiveAction(data){
   txt('live-position-state',String(open.side||'')+' · '+String(open.qty||'—')+' contracts');
   txt('live-position-detail','Simulated entry '+ct(open.time)+' CT · '+String(open.ticker||''));
   txt('live-entry',quote(open.entry)+' / '+money(open.cost));
+  const stream=s.streamConnection||{},book=stream.quote||{};
+  const bid=open.side==='UP'?book.yesBid:book.noBid;
+  const age=Date.now()-Number(book.receivedAt);
+  const current=stream.connected===true&&stream.needResync!==true&&
+   book.ticker===open.ticker&&book.valid===true&&book.fresh===true&&
+   Number.isSafeInteger(book.receivedAt)&&age>=0&&age<=5000;
+  txt('live-exit-bid',current?quote(Number(bid?.price)):'Unavailable');
+  $('live-exit-bid').title=current?
+   'Authenticated observed book bid; not a guaranteed execution or fill.':
+   'Kalshi book is stale, unavailable or mismatched; do not use an old bid.';
   txt('live-mark-pnl',n(open.markPnl)!==null?money(open.markPnl,true):'Not quotable');
   $('live-mark-pnl').style.color=n(open.markPnl)>0?'var(--mint)':
     n(open.markPnl)<0?'var(--red)':'var(--text)';
@@ -221,6 +233,8 @@ function renderLiveAction(data){
   txt('live-position-state','NONE');
   txt('live-position-detail','No active simulated position on the bot');
   txt('live-entry','—');
+  txt('live-exit-bid','—');
+  $('live-exit-bid').title='No open paper position';
   txt('live-mark-pnl','—');
   $('live-mark-pnl').style.color='var(--text)';
  }
@@ -341,6 +355,10 @@ function render(data){
   'Soft $1.50 legacy baseline: 7/7 checklist confirmations.') :
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
  renderLiveAction(data);
+ document.dispatchEvent(new CustomEvent('v4:dashboard-health',{detail:data}));
+ txt('v4-stage-note',s.settlementPaperAllowed===true?
+  'Experimental paper simulation enabled. No real-money orders.':
+  'Research/shadow monitoring; no experimental paper entries or real orders.');
  // Confidence is read-only, derived from existing authenticated status data.
  document.dispatchEvent(new CustomEvent('v4:dashboard-confidence',{detail:data}));
  renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
