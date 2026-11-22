@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {sampledStreamRecorder} from '../src/stream-audit.js';
 import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify,constants,webcrypto} from 'node:crypto';
 import {wsAuthHeaders,readonlyRestAuthHeaders,KalshiReadOnlySocket,KALSHI_WS_URL,KALSHI_COMPAT_WS_URL,KALSHI_SIGN_PATH,KALSHI_READONLY_REST_PATH,classifyNetworkException,classifyWebSocketUpgradeException} from '../src/kalshi-ws-transport.js';
@@ -306,4 +307,47 @@ test('an unsupported Cloudflare WebSocket upgrade is classified separately from 
  assert.equal(client.status().lastFailure,'WS_UPGRADE_RUNTIME_UNSUPPORTED');
  assert.equal(client.status().lastNetworkDiagnostic,'WS_UPGRADE_RUNTIME_UNSUPPORTED');
  assert.equal(client.status().endpoint,'PRIMARY');
+});
+
+test('archive sampling and storage failures leave the live book and gap recovery independent',async()=>{
+  const ws=new FakeSocket(), archived=[], faults=[];
+  let failWrite=false;
+  const sql={exec:(_sql,...args)=>{
+    if(failWrite)throw Error('storage unavailable');
+    archived.push(JSON.parse(args.at(-1)));
+  }};
+  const client=new KalshiReadOnlySocket({
+    fetcher:async()=>({status:101,webSocket:ws}),
+    onObservation:sampledStreamRecorder(sql),onFault:reason=>faults.push(reason)
+  });
+  const at=Date.now();
+  await client.ensure(ticker,creds,at);
+  const send=(frame,elapsed)=>{
+    frame.sending_ts_ms=at+elapsed;
+    frame.msg.ts_ms=at+elapsed;
+    client.handleMessage(JSON.stringify(frame),at+elapsed,ws);
+  };
+  send(packet(1),0);
+  for(let seq=2;seq<=301;seq++){
+    const frame=delta(seq);
+    frame.msg.delta_fp='1.00';
+    frame.msg.price_dollars=seq%2?'0.4000':'0.4100';
+    send(frame,(seq-1)*50);
+  }
+  assert.equal(client.book.view(ticker,at+15_000).seq,301);
+  assert.equal(client.book.view(ticker,at+15_000).yesBid.price,.41);
+  assert.deepEqual(archived.map(x=>x.seq),[1,301]);
+  assert.equal(archived[1].archiveIntervalMs,15_000);
+  send(delta(303),15_100);
+  assert.ok(faults.includes('SEQUENCE_GAP'));
+  assert.equal(ws.sent.at(-1).params.action,'get_snapshot');
+  send(packet(304),15_200);
+  assert.deepEqual(archived.map(x=>x.seq),[1,301,304]);
+  failWrite=true;
+  send(delta(305),30_200);
+  assert.equal(client.book.view(ticker,at+30_200).valid,true);
+  assert.ok(!faults.includes('OBSERVATION_HANDLER_FAILURE'));
+  failWrite=false;
+  send(packet(306),90_201);
+  assert.equal(archived.at(-1).seq,306);
 });

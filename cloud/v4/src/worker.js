@@ -12,7 +12,7 @@ import {paperResults,reconcilePending} from './paper-ledger.js';
 import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
 import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
 import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttps} from './kalshi-network-diagnostic.js';
-import {ensureStreamAudit,appendStreamSample,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
+import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
 
@@ -93,21 +93,11 @@ export class ScoutEngineV4 extends DurableObject {
     this.restBookCaptureEnabled=env.V4_REST_BOOK_CAPTURE_ENABLED==='true';
     // Zero connections unless the NEW V4-only feature flag is explicitly set.
     // The stream requires a dedicated READ-only Kalshi key, not a trading key.
-    this.stream=null;this.streamLastWritten=0;this.streamLastQuoteKey=null;
+    this.stream=null;
     this.streamLastFault=null;this.streamLastFaultAt=0;
     if(env.V4_STREAM_CAPTURE_ENABLED==='true'){
       this.stream=new KalshiReadOnlySocket({
-        onObservation:({type,quote,receivedAt})=>{
-          const key=[quote.ticker,quote.yesBid?.price,quote.yesAsk?.price,
-            quote.noBid?.price,quote.noAsk?.price,quote.valid,quote.fresh].join('|');
-          // Preserve every changed top-of-book price and every initial snapshot.
-          // Constant-depth deltas are sampled at most once a second.
-          if(type!=='orderbook_snapshot'&&key===this.streamLastQuoteKey&&
-             receivedAt-this.streamLastWritten<1000)return;
-          appendStreamSample(this.ctx.storage.sql,{
-            quote,at:receivedAt,kind:type==='orderbook_snapshot'?'snapshot':'delta'});
-          this.streamLastWritten=receivedAt;this.streamLastQuoteKey=key;
-        },
+        onObservation:sampledStreamRecorder(this.ctx.storage.sql),
         onFault:reason=>{
           const at=Date.now();
           // Include every distinct fault and repeat faults at most once/30sec.
@@ -162,7 +152,7 @@ export class ScoutEngineV4 extends DurableObject {
   async captureOfficialWindows(now=Date.now()){
     // Independent archival poll. Failure never changes strategy/entries/P&L.
     // Query ALL exchange-listed ETH15M closes, including those the bot passed.
-    let cursor='',seen=new Set(),written=0;
+    let cursor='',seen=new Set();
     const sql=this.ctx.storage.sql;
     for(let page=0;page<3;page++){
       const response=await remote(windowEndpointUrl(now,cursor));
@@ -177,21 +167,16 @@ export class ScoutEngineV4 extends DurableObject {
             VALUES(?,?,?,?,?,?)
             ON CONFLICT(ticker) DO UPDATE SET
               observed_at=excluded.observed_at,
-              outcome=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
-                THEN window_outcomes.outcome ELSE excluded.outcome END,
-              status=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
-                THEN window_outcomes.status ELSE excluded.status END,
-              data=CASE WHEN window_outcomes.status IN ('OFFICIAL_RESULT','VOID')
-                THEN window_outcomes.data ELSE excluded.data END`,
+              outcome=excluded.outcome,status=excluded.status,data=excluded.data
+            WHERE window_outcomes.status NOT IN ('OFFICIAL_RESULT','VOID')`,
             w.ticker,w.closeAt,w.observedAt,w.outcome,w.status,JSON.stringify(w));
-          written++;
         }
       });
       const next=typeof response.cursor==='string'?response.cursor:'';
       if(!next||next===cursor||response.markets.length<500)break;
       cursor=next;
     }
-    return written;
+    return seen.size;
   }
   async run(){
     if(this.busy)return this.busy;

@@ -74,12 +74,30 @@ export function ensureStreamAudit(sql){
   'id INTEGER PRIMARY KEY AUTOINCREMENT,at INTEGER NOT NULL,'+
   'ticker TEXT,kind TEXT NOT NULL,detail TEXT NOT NULL);');
 }
-export function appendStreamSample(sql,{quote,at=Date.now(),kind='delta'}){
+// Archive cadence only. The transport has already applied and sequence-checked the frame.
+const STREAM_ARCHIVE_INTERVAL_MS=15_000;
+export function sampledStreamRecorder(sql){
+ let nextDeltaAt=0, retryAt=0;
+ return ({type,quote,receivedAt})=>{
+  const snapshot=type==='orderbook_snapshot';
+  if(receivedAt<retryAt||(!snapshot&&receivedAt<nextDeltaAt))return;
+  try{
+   appendStreamSample(sql,{quote,at:receivedAt,kind:snapshot?'snapshot':'delta',
+    archiveIntervalMs:STREAM_ARCHIVE_INTERVAL_MS});
+   nextDeltaAt=receivedAt+STREAM_ARCHIVE_INTERVAL_MS;
+  }catch{
+   // A storage error must not invalidate the live book or request a new snapshot.
+   retryAt=receivedAt+60_000;
+   console.warn('ETH15_V4_AUDIT|STREAM_ARCHIVE_WRITE_FAILED|RETRY_IN_60S');
+  }
+ };
+}
+export function appendStreamSample(sql,{quote,at=Date.now(),kind='delta',archiveIntervalMs}){
  if(!ETH.test(quote?.ticker||'')||quote.source!=='KALSHI_WEBSOCKET_ORDERBOOK'||
   !ms(at)||!['snapshot','delta','recovery'].includes(kind))
    throw new TypeError('Invalid V4 stream sample');
  const sample={schemaVersion:1,source:quote.source,ticker:quote.ticker,
-  observedAt:at,kind,sid:Number.isSafeInteger(quote.sid)?quote.sid:null,
+  observedAt:at,kind,archiveIntervalMs,sid:Number.isSafeInteger(quote.sid)?quote.sid:null,
   seq:Number.isSafeInteger(quote.seq)?quote.seq:null,
   clock:Number.isSafeInteger(quote.clock)?quote.clock:null,
   receivedAt:ms(quote.receivedAt),sendingAt:ms(quote.sendingAt),
