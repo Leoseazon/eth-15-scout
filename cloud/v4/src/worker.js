@@ -328,9 +328,23 @@ export class ScoutEngineV4 extends DurableObject {
     const continueV4Position=s.open?.strategy==='V4_SETTLEMENT_FIRST';
     if(this.paperExperimentAllowed||continueV4Position){
       let index=null;
-      // Dedicated read-only CF latest request. No continuous index archive:
-      // reject stale source-time data; never substitute Kraken for official RTI.
-      if(s.armed&&!s.open&&market&&one&&m5&&!s.blocked.includes(market.ticker)){
+      // Check book locally before making a signed official-index REST call:
+      // this avoids 4 requests/minute when WS is disconnected or stale.
+      const book=this.stream?.status(Date.now())?.quote||null;
+      const bookReady=book?.ticker===market?.ticker&&
+        book?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
+        book.valid===true&&book.fresh===true&&
+        Number.isSafeInteger(book.receivedAt)&&
+        Date.now()-book.receivedAt<=5000;
+      const remainingForEntry=market?
+        (Date.parse(market.close_time)-Date.now())/1000:null;
+      const marketReady=!!market&&Number.isFinite(remainingForEntry)&&
+        remainingForEntry>90&&remainingForEntry<=750;
+      const entrySourcesReady=s.armed&&!s.open&&marketReady&&
+        !!one&&!!m5&&!!context.three&&!!context.five&&
+        !s.blocked.includes(market.ticker)&&bookReady;
+      // The latest-value REST access is only a check; not archival streaming.
+      if(entrySourcesReady){
         const verified=await checkCFValuesAccess({
           keyId:this.env.KALSHI_V4_READ_KEY_ID,
           privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
@@ -346,7 +360,25 @@ export class ScoutEngineV4 extends DurableObject {
         };
         if(s.lastOfficialIndexCheck.fresh)index=verified;
       }
-      const book=this.stream?.status(Date.now())?.quote||null;
+      if(!entrySourcesReady&&!s.open){
+        s.lastOfficialIndexCheck={at:Date.now(),
+          state:bookReady?'SKIPPED_OTHER_ENTRY_PREREQUISITE':'SKIPPED_NO_FRESH_WS_BOOK',
+          fresh:false,sourceAgeMs:null};
+      }
+      s.lastPaperFeedHealth={
+        at:Date.now(),marketTicker:market?.ticker||null,
+        marketProxyValid:feedChecks.kalshi?.ok===true,
+        krakenOneMinuteFresh:!!one,
+        krakenFiveMinuteFresh:!!m5&&fresh,
+        krakenThreeMinuteFresh:!!context.three,
+        kalshiWsConnected:this.stream?.status(Date.now())?.connected===true,
+        kalshiWsBookFresh:bookReady,
+        kalshiBookAgeMs:Number.isSafeInteger(book?.receivedAt)?
+          Date.now()-book.receivedAt:null,
+        officialIndexLastState:s.lastOfficialIndexCheck?.state||'NOT_CHECKED',
+        officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
+        liveSourcesReady:entrySourcesReady&&index!==null
+      };
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book,now:Date.now(),
@@ -631,8 +663,11 @@ export class ScoutEngineV4 extends DurableObject {
         marketSnapshot:s.marketSnapshot||null,
         settlementPhase:settlementClockPhase(
           s.marketSnapshot?.contract?.close_time||s.open?.closeTime||'',Date.now()),
-        officialSettlementIndexAvailable:!!s.lastOfficialIndexCheck?.fresh,
+        officialSettlementIndexAvailable:!!s.lastOfficialIndexCheck?.fresh&&
+          Number.isSafeInteger(s.lastOfficialIndexCheck.at)&&
+          Date.now()-s.lastOfficialIndexCheck.at<=30000,
         officialIndexFeedCheck:s.lastOfficialIndexCheck||{state:'NOT_YET_CHECKED'},
+        paperFeedHealth:s.lastPaperFeedHealth||null,
         releaseMarkers:this.ctx.storage.sql.exec(
           'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
