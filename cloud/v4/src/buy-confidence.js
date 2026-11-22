@@ -1,7 +1,8 @@
 /* V4 paper BUY confidence: deterministic 0–100 HEURISTIC INDEX ONLY.
  * This is NOT a calibrated chance of winning at Kalshi settlement.
- * Never drives, gates or scales simulated order size. All evidence is
- * contemporaneous and derives from the same already-eligible V4 candidate.
+ * Its numeric value is NEVER a new buy threshold or stake/exit control.
+ * Invalid confidence inputs fail closed at paper entry so every recorded
+ * simulated BUY carries a valid score. All inputs are contemporaneous.
  */
 import {calculateSettlementEvidence} from './settlement-first.js';
 export const BUY_CONFIDENCE_VERSION='V4-BUY-CONFIDENCE-HEURISTIC-1';
