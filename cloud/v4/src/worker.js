@@ -16,6 +16,8 @@ import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,lat
 import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
 import {KalshiResearchSocket} from './research-socket.js';
+import {ensureFullBookArchive,appendFullBookFrame,
+ fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
  appendResearchFeedEvent,independentResearchStatus,independentResearchPage} from './research-sources.js';
 
@@ -93,6 +95,7 @@ export class ScoutEngineV4 extends DurableObject {
     ensureResearchJournal(this.ctx.storage.sql);
     ensureStreamAudit(this.ctx.storage.sql);
     ensureRestBookArchive(this.ctx.storage.sql);
+    ensureFullBookArchive(this.ctx.storage.sql);
     ensureIndependentResearch(this.ctx.storage.sql);
     this.researchStream=null;
     // Disabled by default until Kalshi entitlement and retention permissions are verified.
@@ -112,6 +115,8 @@ export class ScoutEngineV4 extends DurableObject {
     if(env.V4_STREAM_CAPTURE_ENABLED==='true'){
       this.stream=new KalshiReadOnlySocket({
         onObservation:sampledStreamRecorder(this.ctx.storage.sql),
+        onRawFrame:env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true'?
+          ({packet,receivedAt})=>appendFullBookFrame(this.ctx.storage.sql,packet,receivedAt):()=>{},
         onFault:reason=>{
           const at=Date.now();
           // Include every distinct fault and repeat faults at most once/30sec.
@@ -538,6 +543,8 @@ export class ScoutEngineV4 extends DurableObject {
         supplementaryResearchConnection:this.researchStream?this.researchStream.status():
           {connected:false,reason:'V4 research feed disabled pending validation'},
         supplementaryResearch:independentResearchStatus(this.ctx.storage.sql),
+        fullBookArchiveEnabled:this.env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true',
+        fullBookArchive:fullBookArchiveStatus(this.ctx.storage.sql),
         lastRestBookAt:s.lastRestBookAt||null,
         lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
         lastRestBookStatus:s.lastRestBookStatus||'NOT_CAPTURED',
@@ -643,6 +650,20 @@ export class ScoutEngineV4 extends DurableObject {
           limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
+    }
+    if(path==='/v1/full-book'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams;
+      const limit=q.get('limit')||'40',anchor=q.get('anchor'),
+        before=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limit)||Number(limit)>100||(anchor!==null&&!valid(anchor))||
+         (before!==null&&!valid(before))||
+         (ticker!==null&&!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker)))
+        return json({error:'Invalid raw book archive request'},400);
+      try{return json(fullBookArchivePage(this.ctx.storage.sql,{
+        limit:Number(limit),anchor:anchor===null?null:Number(anchor),
+        before:before===null?null:Number(before),ticker
+      }))}catch{return json({error:'Raw book history unavailable'},400)}
     }
     if((path==='/v1/benchmark'||path==='/v1/public-trades')&&req.method==='GET'){
       const q=new URL(req.url).searchParams,
