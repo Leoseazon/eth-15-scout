@@ -104,3 +104,19 @@ test('no auxiliary research journal is allowed to claim paper buy before account
  const research=tick.indexOf('recordResearchTick(',primary);
  assert.ok(primary>0&&save>primary&&research>save);
 });
+
+test('signed index HTTP latency cannot reuse a pre-REST stale Kalshi entry book',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ const check=worker.indexOf('const verified=await checkCFValuesAccess');
+ const refetch=worker.indexOf('const decisionBook=this.stream?.status(Date.now())?.quote',check);
+ const decision=worker.indexOf('book:decisionBook,now:Date.now()',refetch);
+ assert.ok(check>0&&refetch>check&&decision>refetch);
+ assert.match(worker,/decisionBookFresh&&index!==null/);
+});
+test('reference REST quote source timestamp is forwarded, not replaced by the latest tick time',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ assert.match(worker,/yes_bid_dollars:market.yes_bid_dollars/);
+ assert.match(worker,/no_bid_dollars:market.no_bid_dollars/);
+ assert.match(worker,/quoteObservedAt:s.lastQuoteRetrievedAt/);
+ assert.match(worker,/V4 PAPER fills use authenticated WS book/);
+});
