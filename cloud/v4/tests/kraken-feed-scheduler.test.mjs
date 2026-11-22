@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectThrottledMarketFeeds,currentClosedFiveMinuteCandle,
+ currentClosedOneMinuteCandle,ONE_CACHE_MAX_AGE_MS,
  FIVE_CACHE_MAX_AGE_MS,KRAKEN_OHLC_SPACING_MS,
  FIVE_RATE_LIMIT_BACKOFF_MS,ONE_RATE_LIMIT_BACKOFF_MS} from '../src/kraken-feed-scheduler.js';
 
@@ -16,17 +17,26 @@ function five(at,{old=false}={}){
  });
  return {error:[],result:{XETHZUSD:candles}};
 }
-const one={error:[],result:{XETHZUSD:[[T/1000,'1700','1710','1690','1704','1703','100',1]]}};
+function one(at,{old=false}={}){
+ const window=Math.floor(at/60000)*60000;
+ const latestClosed=window-60000-(old?60000:0);
+ const candles=Array.from({length:75},(_,i)=>{
+  const sec=(latestClosed-(73-i)*60000)/1000;
+  return [sec,'1700','1710','1690','1704','1703','100',1];
+ });
+ return {error:[],result:{XETHZUSD:candles}};
+}
 const ticker={error:[],result:{XETHZUSD:{c:['1705']}}};
 const market={markets:[],worker_retrieved_at:new Date(T).toISOString()};
-function makeFetcher({limit5=false,limit1=false,fiveAt=T,old5=false}={}){
+function makeFetcher({limit5=false,limit1=false,fiveAt=T,old5=false,
+ oneClock=()=>T,old1=false}={}){
  const calls=[];
  const fetcher=async url=>{
   calls.push(url);
   if(url===marketUrl)return market;
   if(url.includes('Ticker?'))return ticker;
   if(url.includes('interval=1'))return limit1?
-   {error:['EGeneral:Too many requests']}:one;
+   {error:['EGeneral:Too many requests']}:one(oneClock(),{old:old1});
   if(url.includes('interval=5'))return limit5?
    {error:['EGeneral:Too many requests']}:five(fiveAt,{old:old5});
   throw Error('Unrecognized URL: '+url);
@@ -57,23 +67,31 @@ test('stagger 1m and 5m requests, preserving independent Kalshi and ticker resul
  assert.equal(result.checks.kraken5m.cached,false);
 });
 
-test('unchanged 5m data is reused under a strict 60s TTL; 1m remains live every tick',async()=>{
- const state={},provider=makeFetcher();
+test('strict 1m closed-bar cache and 5m cache do not reuse data across candle rollover',async()=>{
+ let now=T;
+ const state={},provider=makeFetcher({oneClock:()=>now});
  const first=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,T,
   {state,wait:noWait});
  assert.equal(first.checks.kraken5m.cached,false);
  for(const elapsed of [15000,30000,45000]){
+  now=T+elapsed;
   const result=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,T+elapsed,
    {state,wait:noWait});
   assert.equal(result.checks.kraken5m.cached,true);
   assert.equal(result.checks.kraken5m.sourceRetrievedAt,T);
+  assert.equal(result.checks.kraken1m.cached,elapsed<45000);
+  assert.equal(result.checks.kraken1m.ok,true);
  }
  assert.equal(count(provider.calls,'interval=5'),1);
- assert.equal(count(provider.calls,'interval=1'),4);
+ assert.equal(count(provider.calls,'interval=1'),2,
+  'only a new closed-minute boundary triggers a 1m refill');
+ now=T+FIVE_CACHE_MAX_AGE_MS;
  const after=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,
-  T+FIVE_CACHE_MAX_AGE_MS,{state,wait:noWait});
+  now,{state,wait:noWait});
  assert.equal(after.checks.kraken5m.cached,false);
  assert.equal(count(provider.calls,'interval=5'),2);
+ assert.equal(count(provider.calls,'interval=1'),2,
+  '1m reuse stays within 55s TTL and latest completed candle');
 });
 
 test('five-minute rollover invalidates earlier bars even if cache TTL not expired',async()=>{
@@ -148,7 +166,8 @@ test('1m rate limit also causes a bounded cooldown, without reusing stale 1m dat
  assert.equal(next.checks.kraken1m.ok,false);
  assert.equal(next.payloads.kraken1m,undefined);
  assert.equal(count(bad.calls,'interval=1'),1,'1m not requested while cooling down');
- const ok=makeFetcher({fiveAt:T+ONE_RATE_LIMIT_BACKOFF_MS});
+ const ok=makeFetcher({fiveAt:T+ONE_RATE_LIMIT_BACKOFF_MS,
+  oneClock:()=>T+ONE_RATE_LIMIT_BACKOFF_MS});
  const restored=await collectThrottledMarketFeeds(ok.fetcher,marketUrl,base,
   T+ONE_RATE_LIMIT_BACKOFF_MS,{state,wait:noWait});
  assert.equal(restored.checks.kraken1m.ok,true);
@@ -167,4 +186,46 @@ test('malformed cache, future timestamps and warm-restart loss cannot become fre
  await collectThrottledMarketFeeds(cold.fetcher,marketUrl,base,T,
   {state:coldState,wait:noWait});
  assert.equal(count(cold.calls,'interval=5'),1,'DO restart refetches provider');
+});
+
+
+test('1m cache does not accept an obsolete bar, future time, or malformed OHLC',async()=>{
+ const old=one(T);
+ assert.equal(currentClosedOneMinuteCandle(old,T),true);
+ assert.equal(currentClosedOneMinuteCandle(old,T+45000),false);
+ assert.equal(currentClosedOneMinuteCandle(old,T+45000-60000),false);
+ assert.equal(currentClosedOneMinuteCandle({error:[],result:{}},T),false);
+ const missing=makeFetcher({oneClock:()=>T,old1:true});
+ const state={};
+ const invalid=await collectThrottledMarketFeeds(missing.fetcher,marketUrl,base,T,
+  {state,wait:noWait});
+ assert.equal(invalid.checks.kraken1m.ok,false);
+ assert.equal(invalid.payloads.kraken1m,undefined);
+ assert.equal(state.one,null);
+});
+
+test('1m returned cache never survives restart and never bypasses a new minute boundary',async()=>{
+ const state={},source=makeFetcher({oneClock:()=>T});
+ const first=await collectThrottledMarketFeeds(source.fetcher,marketUrl,base,T,
+  {state,wait:noWait});
+ assert.equal(first.checks.kraken1m.ok,true);
+ assert.equal(first.checks.kraken1m.cached,false);
+ for(const elapsed of [15000,30000]){
+  const again=await collectThrottledMarketFeeds(source.fetcher,marketUrl,base,
+   T+elapsed,{state,wait:noWait});
+  assert.equal(again.checks.kraken1m.cached,true);
+  assert.equal(again.checks.kraken1m.sourceRetrievedAt,T);
+ }
+ assert.equal(count(source.calls,'interval=1'),1);
+ const at=T+45000,withFresh=makeFetcher({oneClock:()=>at});
+ const rollover=await collectThrottledMarketFeeds(withFresh.fetcher,marketUrl,base,
+  at,{state,wait:noWait});
+ assert.equal(rollover.checks.kraken1m.cached,false);
+ assert.equal(rollover.checks.kraken1m.ok,true);
+ assert.equal(count(withFresh.calls,'interval=1'),1);
+ const cold={},provider=makeFetcher({oneClock:()=>at});
+ const afterRestart=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,
+  at,{state:cold,wait:noWait});
+ assert.equal(afterRestart.checks.kraken1m.cached,false);
+ assert.equal(count(provider.calls,'interval=1'),1);
 });
