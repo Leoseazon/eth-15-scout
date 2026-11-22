@@ -58,6 +58,7 @@ jobs:
       - run: node --check ../v4/storage-inventory-ui.js
       - run: node --check ../v4/settlement-paper-ui.js
       - run: node --check ../v4/confidence-ui.js
+      - run: node --check ../v4/health-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4paper.toml --dry-run --outdir .cloudflare-build-v4paper
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
