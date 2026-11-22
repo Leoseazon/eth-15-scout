@@ -15,6 +15,9 @@ import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttp
 import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
+import {KalshiResearchSocket} from './research-socket.js';
+import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
+ appendResearchFeedEvent,independentResearchStatus,independentResearchPage} from './research-sources.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
@@ -90,6 +93,17 @@ export class ScoutEngineV4 extends DurableObject {
     ensureResearchJournal(this.ctx.storage.sql);
     ensureStreamAudit(this.ctx.storage.sql);
     ensureRestBookArchive(this.ctx.storage.sql);
+    ensureIndependentResearch(this.ctx.storage.sql);
+    this.researchStream=null;
+    // Disabled by default until Kalshi entitlement and retention permissions are verified.
+    if(env.V4_RESEARCH_STREAM_ENABLED==='true'){
+      const sql=this.ctx.storage.sql;
+      this.researchStream=new KalshiResearchSocket({
+        onCF:v=>appendCFValue(sql,v),
+        onTrade:v=>appendPublicTrade(sql,v),
+        onEvent:(kind,at)=>appendResearchFeedEvent(sql,kind,at)
+      });
+    }
     this.restBookCaptureEnabled=env.V4_REST_BOOK_CAPTURE_ENABLED==='true';
     // Zero connections unless the NEW V4-only feature flag is explicitly set.
     // The stream requires a dedicated READ-only Kalshi key, not a trading key.
@@ -422,6 +436,22 @@ export class ScoutEngineV4 extends DurableObject {
           at:Date.now(),detail:'Isolated stream path unavailable'});
       }
     }
+    // Supplemental CF Benchmarks and Kalshi public-trades research only.
+    // Never used for this tick's baseline signal or any simulated fill.
+    if(this.researchStream){
+      try{
+        this.researchStream.watchdog(Date.now());
+        const keyId=this.env.KALSHI_V4_READ_KEY_ID;
+        const privatePem=this.env.KALSHI_V4_READ_PRIVATE_KEY;
+        if(market&&typeof keyId==='string'&&typeof privatePem==='string')
+          await this.researchStream.ensure(market.ticker,{keyId,privatePem},Date.now());
+        else if(market&&(!keyId||!privatePem))
+          appendResearchFeedEvent(this.ctx.storage.sql,'RESEARCH_STREAM_CONFIG_MISSING');
+      }catch{
+        // Research failure never changes the V3-derived shadow evaluation.
+        try{appendResearchFeedEvent(this.ctx.storage.sql,'CF_CONNECT_ERROR')}catch{}
+      }
+    }
     // Isolated official REST depth archive; no influence on engine, paper, or P&L.
     // Kalshi REST does NOT provide exchange event timestamps or sequence.
     if(this.restBookCaptureEnabled&&this.stream&&market){
@@ -504,6 +534,10 @@ export class ScoutEngineV4 extends DurableObject {
         streamArchive:latestStreamStatus(this.ctx.storage.sql),
         restBookCaptureEnabled:this.restBookCaptureEnabled,
         restBookArchive:latestRestBookStatus(this.ctx.storage.sql),
+        supplementaryResearchEnabled:!!this.researchStream,
+        supplementaryResearchConnection:this.researchStream?this.researchStream.status():
+          {connected:false,reason:'V4 research feed disabled pending validation'},
+        supplementaryResearch:independentResearchStatus(this.ctx.storage.sql),
         lastRestBookAt:s.lastRestBookAt||null,
         lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
         lastRestBookStatus:s.lastRestBookStatus||'NOT_CAPTURED',
@@ -610,6 +644,21 @@ export class ScoutEngineV4 extends DurableObject {
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
     }
+    if((path==='/v1/benchmark'||path==='/v1/public-trades')&&req.method==='GET'){
+      const q=new URL(req.url).searchParams,
+        limit=q.get('limit')||'60',anchor=q.get('anchor'),
+        before=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limit)||Number(limit)>100||
+        (anchor!==null&&!valid(anchor))||(before!==null&&!valid(before))||
+        (ticker!==null&&!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker)))
+        return json({error:'Invalid research-source request'},400);
+      try{return json(independentResearchPage(this.ctx.storage.sql,{
+        kind:path==='/v1/benchmark'?'benchmark':'trades',
+        anchor:anchor===null?null:Number(anchor),
+        before:before===null?null:Number(before),limit:Number(limit),ticker
+      }))}catch{return json({error:'Research source page unavailable'},400)}
+    }
     if(path==='/v1/rest-book'&&req.method==='GET'){
       const q=new URL(req.url).searchParams,limitRaw=q.get('limit')||'60',
         anchorRaw=q.get('anchor'),beforeRaw=q.get('before'),ticker=q.get('ticker');
@@ -657,6 +706,7 @@ export class ScoutEngineV4 extends DurableObject {
       // Stopping V4 monitoring must also terminate the paid outbound stream.
       // This is a server-admin action; no viewer/public endpoint exposes it.
       this.stream?.stop();
+      this.researchStream?.stop();
       s.monitoring=false;s.armed=false;this.save(s);
       await this.ctx.storage.deleteAlarm();
       if(this.stream)appendStreamEvent(this.ctx.storage.sql,{
