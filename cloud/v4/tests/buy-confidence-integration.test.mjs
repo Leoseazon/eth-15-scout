@@ -107,4 +107,14 @@ test('UI changes 0-100 displayed live score up/down, then goes unavailable on st
  assert.equal(els.get('confidence-live').textContent,'—');
  assert.equal(els.get('confidence-meter').attributes['aria-valuenow'],undefined);
  assert.match(els.get('confidence-quality').textContent,/stale/i);
+ dispatch(0,now);
+ assert.equal(els.get('confidence-live').textContent,'0%');
+ assert.equal(els.get('confidence-meter').attributes['aria-valuenow'],'0');
+ listeners.get('v4:dashboard-confidence')({detail:{status:{monitoring:false,lastTick:now,open:{
+  strategy:'V4_SETTLEMENT_FIRST',entryConfidence:{value:70},
+  confidenceHistory:[{at:now-1000,value:70},{at:now,value:95}],
+  liveConfidence:{status:'CURRENT',value:95,asOf:now}
+ }}}});
+ assert.equal(els.get('confidence-live').textContent,'—');
+ assert.equal(els.get('confidence-meter').attributes['aria-valuenow'],undefined);
 });
