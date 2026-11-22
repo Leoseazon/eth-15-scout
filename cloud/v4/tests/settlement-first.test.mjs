@@ -21,7 +21,9 @@ test('correct side of REAL target first, no seven-vote pass or fabricated probab
  assert.ok(r.officialDistance>0);
  assert.ok(r.normalizedDistance>0);
  assert.equal(r.calibratedProbability,null);
- assert.equal(r.scoreKind,'NON_CALIBRATED_HEURISTIC');
+ assert.equal(r.scoreKind,'NON_CALIBRATED_CONTEXT_HEURISTIC');
+ assert.ok(r.contextualOpportunity?.lowerScenarioNetProfit>0);
+ assert.equal(r.contextualOpportunity.calibratedProbability,null);
  assert.equal(r.version,SETTLEMENT_FIRST_VERSION);
  assert.equal(r.settlementPredictionVerified,false);
  assert.equal(r.executionVerified,false);
@@ -98,21 +100,24 @@ test('87c is an inclusive absolute BUY ceiling; 85–87c requires exception',()=
   assert.equal(r.side,'PASS');
   assert.equal(r.reason,'PRICE_ABOVE_87C_HARD_BUY_LIMIT');
  }
+ // A strong, well-priced contract can qualify with >5m left:
+ // premium pricing is not a mandatory "wait until the last five minutes" gate.
  const early=evaluateSettlementFirst({...strong,
   market:{...market,close_time:new Date(T+6*60000).toISOString()},
   book:askBook(.85)});
- assert.equal(early.status,'WATCH');
- assert.equal(early.reason,'EXPENSIVE_CONTRACT_TOO_EARLY');
+ assert.equal(early.status,'CANDIDATE',JSON.stringify(early));
  for(const ask of [.86,.87]){
   const earlyPremium=evaluateSettlementFirst({...strong,
    market:{...market,close_time:new Date(T+6*60000).toISOString()},
    book:askBook(ask)});
-  assert.equal(earlyPremium.reason,'PREMIUM_85_TO_87_EXCEPTION_NOT_MET');
+  assert.equal(earlyPremium.status,'CANDIDATE',ask+' '+JSON.stringify(earlyPremium));
   const wide=evaluateSettlementFirst({...strong,book:askBook(ask,.80)});
-  assert.equal(wide.reason,'PREMIUM_85_TO_87_EXCEPTION_NOT_MET');
-  const opposed=evaluateSettlementFirst({...strong,
-   context:{three:{trend:'DOWN'},five:{trend:'DOWN'}},
-   book:askBook(ask)});
-  assert.equal(opposed.reason,'PREMIUM_85_TO_87_EXCEPTION_NOT_MET');
+  assert.equal(wide.status,'WATCH',JSON.stringify(wide));
  }
+ // Same high ASK but target has practically no cushion: not sufficient value.
+ const weakTarget=evaluateSettlementFirst({...strong,
+  index:{...index,price:1800.05},
+  one:{...one,last:1800.05,e8:1800,e21:1799.9,three:.05},
+  book:askBook(.86)});
+ assert.equal(weakTarget.status,'WATCH',JSON.stringify(weakTarget));
 });
