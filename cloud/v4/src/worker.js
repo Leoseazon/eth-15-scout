@@ -34,7 +34,7 @@ import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
 const INTERVAL_MS=15000;
 const REST_BOOK_INTERVAL_MS=15000;
 const REST_BOOK_RETRY_AFTER_429_MS=120000;
-const RELEASE_TAG='V4-FOUNDATION-20261121';
+const RELEASE_TAG='V4-CONTEXTUAL-VALUE-20261122';
 const PHASE1_TAG='V3-PHASE1-FEED-RELIABILITY-20261120';
 const SOFT_GUARD_HOTFIX_TAG='V4-SHADOW-FOUNDATION-SOFT-GUARD-BYPASS-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
@@ -249,11 +249,16 @@ export class ScoutEngineV4 extends DurableObject {
         // No guessed exit or P&L is written on fast-path error.
       }
     }
-    // Separate V4 cohort; no inherited V3 hotfix/soft-guard transition markers.
-    this.ctx.storage.sql.exec(
-      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
-      RELEASE_TAG,now,'not applicable',
-      'V4 shadow foundation with V3 baseline logic; paper entries hard-disabled');
+    // The release marker is ONLY the first engine tick under the explicit
+    // V4 contextual paper configuration. It is NOT a trade, successful
+    // settlement, healthy feed, or evidence that the GitHub website was
+    // published. Preserve old release markers for historical audit.
+    if(this.paperExperimentAllowed){
+      this.ctx.storage.sql.exec(
+        'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+        RELEASE_TAG,now,'not applicable',
+        'V4 target-centered contextual paper model activated; first runtime tick only');
+    }
     const engine=makeV2Engine(s,{softGuardEnabled:true});
     let market=null,one=null,m5=null,error=null,fresh=false;
     let fiveCandles=[],oneCandles=[],tickerSpot=null;
