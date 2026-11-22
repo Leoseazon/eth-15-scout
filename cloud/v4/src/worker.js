@@ -19,6 +19,10 @@ import {KalshiResearchSocket} from './research-socket.js';
 import {checkCFValuesAccess} from './cf-access.js';
 import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
+import {settlementFirstPaperStep} from './settlement-first-paper.js';
+import {ensureSettlementPredictions,appendSettlementPrediction,
+ reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
+import {SETTLEMENT_FIRST_VERSION} from './settlement-first.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
@@ -100,6 +104,10 @@ export class ScoutEngineV4 extends DurableObject {
     ensureRestBookArchive(this.ctx.storage.sql);
     ensureFullBookArchive(this.ctx.storage.sql);
     ensureIndependentResearch(this.ctx.storage.sql);
+    ensureSettlementPredictions(this.ctx.storage.sql);
+    // Two explicit deployment switches; no code path contains a real order API.
+    this.paperExperimentAllowed=env.SCOUT_V4_PAPER_MODE==='enabled' &&
+      env.V4_SETTLEMENT_FIRST_EXPERIMENT==='true';
     this.researchStream=null;
     // Formal permission gate is separate from each capture switch. Rest/pass-through
     // and WebSocket entitlement alone do NOT permit bulk retention/model training.
@@ -143,7 +151,7 @@ export class ScoutEngineV4 extends DurableObject {
     // Disabled/missing flag ALWAYS overrides old persisted armed state.
     // 'enabled' authorizes PAPER simulated entries only; no broker API exists.
     // Hard disarm: V4 is shadow-only even if a config variable is enabled.
-    s.armed=false;
+    s.armed=this.paperExperimentAllowed&&s.monitoring;
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
     this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
@@ -308,14 +316,43 @@ export class ScoutEngineV4 extends DurableObject {
     }
     context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    try{report=engine.step(market,one,m5,fresh,context)}
-    catch(e){error='V2 evaluation failed: '+safeErr(e)}
+    if(this.paperExperimentAllowed){
+      let index=null;
+      // Dedicated read-only CF latest request. No continuous index archive:
+      // reject stale source-time data; never substitute Kraken for official RTI.
+      if(s.armed&&!s.open&&market&&one&&m5&&!s.blocked.includes(market.ticker)){
+        const verified=await checkCFValuesAccess({
+          keyId:this.env.KALSHI_V4_READ_KEY_ID,
+          privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
+          now:Date.now()
+        });
+        if(verified.state==='HTTP_200_VALID_ETH_INDEX')
+          index=verified;
+      }
+      const book=this.stream?.status(Date.now())?.quote||null;
+      try{
+        report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
+          book,now:Date.now(),
+          onPrediction:pos=>appendSettlementPrediction(this.ctx.storage.sql,pos)});
+      }catch{
+        report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+    }else{
+      try{report=engine.step(market,one,m5,fresh,context)}
+      catch(e){error='V2 evaluation failed: '+safeErr(e)}
+    }
     // V4 candidate scanning is read-only: a qualifying heuristic NEVER arms
     // or purchases a paper contract, even when markets remain uncalibrated.
     let shadowProbe=null;
     try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
     catch(e){shadowProbe={status:'UNAVAILABLE',reason:'Shadow probe failure',
       candidate:null,calibratedProbability:null,executableFillVerified:false}}
+    if(this.paperExperimentAllowed)
+      shadowProbe={version:SETTLEMENT_FIRST_VERSION,
+        status:report.status||'WATCH',reason:report.notice||'',
+        candidate:report.candidate||null,
+        decision:s.lastV4SettlementDecision||null,
+        calibratedProbability:null,executableFillVerified:false};
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
     // Chart reuses the engine's successfully fetched reference candles.
@@ -384,6 +421,8 @@ export class ScoutEngineV4 extends DurableObject {
     // Only official finalized outcomes resolve paper holdings.
     const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
     if(settled>0)this.save(s,tickMeta);
+    try{reconcileSettlementPredictions(this.ctx.storage.sql,Date.now())}
+    catch{ /* Official outcome scoring remains unresolved; never assume success. */ }
     // Research stream always follows critical paper accounting and journal IO.
     // NO stream data is fed into the existing V3-derived entry/exit engine.
     if(this.stream){
@@ -530,7 +569,12 @@ export class ScoutEngineV4 extends DurableObject {
         'SELECT (SELECT count(*) FROM trades) as trades,(SELECT count(*) FROM decisions) as passes'
       ).toArray()[0];
       return json({monitoring:s.monitoring,armed:s.armed,paperOnly:true,
-        paperMode:'disabled',shadowOnly:true,
+        paperMode:this.paperExperimentAllowed?'enabled':'disabled',
+        shadowOnly:!this.paperExperimentAllowed,
+        settlementPaperAllowed:this.paperExperimentAllowed,
+        settlementModelVersion:SETTLEMENT_FIRST_VERSION,
+        latestSettlementDecision:s.lastV4SettlementDecision||null,
+        settlementPredictionStats:settlementPredictionStats(this.ctx.storage.sql),
         initial:s.initial,cash:s.cash,
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
@@ -558,7 +602,7 @@ export class ScoutEngineV4 extends DurableObject {
         lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
         lastRestBookStatus:s.lastRestBookStatus||'NOT_CAPTURED',
         lastRestBookError:s.lastRestBookError||null,
-        policyVersion:'V4-SHADOW-FOUNDATION',
+        policyVersion:this.paperExperimentAllowed?SETTLEMENT_FIRST_VERSION:'V4-SHADOW-FOUNDATION',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10),
