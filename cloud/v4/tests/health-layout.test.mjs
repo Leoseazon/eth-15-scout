@@ -110,3 +110,34 @@ test('trade-first hierarchy and unique critical DOM IDs survived reorganization'
  assert.match(js,/v4:dashboard-reset/);
  assert.match(js,/book\.ticker===open\.ticker/);
 });
+
+test('reordered HTML keeps well-nested sections and has no duplicate IDs',()=>{
+ const html=readFileSync(root+'v4/index.html','utf8');
+ const seen=new Set();
+ for(const item of html.matchAll(/\bid="([^"]+)"/g)){
+  assert.ok(!seen.has(item[1]),'Duplicate DOM ID '+item[1]);seen.add(item[1]);
+ }
+ const stack=[],voids=new Set(['area','base','br','col','embed','hr','img',
+  'input','link','meta','param','source','track','wbr']);
+ const tags=/<\/?([A-Za-z][\w:-]*)\b[^>]*>/g;
+ for(const m of html.matchAll(tags)){
+  const token=m[0],tag=m[1].toLowerCase();
+  if(voids.has(tag)||token.endsWith('/>'))continue;
+  if(token.startsWith('</')){
+   const open=stack.pop();
+   assert.equal(open,tag,'Invalid closing tag '+tag+' at offset '+m.index);
+  }else stack.push(tag);
+ }
+ assert.deepEqual(stack,[],'Unclosed HTML tags');
+});
+test('all existing app static DOM references remain available after layout move',()=>{
+ const html=readFileSync(root+'v4/index.html','utf8');
+ const js=readFileSync(root+'v4/app.js','utf8');
+ const ids=new Set([...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]));
+ const missing=new Set();
+ for(const m of js.matchAll(/\$\('([^']+)'\)/g))
+  if(!ids.has(m[1]))missing.add(m[1]);
+ for(const m of js.matchAll(/(?:txt|cls)\('([^']+)'/g))
+  if(!ids.has(m[1]))missing.add(m[1]);
+ assert.deepEqual([...missing],[],Array.from(missing).join(', '));
+});
