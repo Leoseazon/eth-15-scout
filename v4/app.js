@@ -19,7 +19,17 @@ const money=(v,sign=false)=>n(v)===null?'—':(sign&&v>0?'+':'')+
 const fmt=(v,d=2)=>n(v)===null?'—':Number(v).toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const ct=v=>{if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?'—':d.toLocaleTimeString('en-US',
  {timeZone:'America/Chicago',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})};
-const ago=ms=>{if(!Number.isFinite(Number(ms))||!ms)return 'Unknown';const s=Math.round((Date.now()-Number(ms))/1000);if(s<0)return 'Clock mismatch';return s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago'};
+// Permit up to 5 seconds of browser/server clock skew (the same upper
+// tolerance already used by the public-quote freshness gate). Do not mask
+// genuinely future-dated timestamps or make stale quotes appear executable.
+const ago=ms=>{
+ const at=Number(ms);
+ if(!Number.isFinite(at)||at<=0)return 'Unknown';
+ const difference=Date.now()-at;
+ if(difference < -5000)return 'Clock mismatch';
+ const s=Math.max(0,Math.floor(difference/1000));
+ return s<60?s+'s ago':s<3600?Math.floor(s/60)+'m ago':Math.floor(s/3600)+'h ago';
+};
 const txt=(id,v)=>{const e=$(id);if(e)e.textContent=String(v===undefined||v===null?'—':v)};
 const cls=(id,type)=>{const e=$(id);if(!e)return;e.classList.remove('success','warning','danger','neutral');e.classList.add(type||'neutral')};
 const trendStyle=t=>t==='UP'?'success':t==='DOWN'?'danger':'neutral';
@@ -181,8 +191,13 @@ function renderObservationCohort(data){
   String(decision?.status||'WATCH')+' · '+
   String(decision?.side||'PASS')+' · '+ago(age):
   'No recent matching contextual decision');
- const feed=s.lastPaperFeedHealth||{};
- const ready=active&&feed.liveSourcesReady===true;
+ // The V4 Worker exposes the durable diagnostic as status.paperFeedHealth.
+ // Do not read the internal storage property name (lastPaperFeedHealth).
+ // Stale health from an earlier contract must never imply current readiness.
+ const feed=s.paperFeedHealth||{};
+ const feedAge=Date.now()-Number(feed.at);
+ const feedCurrent=Number.isFinite(feedAge)&&feedAge>=-5000&&feedAge<=110000;
+ const ready=active&&feedCurrent&&feed.liveSourcesReady===true;
  txt('feed-first-tick',ready?
   'Fresh Kalshi book + official RTI + closed Kraken context':
   'Not all required live entry sources verified');
