@@ -336,7 +336,9 @@ function render(data){
  const used=n(risk.netRiskPnl)===null?0:Math.min(100,Math.max(0,-risk.netRiskPnl/20*100));
  $('risk-fill').style.width=used+'%';
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
- riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
+ riskMode==='SOFT'?(s.settlementPaperAllowed?
+  'Soft $1.50 PAPER: target cushion, 3 aligned independent families, <=3c spread and 2x bid/ask depth.' :
+  'Soft $1.50 legacy baseline: 7/7 checklist confirmations.') :
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
  renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
 }
