@@ -108,7 +108,11 @@ test('supplementary research failures never trigger order execution',async()=>{
   onEvent:kind=>events.push(kind)});
  await socket.ensure(ticker,{keyId:'test-read-only',
   privatePem:privateKey.export({format:'pem',type:'pkcs8'}).toString()},T);
- socket.handleMessage(JSON.stringify(cf()),T+500,ws);
+ socket.handleMessage(JSON.stringify({type:'subscribed',id:1,msg:{
+  sid:4,channel:'cfbenchmarks_value'}}),T+100,ws);
+ socket.handleMessage(JSON.stringify({type:'cfbenchmarks_value_indexlist',
+  sid:4,seq:1,msg:{index_ids:['ETHUSD_RTI']}}),T+150,ws);
+ socket.handleMessage(JSON.stringify(cf(2)),T+500,ws);
  assert.ok(events.includes('CF_WRITE_FAILED'));
  assert.equal(socket.status().connected,true);
 });
