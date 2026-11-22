@@ -744,3 +744,40 @@ footer{margin:16px 0}
  #performance .round-pass-stat small{font-size:10px}
  .activity-item .event-pill.pass{min-width:0;padding:4px 5px;font-size:9px}
 }
+
+/* V4 live target + Kraken spot side-by-side; read-only, 2026-11-22 */
+/* Five compact top-row tiles on desktop. Same reference as the Kraken
+   chart; not an exchange-settlement price, entry signal or network call. */
+#live-action .live-contract-board{
+ grid-template-columns:minmax(215px,1.24fr) minmax(130px,.78fr)
+ minmax(130px,.78fr) minmax(150px,.82fr) minmax(150px,.82fr)
+}
+#live-action .live-contract-board .board-spot{
+ background:#192d3b;border-color:#466071
+}
+#live-action .live-contract-board .board-spot strong{
+ font-size:22px;line-height:1.18;font-variant-numeric:tabular-nums;
+ color:#d1e9f2;letter-spacing:-.45px
+}
+#live-action .live-contract-board .board-spot small{
+ line-height:1.4;overflow-wrap:anywhere
+}
+@media(max-width:1160px){
+ #live-action .live-contract-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #live-action .live-contract-board .board-market{grid-column:1/-1}
+ #live-action .live-contract-board .board-target,
+ #live-action .live-contract-board .board-spot{grid-column:auto}
+}
+@media(max-width:620px){
+ #live-action .live-contract-board{grid-template-columns:repeat(2,minmax(0,1fr))}
+ #live-action .live-contract-board .board-market{grid-column:1/-1}
+ #live-action .live-contract-board .board-target,
+ #live-action .live-contract-board .board-spot{grid-column:auto}
+ #live-action .live-contract-board .board-spot strong,
+ #live-action .live-contract-board .board-target strong{font-size:19px}
+}
+@media(max-width:380px){
+ #live-action .live-contract-board .board-spot strong,
+ #live-action .live-contract-board .board-target strong{font-size:17px}
+ #live-action .live-contract-board .board-spot .mini-label{font-size:9px}
+}
