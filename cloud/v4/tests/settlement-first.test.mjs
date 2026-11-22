@@ -80,3 +80,24 @@ test('all required candle-derived features must be finite; NaN never becomes sil
  assert.equal(evaluateSettlementFirst({...input,
   context:{three:{trend:'UNKNOWN'},five:{trend:'UP'}}}).side,'PASS');
 });
+
+test('85c is inclusive hard BUY ceiling independent of signal or countdown',()=>{
+ const askBook=(ask)=>({...book,yesAsk:{price:ask,sizeFp:'20.00'},
+  yesBid:{price:.83,sizeFp:'20.00'}});
+ const strong={...input,index:{...index,price:1808},
+  one:{...one,last:1808,e8:1805,e21:1802},
+  market:{...market,close_time:new Date(T+4*60000).toISOString()}};
+ const at85=evaluateSettlementFirst({...strong,book:askBook(.85)});
+ assert.equal(at85.status,'CANDIDATE',JSON.stringify(at85));
+ assert.equal(at85.ask,.85);
+ for(const ask of [.8501,.86,.90,.95,.99]){
+  const result=evaluateSettlementFirst({...strong,book:askBook(ask)});
+  assert.equal(result.status,'WATCH','must WATCH '+ask);
+  assert.equal(result.side,'PASS');
+  assert.equal(result.reason,'PRICE_ABOVE_85C_HARD_BUY_LIMIT');
+ }
+ const early=evaluateSettlementFirst({...strong,
+  market:{...market,close_time:new Date(T+6*60000).toISOString()},book:askBook(.85)});
+ assert.equal(early.status,'WATCH');
+ assert.equal(early.reason,'EXPENSIVE_CONTRACT_TOO_EARLY');
+});
