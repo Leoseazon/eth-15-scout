@@ -1086,8 +1086,19 @@ async function checkOfficialIndexAccess(){
    headers:{Authorization:'Bearer '+token}});
   if(!r.ok)throw Error('Access check unavailable (HTTP '+r.status+')');
   const d=await r.json();
-  const label=d.state==='HTTP_200_VALID_ETH_INDEX'&&d.validValuesVerified===true?
-   'Official ETHUSD_RTI REST reading verified: 
+  const good=d.state==='HTTP_200_VALID_ETH_INDEX'&&d.validValuesVerified===true;
+  const label=good?
+   'Official ETHUSD_RTI REST reading verified: '+fmt(d.price,2)+' USD. Source age '+
+   String(d.ageSeconds??'unknown')+' seconds. WebSocket and settlement are not yet verified.':
+   d.state==='HTTP_200_STALE_ETH_VALUE'?
+   'Kalshi returned an ETH index reading, but its timestamp is stale.':
+   d.state==='HTTP_200_NO_ETH_INDEX'?
+   'Kalshi replied without an ETHUSD_RTI value; access is not verified.':
+   d.state==='DISABLED'?
+   'V4 access check is disabled pending deployment.':
+   d.state==='CREDENTIALS_NOT_CONFIGURED'?
+   'V4 read-only credentials are not configured on Cloudflare.':
+   'Index access: '+String(d.state||'UNKNOWN')+'. No fresh index reading verified.';
   txt('cf-access-status',label+(d.checkedAt?' · Checked '+ago(d.checkedAt):''));
  }catch(e){txt('cf-access-status','Access check unavailable: '+String(e?.message||e))}
  finally{btn.disabled=false}
