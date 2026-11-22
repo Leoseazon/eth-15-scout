@@ -16,6 +16,7 @@
 <script src="./settlement-paper-ui.js" defer></script>
 <script src="./confidence-ui.js" defer></script>
 <script src="./health-ui.js" defer></script>
+<script src="./opportunity-review.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -213,6 +214,22 @@
    </section>
   </aside>
  </div>
+ <section id="opportunity-review" class="card opportunity-review" aria-labelledby="opportunity-title">
+  <div class="card-heading opportunity-heading">
+   <div><p class="eyebrow">V4 RESEARCH · READ-ONLY · NO TRADE QUOTAS</p><h2 id="opportunity-title">Opportunity review</h2></div>
+   <span class="opportunity-state" id="opportunity-review-state">Awaiting journal</span>
+  </div>
+  <div class="opportunity-body">
+   <div class="opportunity-grid">
+    <div class="opportunity-metric"><span>Consecutive final ROUND PASSES</span><strong id="opportunity-streak">—</strong><small>Only recorded, adjacent completed 15-minute rounds</small></div>
+    <div class="opportunity-metric"><span>Time since last paper BUY</span><strong id="opportunity-last-buy">—</strong><small>Existing journal, trades and positions</small></div>
+    <div class="opportunity-metric"><span>Most recent PASS blocker</span><strong id="opportunity-last-pass">—</strong><small>Last logged reason; not the whole round's cause</small></div>
+    <div class="opportunity-metric"><span>Missed-value evidence</span><strong>Not verified</strong><small id="opportunity-review-evidence">Needs historical asks, book depth and outcome comparison</small></div>
+   </div>
+   <p id="opportunity-review-note" class="opportunity-review-note" role="status">Awaiting completed-round journal evidence.</p>
+   <p class="opportunity-philosophy"><strong>Decision philosophy:</strong> Evaluate both errors: <strong>taking trades without sufficient risk-adjusted value</strong> and <strong>repeatedly rejecting opportunities that might have offered value</strong>. Four consecutive skipped rounds invite research—not a required BUY or relaxed safety rules. A later winning outcome alone does not establish an executable, profitable entry.</p>
+  </div>
+ </section>
  <section id="activity" class="card activity-card" aria-labelledby="activity-title">
   <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS" title="Only finalized skipped rounds, not temporary WATCH decisions">ROUND PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
   <div class="feed-head"><span>TIME (CT)</span><span>EVENT</span><span>CONTRACT</span><span>DETAILS</span></div>
