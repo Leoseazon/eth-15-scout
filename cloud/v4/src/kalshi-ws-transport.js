@@ -179,7 +179,8 @@ export class KalshiReadOnlySocket {
       const endpoint=KALSHI_WS_ENDPOINTS[this.endpointIndex];
       this.lastAttemptEndpoint=this.endpointIndex===0?'PRIMARY':'COMPAT';
       this.lastHttpStatus=null;
-      const response=await this.fetcher(endpoint,{headers:{...headers,Upgrade:'websocket'}});
+      const fetcher=this.fetcher;
+      const response=await fetcher(endpoint,{headers:{...headers,Upgrade:'websocket'}});
       if(this.generation!==generation){
         try{response.webSocket?.accept();response.webSocket?.close(1000,'V4 cancelled')}catch{}
         return false;
