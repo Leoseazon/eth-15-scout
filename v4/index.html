@@ -8,6 +8,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://eth-15-scout-v4-view.leoseazon.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none';">
 <title>ETH-15 Scout V4 | Paper Trading Console</title>
 <link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="./deployment-status.css">
 <script src="./sounds.js" defer></script>
 <script src="./stop-postmortem.js" defer></script>
 <script src="./app.js" defer></script>
@@ -16,6 +17,7 @@
 <script src="./settlement-paper-ui.js" defer></script>
 <script src="./confidence-ui.js" defer></script>
 <script src="./health-ui.js" defer></script>
+<script src="./deployment-status-ui.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -77,6 +79,21 @@
     <small>Reuses existing dashboard refresh · no extra market-data requests.</small></div>
   </details>
  </section>
+ <details id="v4-deployment-status" class="v4-deploy" data-health="neutral" aria-label="Deployment Status">
+  <summary>Deployment Status <small>Engine and viewer versions · latest verified tick · Kraken health</small></summary>
+  <div class="v4-deploy-grid">
+   <div class="v4-deploy-cell"><span>Engine release ID</span><strong id="v4-deploy-engine-id">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Engine deployed (CT)</span><strong id="v4-deploy-engine-time">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Viewer release ID</span><strong id="v4-deploy-viewer-id">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Viewer deployed (CT)</span><strong id="v4-deploy-viewer-time">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Latest successful engine tick</span><strong id="v4-deploy-tick">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Kraken 1-minute feed</span><strong id="v4-deploy-kraken1m">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Kraken 5-minute feed</span><strong id="v4-deploy-kraken5m">Unavailable</strong></div>
+   <div class="v4-deploy-cell"><span>Current feed/engine error</span><strong id="v4-deploy-error">Unavailable</strong></div>
+  </div>
+  <p class="v4-deploy-foot" id="v4-deploy-tick-note">No authenticated engine status loaded</p>
+  <p class="v4-deploy-foot">Release IDs and deployment times remain unavailable until verified Cloudflare deployment metadata is supplied. A model-version label or first contextual engine tick is not a deployment timestamp. Read-only; uses existing dashboard updates.</p>
+ </details>
  <section id="live-action" class="live-action" aria-labelledby="live-action-title">
   <div class="live-action-heading">
    <div><p class="eyebrow">TOP PRIORITY · V4 PAPER ENGINE · VERIFY STATUS</p><h1 id="live-action-title">Current 15-minute round</h1></div>
