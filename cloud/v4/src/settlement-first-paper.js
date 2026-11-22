@@ -64,7 +64,11 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  const active=market&&/^KXETH15M-/.test(market.ticker||'')?market:null;
  if(s.open&&Number.isFinite(Date.parse(s.open.closeTime))&&now>=Date.parse(s.open.closeTime))
   toPending(s,now);
- if(s.window &&(!active||s.window.ticker!==active.ticker||now>=s.window.end)){
+ // A missing market snapshot is a transient feed condition, NOT a final
+ // decision to skip the round. Only close the previously monitored 15-minute
+ // contract when its actual close timestamp is reached. This prevents a
+ // temporarily missing Kalshi ticker from creating a false durable ROUND PASS.
+ if(s.window &&Number.isFinite(s.window.end)&&now>=s.window.end){
   finishWindow(s,now);s.window=null;
  }
  if(active&&!s.window&&s.armed){
