@@ -88,7 +88,7 @@ test('UI changes 0-100 displayed live score up/down, then goes unavailable on st
  const script=readFileSync(root+'v4/confidence-ui.js','utf8');
  vm.runInNewContext(script,{document,setInterval(){}});
  const dispatch=(liveValue,asOf,kind='CURRENT')=>{
-  listeners.get('v4:dashboard-confidence')({detail:{status:{open:{
+  listeners.get('v4:dashboard-confidence')({detail:{status:{monitoring:true,lastTick:now,open:{
    strategy:'V4_SETTLEMENT_FIRST',entryConfidence:{value:70},
    confidenceHistory:[{at:T-1000,value:70},{at:T,value:liveValue}],
    liveConfidence:{status:kind,value:liveValue,asOf,deltaFromPrevious:liveValue-70}
