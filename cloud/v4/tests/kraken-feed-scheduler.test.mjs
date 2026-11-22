@@ -83,6 +83,9 @@ test('five-minute rollover invalidates earlier bars even if cache TTL not expire
  const rollover=Date.parse('2026-11-22T09:40:08.000Z');
  // Force a recent but obsolete cache to probe the candle-boundary guard.
  state.five.at=rollover-15000;
+ assert.equal(currentClosedFiveMinuteCandle(state.five.value,
+  Date.parse('2026-11-22T09:40:00.000Z')),false,
+  'a new five-minute close invalidates old bars immediately, without grace');
  assert.equal(currentClosedFiveMinuteCandle(state.five.value,rollover),false);
  let roundCalls=0;
  const latest=await collectThrottledMarketFeeds(async url=>{
