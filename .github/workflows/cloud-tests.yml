@@ -39,6 +39,7 @@ jobs:
       - run: node --check v4/src/full-book-archive.js
       - run: node --check v4/src/cf-access.js
       - run: node --check v4/src/cf-ws-probe.js
+      - run: node --check v4/src/storage-inventory.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
@@ -48,5 +49,6 @@ jobs:
       - run: node --check v4/src/v2.js
       - run: node --check ../v4/app.js
       - run: node --check ../v4/cf-ws-probe-ui.js
+      - run: node --check ../v4/storage-inventory-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
