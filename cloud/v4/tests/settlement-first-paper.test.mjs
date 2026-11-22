@@ -178,3 +178,40 @@ test('first eligible lower-priced quote BUYs immediately without waiting for 85c
  assert.equal(early.status,'WATCH');
  assert.equal(s.open,null);
 });
+
+test('temporary missing ticker before close does NOT record a final ROUND PASS',()=>{
+ const s=setup();
+ const noIndex=settlementFirstPaperStep(s,{...args,index:null});
+ assert.equal(noIndex.status,'WATCH');
+ assert.equal(s.decisions.length,0);
+ assert.equal(s.window.ticker,ticker);
+ const dropped=settlementFirstPaperStep(s,{...args,market:null,index:null,
+  book:null,now:T+120000});
+ assert.equal(dropped.status,'WATCH');
+ assert.equal(s.decisions.length,0,'a temporary market-data outage is not a final PASS');
+ assert.equal(s.window.ticker,ticker,'the same round remains eligible for later entry');
+ const returned=settlementFirstPaperStep(s,{...args,
+  now:T+121000,book:{...book,receivedAt:T+120000}});
+ assert.equal(returned.status,'PAPER_BUY','bot must retain its same-round opportunity');
+ assert.equal(s.decisions.length,0,'a traded round must never count as a PASS');
+});
+
+test('an untraded window becomes exactly one final PASS at its actual close',()=>{
+ const s=setup();
+ const watching=settlementFirstPaperStep(s,{...args,index:null});
+ assert.equal(watching.status,'WATCH');
+ const stillOpen=settlementFirstPaperStep(s,{...args,market:null,index:null,
+  book:null,now:T+449999});
+ assert.equal(stillOpen.status,'WATCH');
+ assert.equal(s.decisions.length,0);
+ const expired=settlementFirstPaperStep(s,{...args,market:null,index:null,
+  book:null,now:T+450000});
+ assert.equal(expired.status,'WATCH');
+ assert.equal(s.decisions.length,1);
+ assert.equal(s.decisions[0].status,'PASS');
+ assert.equal(s.decisions[0].ticker,ticker);
+ assert.equal(s.decisions[0].time,T+450000);
+ settlementFirstPaperStep(s,{...args,market:null,index:null,
+  book:null,now:T+451000});
+ assert.equal(s.decisions.length,1,'no repeated PASS for the same completed round');
+});
