@@ -192,3 +192,36 @@ test('REST book archive is GET-only, session-gated and reaches V4 local Durable 
  assert.match(seen[0],/https:\/\/internal\/v1\/rest-book\?limit=20/);
  assert.doesNotMatch(seen[0],/\/v1\/arm|\/v1\/start|\/v1\/stop/);
 });
+
+test('dashboard keeps core data when an optional archive throws or sends malformed JSON',async()=>{
+ const e=env();
+ e.SCOUT_V4.getByName=()=>({fetch:async url=>{
+  const path=new URL(url).pathname;
+  if(path==='/v1/stream')throw Error('internal failure');
+  if(path==='/v1/rest-book')return new Response('invalid');
+  if(path==='/v1/status')return Response.json({paperMode:'disabled',
+   marketSnapshot:{asOf:Date.now(),candles:{m5:[{}]}}});
+  return Response.json({});
+ }});
+ const {token}=await newSession(e.SCOUT_SESSION_SECRET,false);
+ const response=await view.fetch(new Request('https://viewer.example/api/v4/dashboard',
+  {headers:{Authorization:'Bearer '+token}}),e);
+ assert.equal(response.status,200);
+ const data=await response.json();
+ assert.equal(data.status.paperMode,'disabled');
+ assert.equal(data.streamAvailable,false);
+ assert.equal(data.restBookAvailable,false);
+});
+
+test('dashboard reports required read failures without exposing exception text',async()=>{
+ const e=env();
+ e.SCOUT_V4.getByName=()=>({fetch:async url=>{
+  if(new URL(url).pathname==='/v1/status')throw Error('private exception');
+  return Response.json({});
+ }});
+ const {token}=await newSession(e.SCOUT_SESSION_SECRET,false);
+ const response=await view.fetch(new Request('https://viewer.example/api/v4/dashboard',
+  {headers:{Authorization:'Bearer '+token}}),e);
+ assert.equal(response.status,502);
+ assert.deepEqual(await response.json(),{error:'V4 engine read unavailable',failedReads:['status']});
+});

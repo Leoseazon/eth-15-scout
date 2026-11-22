@@ -193,22 +193,25 @@ export default {
      const data=await result.json();
      return respond({...data,readOnly:true,paperOnly:true,version:'V4'},200,origin);
    }
-   const [st,history,journal,quotes,research,stream,restBook]=await Promise.all([
-    stub.fetch('https://internal/v1/status'),stub.fetch('https://internal/v1/history'),
-    stub.fetch('https://internal/v1/journal?limit=70&offset=0'),
-    stub.fetch('https://internal/v1/quotes?limit=240'),
-    stub.fetch('https://internal/v1/research?limit=28&offset=0'),
-    stub.fetch('https://internal/v1/stream?limit=100'),
-    stub.fetch('https://internal/v1/rest-book?limit=100')
+   // Consume each body inside its request and isolate optional archive failures.
+   async function readEngine(path){
+    try{
+     const response=await stub.fetch('https://internal'+path);
+     if(response.ok)return await response.json();
+     await response.body?.cancel();
+    }catch{}
+    return null;
+   }
+   const [status,records]=await Promise.all([
+    readEngine('/v1/status'),readEngine('/v1/history')
    ]);
-   if(!st.ok||!history.ok)
-    throw new Error('Private paper engine read unavailable');
-   const [status,records]=await Promise.all([st.json(),history.json()]);
-   const journalData=journal.ok?await journal.json():null;
-   const quoteData=quotes.ok?await quotes.json():null;
-   const researchData=research.ok?await research.json():null;
-   const streamData=stream.ok?await stream.json():null;
-   const restBookData=restBook.ok?await restBook.json():null;
+   if(!status||!records)return respond({error:'V4 engine read unavailable',
+    failedReads:[...(!status?['status']:[]),...(!records?['history']:[])]},502,origin);
+   const [journalData,quoteData,researchData,streamData,restBookData]=await Promise.all([
+    readEngine('/v1/journal?limit=70&offset=0'),readEngine('/v1/quotes?limit=240'),
+    readEngine('/v1/research?limit=28&offset=0'),readEngine('/v1/stream?limit=100'),
+    readEngine('/v1/rest-book?limit=100')
+   ]);
    // Market context is independent of the bot tick: errors do not prevent
    // account and paper history from loading.
    let market=null,marketError=null;
