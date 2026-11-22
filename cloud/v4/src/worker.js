@@ -159,7 +159,11 @@ export class ScoutEngineV4 extends DurableObject {
   }
   save(s,meta={}){
     const sql=this.ctx.storage.sql;
+    const forecastToCommit=s.pendingPredictionToCommit||null;
+    // Prediction INSERT and synthetic bank/cash state must commit or roll back
+    // together; an orphan forecast or unrecorded cash debit is unacceptable.
     this.ctx.storage.transactionSync(()=>{
+      if(forecastToCommit)appendSettlementPrediction(sql,forecastToCommit);
       for(const t of s.trades) if(t.ticker&&Number.isFinite(t.exitAt)&&!this.loadedTradeTickers?.has(t.ticker))
         sql.exec('INSERT OR IGNORE INTO trades(ticker,exit_at,data) VALUES(?,?,?)',
           t.ticker,t.exitAt,JSON.stringify(t));
@@ -173,6 +177,7 @@ export class ScoutEngineV4 extends DurableObject {
       }
       const runtime={...s,...meta,trades:[],decisions:[],events:[],
         blocked:s.blocked.slice(-200)};
+      delete runtime.pendingPredictionToCommit;
       // Read-only production safety check from Data Studio, no public URL required.
       sql.exec(`INSERT INTO runtime_status(id,armed,monitoring,observed_at,last_market,last_error)
         VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -182,6 +187,7 @@ export class ScoutEngineV4 extends DurableObject {
         meta.lastTick||Date.now(),meta.lastMarket??null,meta.lastError??null);
       this.ctx.storage.kv.put('runtime',runtime);
     });
+    if(forecastToCommit)delete s.pendingPredictionToCommit;
   }
   async captureOfficialWindows(now=Date.now()){
     // Independent archival poll. Failure never changes strategy/entries/P&L.
@@ -316,7 +322,11 @@ export class ScoutEngineV4 extends DurableObject {
     }
     context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    if(this.paperExperimentAllowed){
+    // Disarming new entries must NOT switch an existing V4 position to the
+    // unrelated V3-derived close/stop policy. Manage it with its original
+    // V4 paper exit rules until it is safely settled.
+    const continueV4Position=s.open?.strategy==='V4_SETTLEMENT_FIRST';
+    if(this.paperExperimentAllowed||continueV4Position){
       let index=null;
       // Dedicated read-only CF latest request. No continuous index archive:
       // reject stale source-time data; never substitute Kraken for official RTI.
@@ -326,14 +336,21 @@ export class ScoutEngineV4 extends DurableObject {
           privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
           now:Date.now()
         });
-        if(verified.state==='HTTP_200_VALID_ETH_INDEX')
-          index=verified;
+        s.lastOfficialIndexCheck={
+          at:Date.now(),state:verified.state,
+          fresh:verified.state==='HTTP_200_VALID_ETH_INDEX'&&
+            Number.isSafeInteger(verified.sourceAt)&&
+            Date.now()-verified.sourceAt<=15000,
+          sourceAgeMs:Number.isSafeInteger(verified.sourceAt)?
+            Date.now()-verified.sourceAt:null
+        };
+        if(s.lastOfficialIndexCheck.fresh)index=verified;
       }
       const book=this.stream?.status(Date.now())?.quote||null;
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book,now:Date.now(),
-          onPrediction:pos=>appendSettlementPrediction(this.ctx.storage.sql,pos)});
+          onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
@@ -347,7 +364,7 @@ export class ScoutEngineV4 extends DurableObject {
     try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
     catch(e){shadowProbe={status:'UNAVAILABLE',reason:'Shadow probe failure',
       candidate:null,calibratedProbability:null,executableFillVerified:false}}
-    if(this.paperExperimentAllowed)
+    if(this.paperExperimentAllowed||continueV4Position)
       shadowProbe={version:SETTLEMENT_FIRST_VERSION,
         status:report.status||'WATCH',reason:report.notice||'',
         candidate:report.candidate||null,
@@ -571,6 +588,7 @@ export class ScoutEngineV4 extends DurableObject {
       return json({monitoring:s.monitoring,armed:s.armed,paperOnly:true,
         paperMode:this.paperExperimentAllowed?'enabled':'disabled',
         shadowOnly:!this.paperExperimentAllowed,
+        continuingPreDisarmV4Position:s.open?.strategy==='V4_SETTLEMENT_FIRST'&&!this.paperExperimentAllowed,
         settlementPaperAllowed:this.paperExperimentAllowed,
         settlementModelVersion:SETTLEMENT_FIRST_VERSION,
         latestSettlementDecision:s.lastV4SettlementDecision||null,
@@ -613,7 +631,8 @@ export class ScoutEngineV4 extends DurableObject {
         marketSnapshot:s.marketSnapshot||null,
         settlementPhase:settlementClockPhase(
           s.marketSnapshot?.contract?.close_time||s.open?.closeTime||'',Date.now()),
-        officialSettlementIndexAvailable:false,
+        officialSettlementIndexAvailable:!!s.lastOfficialIndexCheck?.fresh,
+        officialIndexFeedCheck:s.lastOfficialIndexCheck||{state:'NOT_YET_CHECKED'},
         releaseMarkers:this.ctx.storage.sql.exec(
           'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
