@@ -551,3 +551,172 @@ body.unauthenticated #v4-health{display:none}
  .live-position-meta strong{font-size:11px}
  .live-position-meta span{font-size:9px}
 }
+
+/* V4 RESPONSIVE COMPACT PASS 2026-11-22 — VISUAL ONLY */
+/* Keep live round and account first; reduce wasted height, not meaningful data.
+   Browser-only CSS. No worker, decision, trade, API, or ledger changes. */
+.wrap{max-width:1500px;padding-left:clamp(12px,1.8vw,24px);padding-right:clamp(12px,1.8vw,24px)}
+.header-inner{min-height:65px;gap:14px}
+.brand{gap:9px;min-width:0}
+.brand-icon{width:37px;height:37px;font-size:30px;border-radius:10px}
+.brand strong{font-size:16px}
+.nav{gap:4px}
+.nav a{padding:8px 10px;font-size:12px}
+.header-side{gap:8px}
+.intro{padding:17px 0 13px}
+.v4-stage-compact{margin:8px 0;padding:7px 12px}
+.health-strip{padding:9px 12px;margin-bottom:10px}
+.card-heading{padding:12px 15px 11px}
+.card-heading .eyebrow{margin-bottom:3px}
+
+#live-action{margin-bottom:10px}
+#live-action .live-action-heading{padding:10px 15px}
+#live-action .live-contract-board{padding:10px 13px;gap:8px}
+#live-action .live-contract-board>div{padding:9px 11px}
+#live-action .live-contract-board .board-price strong{font-size:29px;line-height:1.15;margin:3px 0}
+#live-action .live-action-main,
+#live-action .live-position,
+#live-action .live-timing{padding:11px 14px}
+#live-action .live-primary-line{margin:4px 0 7px;gap:8px}
+#live-action #live-primary{font-size:24px}
+#live-action .live-action-main>p{min-height:0;font-size:12px;line-height:1.4;margin:0 0 8px}
+#live-action .live-position-title{margin-bottom:7px}
+#live-action .live-position-detail{margin:5px 0 9px;line-height:1.35}
+#live-action .live-position-meta{gap:7px;padding-top:9px}
+#live-action .live-position-meta span{min-height:0}
+#live-action .last-execution{padding-top:8px;margin-top:8px}
+#live-action .live-action-footnote{padding:8px 14px;line-height:1.4}
+#buy-confidence-panel{margin-top:9px;padding:9px}
+#buy-confidence-panel .confidence-metrics{margin-top:7px;gap:6px}
+#buy-confidence-panel .confidence-metrics strong{font-size:20px}
+#buy-confidence-panel .confidence-track{margin-top:7px;height:8px}
+#buy-confidence-panel .confidence-sparkline{margin-top:6px;height:30px}
+#buy-confidence-panel .confidence-note{margin-top:3px;line-height:1.4}
+
+#performance.account-card{margin-bottom:10px}
+#performance .card-heading{padding:12px 15px 10px}
+#performance .account-summary-body{gap:9px;padding:10px}
+#performance .account-summary-body .balance-main{min-height:106px;padding:12px}
+#performance .account-summary-body .balance-main strong{font-size:29px}
+#performance .account-summary-stats{gap:6px}
+#performance .account-summary-stats .account-row{padding:8px 10px;gap:3px;min-width:0}
+#performance .account-summary-stats .account-row span{font-size:11px;line-height:1.3;overflow-wrap:anywhere}
+#performance .account-summary-stats .account-row strong{font-size:14px;line-height:1.2}
+#performance .account-summary-stats .stat-tiles{gap:6px}
+#performance .account-summary-stats .stat-tiles>div{padding:8px 10px}
+#performance .account-summary-stats .stat-tiles strong{font-size:17px;margin-top:3px}
+#performance .account-summary-body .open-position{min-height:106px;padding:12px}
+#performance .account-summary-body .open-position #open-position-value{font-size:14px;margin:6px 0}
+#performance .observation-bar{padding:9px 12px;gap:7px}
+#performance .observation-bar>div{gap:3px}
+#performance .observation-bar strong{font-size:11px;line-height:1.35}
+
+#overview .metric-grid{gap:8px;margin-bottom:10px}
+#overview .metric{padding:10px 12px}
+#overview .metric-label{font-size:11px}
+#overview .metric-value{font-size:19px;margin:5px 0 1px;min-height:22px}
+#overview .metric-value.compact{font-size:14px;margin:6px 0 2px}
+.main-grid{gap:10px;margin-bottom:10px}
+.market-top{padding:13px 15px 2px}
+.chart-box{min-height:245px;margin:3px 12px 0}
+.chart-box canvas{height:245px}
+.chart-legend{gap:10px;margin:5px 15px 12px}
+.decision-banner{margin:10px 12px;padding:9px 11px}
+.signals-card .section-helper{padding:9px 14px 4px;line-height:1.4}
+.signal-section{margin:7px 9px 9px}
+.section-strip{padding:9px 10px}
+.signal-row{min-height:47px;padding:8px 10px}
+.signal-footer{padding:3px 14px 12px}
+.risk-line{padding:8px 0;margin:0 14px}
+.risk-card>.risk-line:first-of-type{margin-top:4px}
+.risk-meter{margin:10px 14px 0}
+.risk-note{padding:4px 14px 13px}
+.activity-card{margin-top:10px}
+.feed-head,.activity-item{gap:10px;padding:9px 14px}
+.activity-item{line-height:1.4}
+.activity-footnote{padding:10px 14px}
+.journal-tools{padding:11px 14px;gap:9px}
+.journal-actions button{padding:8px 10px}
+.outcome-header{padding:14px}
+.outcome-grid-head,.outcome-item{padding:9px 14px;gap:10px}
+.outcome-footnote{padding:10px 14px}
+.research-secondary{gap:10px;margin-top:10px}
+#v4-research-history{margin:10px 0}
+.research-grid-head{padding:9px 14px}
+.research-item{padding:10px 14px;gap:9px}
+.research-item small{line-height:1.45}
+.v4-stream-health{gap:8px;padding:9px 12px 12px}
+.v4-stream-health>span{padding:9px}
+#v4-quote-history{margin-top:10px;margin-bottom:10px}
+#v4-quote-meta{padding:0 12px 10px}
+#v4-research-history .section-helper{padding:0 14px 10px}
+.stop-analysis{padding:12px 14px}
+footer{margin:16px 0}
+
+@media(min-width:901px) and (max-width:1080px){
+ /* Avoid turning the live panel into two tall rows on ordinary laptops. */
+ #live-action .live-action-body{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(175px,.77fr)}
+ #live-action .live-action-main{grid-column:auto;border-bottom:0}
+ #live-action .live-position{border-left:1px solid #344653}
+}
+@media(max-width:900px){
+ .header-inner{gap:10px}
+ .wrap{padding-left:14px;padding-right:14px}
+ .intro{padding:12px 0}
+ #live-action .live-action-main,
+ #live-action .live-position,
+ #live-action .live-timing{padding:10px 12px}
+ #performance .account-summary-body{gap:8px}
+}
+@media(max-width:620px){
+ /* Two side quotes remain side by side; target/market span the width. */
+ .wrap{padding-left:11px;padding-right:11px}
+ .header-inner{padding:9px 0;min-height:0}
+ .nav{gap:3px;justify-content:flex-start;overflow-x:auto;scrollbar-width:thin}
+ .nav a{padding:9px 10px;min-height:38px;white-space:nowrap}
+ .header-side{gap:6px}
+ .site-header .brand strong{font-size:15px}
+ .v4-stage-compact{padding:7px 10px}
+ .health-strip{padding:9px 10px}
+ #live-action .live-action-heading{padding:10px 12px}
+ #live-action .live-action-heading h1{font-size:18px}
+ #live-action .live-contract-board{grid-template-columns:repeat(2,minmax(0,1fr));padding:8px;gap:7px}
+ #live-action .live-contract-board>div{padding:8px 10px}
+ #live-action .live-contract-board .board-market,
+ #live-action .live-contract-board .board-target{grid-column:1/-1}
+ #live-action .live-contract-board .board-price strong{font-size:26px}
+ #live-action .live-action-body{grid-template-columns:1fr}
+ #live-action .live-action-main{grid-column:auto;border-bottom:1px solid #344653}
+ #live-action .live-position,#live-action .live-timing{border:0;border-top:1px solid #344653}
+ #live-action .live-position-meta{grid-template-columns:repeat(3,minmax(0,1fr))}
+ #live-action .live-action-footnote{padding:7px 11px}
+ #performance .account-summary-body{grid-template-columns:1fr;padding:8px}
+ #performance .account-summary-body .balance-main{min-height:0;padding:11px}
+ #performance .account-summary-body .open-position{min-height:0;padding:11px}
+ #performance .account-summary-stats{grid-template-columns:1fr 1fr}
+ #performance .account-summary-stats .account-row{padding:8px}
+ #performance .observation-bar{grid-template-columns:repeat(2,minmax(0,1fr));padding:10px;gap:9px}
+ #performance .observation-bar>div:first-child{grid-column:1/-1}
+ #overview .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ #overview .metric{padding:10px}
+ .main-grid{grid-template-columns:1fr;gap:9px}
+ .right-column{grid-column:auto}
+ .chart-box,.chart-box canvas{min-height:220px;height:220px}
+ .market-top{padding:11px 13px 2px}
+ .card-heading{padding:11px 12px}
+ .section-helper{padding:9px 12px}
+ .signal-row{min-height:46px}
+ .feed-head,.activity-item{gap:7px;padding:9px}
+ .journal-tools{padding:10px}
+ .research-item{padding:10px 12px}
+ .outcome-header{padding:11px 12px}
+ .outcome-grid-head,.outcome-item{padding:9px 12px}
+ .v4-stream-health{padding:8px 10px}
+}
+@media(max-width:380px){
+ /* Avoid crushing the longest release-monitoring labels on narrow phones. */
+ #performance .observation-bar{grid-template-columns:1fr}
+ #performance .observation-bar>div:first-child{grid-column:auto}
+ #live-action .live-contract-board .board-price strong{font-size:24px}
+ #performance .account-summary-stats .account-row strong{font-size:13px}
+}
