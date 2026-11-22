@@ -5,6 +5,9 @@
  */
 const SERIES=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const millis=v=>Number.isSafeInteger(v)&&v>0?v:null;
+// Kraken OHLC timestamps are UNIX seconds; research archive times are milliseconds.
+// Reject unknown units rather than silently blending seconds and milliseconds.
+const candleMs=v=>Number.isSafeInteger(v)&&v>=1000000000&&v<=10000000000?v*1000:null;
 const num=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
 const str=(v,max=180)=>typeof v==='string'?v.slice(0,max):null;
 const trend=v=>['UP','DOWN','NEUTRAL','UNKNOWN'].includes(v)?v:null;
@@ -19,7 +22,7 @@ function metrics(input){
  return Object.keys(out).length?out:null;
 }
 function structure(v){return v?{
- trend:trend(v.trend),closedAt:millis(v.closedAt),price:num(v.price),
+ trend:trend(v.trend),closedAt:candleMs(v.closedAt),price:num(v.price),
  rsi:num(v.rsi),e8:num(v.e8),e21:num(v.e21),
  support:num(v.support),resistance:num(v.resistance),
  adDelta:num(v.adDelta),bands:v.bands?{
@@ -103,7 +106,7 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
    note:str(e?.msg,180),at:millis(e?.time)
   }));
  return {
-  schemaVersion:1,source:'V4_ISOLATED_ENGINE_TICK',
+  schemaVersion:2,source:'V4_ISOLATED_ENGINE_TICK',
   paperOnly:true,shadowOnly:true,simulationArmed:false,
   observedAt:startedAt,finishedAt,processingMs:finishedAt-startedAt,
   ticker,closeAt,secondsRemaining:closeAt===null?null:Math.max(0,(closeAt-startedAt)/1000),
@@ -119,7 +122,7 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
    yesAskSize:providerNum(market?.yes_ask_size_fp,1e10)},
   kraken:{source:'Kraken spot proxy, NOT official settlement index',
    spot:num(spot),one:metrics(one),five:metrics(five),
-   oneClosedAt:millis(context?.oneClosedAt),
+   oneClosedAt:candleMs(context?.oneClosedAt),
    threeStructure:structure(context?.three),
    fiveStructure:structure(context?.five)},
   feeds,issues:Array.isArray(feedIssues)?
