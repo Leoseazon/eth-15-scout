@@ -34,3 +34,16 @@ All ranges are determined from the actual ASK of the selected YES/UP or NO/DOWN 
 - Existing V4 code error `remainingMinutes` previously undefined in candidate function was fixed before new tests.
 - Decision-processing exceptions now generate a sanitized V4 code in existing status/error diagnostics; no raw error logs or credentials are pushed to the UI.
 - CI success for **the exact final commit** and Cloudflare live paper smoke test remain distinct and mandatory. This document does not prove a prediction edge, full execution realism, or that the updated code is live deployed.
+
+## No deliberate waiting for an 85c contract: opportunity-first discipline
+
+The strategy objective is **the best defensible opportunity available NOW**, with actual target-side evidence and source-verified executable ASK, not a high apparent probability obtained by waiting until the contract has already risen to 85c. The 85c threshold is a **conditional premium restriction**, not a preferred price, entry target, or timer. V4 must NOT intentionally defer an eligible 20c/35c/45c/55c/65c BUY while waiting for the market to reprices to 85c.
+
+At every eligible healthy V4 engine tick:
+1. Verify the official target and live contemporaneous signal direction, data freshness and authenticated book, then evaluate the **current** selected-side ASK without a target-price anchor.
+2. If the candidate satisfies current evidence, price, fees, spread, displayed depth, unique ticker and bankroll risk limits, **submit the paper BUY on that tick**, at the current ASK. Never add a discretionary rule saying to wait until a higher confidence/market price band purely for convenience.
+3. If any entry gate fails, WATCH/PASS the same contract and record the specific rejection reason; reevaluate at the next eligible tick. No forced entries from low ASK alone.
+4. 85c at >5m and 85.01–87c exceptional entries at >5m still have a *documented premium-time gate* at this revision. An early premium trade may be rejected even if current evidence is strong; do not misrepresent that as proof the price/time threshold is optimal. Above 87c remains a hard veto.
+5. Keep the primary scorecard on the official **same-contract UP/DOWN settlement direction**; compare early resale P&L independently. For research, retain first qualified candidate time/price, PASS reasons, eventual resolution and missed eligible opportunities.
+
+**Unresolved scientific objective**: a rigorously calibrated win probability and net expected value (after price, fees, execution uncertainty and risk) are NOT yet available. Never treat the combined directional heuristic or the 0–100 confidence display as a calibrated win probability. A truly risk/reward-optimized entry rule, including possible review of the 85c/5-minute gate, requires historical time-aligned official-index/quote replay and out-of-sample evidence. No code can know the uniquely best future price in advance, and a low contract ASK is not synonymous with low risk.
