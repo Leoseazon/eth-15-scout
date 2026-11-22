@@ -435,8 +435,16 @@ export class ScoutEngineV4 extends DurableObject {
     // The read-only viewer sees this tick without waiting for archival IO.
     s.lastMarketDataAt=fresh&&one&&context.three&&market?now:null;
     s.lastDecisionProcessingMs=Date.now()-now;
-    // V4 shadow evidence journal: log every evaluated tick, including no-market,
-    // feed degradation, WATCH and explicit engine messages. No paper order implied.
+    // Commit the official-target prediction, synthetic bankroll and runtime
+    // together FIRST. If that transaction fails, no "PAPER BUY" research
+    // record is allowed to claim a simulated purchase succeeded.
+    const tickMeta={lastTick:Date.now(),lastError:error,
+      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
+      lastFeedOkay:!!(fresh&&one&&context.three&&market)};
+    this.save(s,tickMeta);
+    // Auxiliary research logs are intentionally NON-CRITICAL. Save the latest
+    // research receipt afterward; a failed auxiliary write cannot roll back
+    // an already committed paper bankroll and unique forecast.
     try{
       const research=recordResearchTick(this.ctx.storage.sql,{
         startedAt:now,finishedAt:Date.now(),market,
@@ -447,12 +455,8 @@ export class ScoutEngineV4 extends DurableObject {
       s.lastResearchTickAt=research.observedAt;
       s.lastResearchError=null;
     }catch(e){
-      // Preserve the live baseline behavior even if research SQLite fails.
       s.lastResearchError=safeErr(e);
     }
-    const tickMeta={lastTick:Date.now(),lastError:error,
-      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
-      lastFeedOkay:!!(fresh&&one&&context.three&&market)};
     this.save(s,tickMeta);
     // Archiving is noncritical. It does not change the strategy or P&L.
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
