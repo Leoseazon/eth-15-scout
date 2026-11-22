@@ -33,9 +33,10 @@
   const locked=pos?.entryConfidence?.value;
   const current=open?.liveConfidence;
   const sourceAt=current?.asOf;
-  const fresh=!!open&&current?.status==='CURRENT'&&valid(current?.value)&&
-   Number.isSafeInteger(sourceAt)&&Date.now()-sourceAt<=120000&&
-   Date.now()>=sourceAt-3000;
+  const fresh=!!open&&s.monitoring===true&&current?.status==='CURRENT'&&
+   valid(current?.value)&&Number.isSafeInteger(sourceAt)&&
+   Number.isSafeInteger(s.lastTick)&&Date.now()-s.lastTick<=60000&&
+   Date.now()-sourceAt<=60000&&Date.now()>=sourceAt-3000;
   const nowValue=fresh?current.value:null;
   setValue(entry,printable(locked));
   setValue(live,printable(nowValue));
