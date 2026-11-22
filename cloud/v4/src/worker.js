@@ -382,6 +382,14 @@ export class ScoutEngineV4 extends DurableObject {
         };
         if(s.lastOfficialIndexCheck.fresh)index=verified;
       }
+      // REST verification may take seconds; re-read the live socket NOW,
+      // otherwise the entry simulator might evaluate a stale book snapshot.
+      const decisionBook=this.stream?.status(Date.now())?.quote||null;
+      const decisionBookFresh=decisionBook?.ticker===market?.ticker&&
+        decisionBook?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
+        decisionBook.valid===true&&decisionBook.fresh===true&&
+        Number.isSafeInteger(decisionBook.receivedAt)&&
+        Date.now()-decisionBook.receivedAt<=5000;
       if(!entrySourcesReady&&!s.open){
         s.lastOfficialIndexCheck={at:Date.now(),
           state:bookReady?'SKIPPED_OTHER_ENTRY_PREREQUISITE':'SKIPPED_NO_FRESH_WS_BOOK',
@@ -394,16 +402,16 @@ export class ScoutEngineV4 extends DurableObject {
         krakenFiveMinuteFresh:!!m5&&fresh,
         krakenThreeMinuteFresh:!!context.three,
         kalshiWsConnected:this.stream?.status(Date.now())?.connected===true,
-        kalshiWsBookFresh:bookReady,
-        kalshiBookAgeMs:Number.isSafeInteger(book?.receivedAt)?
-          Date.now()-book.receivedAt:null,
+        kalshiWsBookFresh:decisionBookFresh,
+        kalshiBookAgeMs:Number.isSafeInteger(decisionBook?.receivedAt)?
+          Date.now()-decisionBook.receivedAt:null,
         officialIndexLastState:s.lastOfficialIndexCheck?.state||'NOT_CHECKED',
         officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
-        liveSourcesReady:entrySourcesReady&&index!==null
+        liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
       };
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
-          book,now:Date.now(),
+          book:decisionBook,now:Date.now(),
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
