@@ -56,7 +56,7 @@ function closeEarly(s,pos,book,bid,why,now){
  return true;
 }
 export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
- now=Date.now(),onPrediction=()=>{}}={}){
+ now=Date.now(),onPrediction=null}={}){
  if(!s||typeof s!=='object')throw TypeError('Missing paper state');
  s.blocked??=[];s.pending??=[];s.trades??=[];s.decisions??=[];s.events??=[];
  const active=market&&/^KXETH15M-/.test(market.ticker||'')?market:null;
@@ -137,8 +137,9 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    return {status:'WATCH',notice:reason,candidate:d};
   }
  }
- if(qty<1||!valid(d.askDepth)||d.askDepth<qty){
-  const reason='Insufficient fee-inclusive budget or displayed ask depth';
+ if(qty<1||!valid(d.askDepth)||d.askDepth<qty||
+    !valid(d.bidDepth)||d.bidDepth<qty){
+  const reason='Insufficient fee-inclusive budget or displayed two-sided book depth';
   if(s.window)s.window.reason=reason;
   return {status:'WATCH',notice:reason,candidate:d};
  }
@@ -157,7 +158,10 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   calibratedProbability:null,markPnl:null};
  // Stage a unique settlement prediction before simulated debit. The caller
  // must COMMIT forecast and bankroll in one atomic storage transaction.
- try{onPrediction(pos)}
+ try{
+  if(typeof onPrediction!=='function')throw Error('Forecast journal callback unavailable');
+  onPrediction(pos);
+ }
  catch{
   note(s,now,'PAPER ENTRY BLOCKED','Forecast journal unavailable; no cash debited',active.ticker);
   return {status:'WATCH',notice:'Forecast journal unavailable; paper entry aborted'};
