@@ -78,7 +78,7 @@ test('official index and book are fail-closed, status may not claim an old index
 test('open V4 paper positions have a Kalshi WebSocket protective-exit fast path before ALL Kraken requests',()=>{
  const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
  const fast=worker.indexOf('FAST PAPER EXIT PATH');
- const upstream=worker.indexOf('const batch=await collectMarketFeeds(',fast);
+ const upstream=worker.indexOf('const batch=await collectThrottledMarketFeeds(',fast);
  assert.ok(fast>0&&upstream>fast);
  const snippet=worker.slice(fast,upstream);
  assert.match(snippet,/s\.open\?\.strategy==='V4_SETTLEMENT_FIRST'/);
