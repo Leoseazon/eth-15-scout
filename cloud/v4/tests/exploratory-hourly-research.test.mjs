@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {countRecentDistinctBuys,shouldExploreForHourlySamples,
  EXPLORATORY_TARGET_PER_HOUR,EXPLORATORY_STAKE_CAP} from '../src/exploratory-policy.js';
 import {evaluateSettlementFirst} from '../src/settlement-first.js';
@@ -154,4 +155,19 @@ test('pure quote evaluator fails conservative but accepts exploratory only with 
  yesBid:{price:.84,sizeFp:'20.00'}},scenario,
  remainingSeconds:450,budget:1,mode:'EXPLORATORY'});
  assert.equal(expensive.status,'REJECT');
+});
+
+test('Durable Object runtime resolves exploratory flags from this.env, not undefined env',()=>{
+ const worker=readFileSync(new URL('../src/worker.js',import.meta.url),'utf8');
+ const start=worker.indexOf('  async run(){');
+ const stop=worker.indexOf('  async alarm(){',start);
+ assert.ok(start>=0&&stop>start,'V4 DO run boundaries missing');
+ const run=worker.slice(start,stop);
+ assert.match(run,/explorationEnabled:this\.env\.V4_EXPLORATORY_PAPER_SAMPLING_ENABLED==='true'/);
+ assert.match(run,/this\.env\.SCOUT_V4_PAPER_MODE==='enabled'/);
+ assert.match(run,/this\.env\.V4_SETTLEMENT_FIRST_EXPERIMENT==='true'/);
+ // A bare "env" is present in the constructor, but not in instance run().
+ // This exact regression produced V4_DECISION_PROCESSING_ERROR in production.
+ assert.doesNotMatch(run.replaceAll('this.env.',''),/\benv\./,
+  'Bare env in a Durable Object instance method will throw ReferenceError');
 });
