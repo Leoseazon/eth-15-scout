@@ -1,5 +1,7 @@
 # ETH-15 Scout V4 — Master development plan
-**Created:** 2026-11-21 · **Status:** Separate V4 read-only Worker deployed and monitoring, paper trading hard-disabled; Kalshi streaming capture enabled but still no confirmed order-book connection · Gate 2 connectivity repair ongoing.
+**Created:** 2026-11-21 · **Status reviewed:** Later V4 WebSocket snapshots and consecutive ETH15M stream events were observed by the owner, superseding the early-day connection-failure notes below. Long-duration completeness, source retention rights, live entitlement, and any new CF/public-trade research feeds remain unverified. V4 paper entries are hard-disabled.
+
+**Latest implementation staging:** Draft PR #6 (`v4-research-sources-20261121`) adds optional, isolated ETHUSD_RTI and public-trade research, raw orderbook frame capture, research candle timestamp correction, and private CF access diagnostics. This code is **not a Cloudflare deployment**. All new data-source flags default to `false`. See [RESEARCH_COMPLETENESS_GATES.md](RESEARCH_COMPLETENESS_GATES.md) for the current verified-vs-pending inventory. Earlier checkboxes and incident summaries in this plan are historical checkpoints, not current runtime certifications.
 
 ## Mission
 Upgrade V3, not replace it. Model an executable Kalshi 15-minute ETH contract's expected early resale return separately from its probability of winning at official settlement. Preserve the ability to recognize justified inexpensive entries below 60c without equating low cost with an edge.
