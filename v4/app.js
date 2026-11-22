@@ -1183,4 +1183,18 @@ function renderStreamHealth(data){
  txt('v4-rest-book-received',Number.isSafeInteger(restAt)?
    ago(restAt)+' · '+(rest.last?.ticker||'unknown contract')+
    ' · receipt-only observation':'No direct REST depth observation');
+ const extra=s.supplementaryResearch||{},connection=s.supplementaryResearchConnection||{};
+ txt('v4-cf-stream-status',!s.supplementaryResearchEnabled?
+  'Disabled · pending entitlement and source retention review':
+  connection.connected?'Connected · index '+(connection.indexAvailable||'unverified'):
+  'Enabled but not connected · official data not verified');
+ txt('v4-cf-count',Number.isFinite(extra.benchmark?.count)?
+  extra.benchmark.count.toLocaleString('en-US')+' archived · source timestamps':
+  'Not available');
+ txt('v4-public-trades-count',Number.isFinite(extra.publicTrades?.count)?
+  extra.publicTrades.count.toLocaleString('en-US')+' archived · market executions':
+  'Not available');
+ txt('v4-raw-book-count',s.fullBookArchiveEnabled?
+  String(s.fullBookArchive?.total??'—')+' frames · expensive full depth logging':
+  'Disabled pending cost and rights approval');
 }
