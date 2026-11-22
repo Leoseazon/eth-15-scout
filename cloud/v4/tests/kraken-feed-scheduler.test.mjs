@@ -193,7 +193,7 @@ test('1m cache does not accept an obsolete bar, future time, or malformed OHLC',
  const old=one(T);
  assert.equal(currentClosedOneMinuteCandle(old,T),true);
  assert.equal(currentClosedOneMinuteCandle(old,T+45000),false);
- assert.equal(currentClosedOneMinuteCandle(old,T+45000-60000),false);
+ assert.equal(currentClosedOneMinuteCandle(old,T-60000),false);
  assert.equal(currentClosedOneMinuteCandle({error:[],result:{}},T),false);
  const missing=makeFetcher({oneClock:()=>T,old1:true});
  const state={};
