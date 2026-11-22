@@ -331,6 +331,23 @@ function render(data){
  const strike=c.floor_strike!==null&&c.floor_strike!==undefined&&c.floor_strike!==''?
   n(Number(c.floor_strike)):null;
  txt('contract-strike',strike!==null?money(strike):'Target unavailable');
+ // Reuse the SAME engine-provided Kraken spot as the chart reference.
+ // Never interpret Kraken spot as the official Kalshi RTI settlement index.
+ // Missing/old source context must not show a seemingly live price.
+ const spot=n(m.spot),spotTime=n(m.asOf);
+ const spotAge=spotTime!==null?now-spotTime:null;
+ const spotFresh=active&&spot!==null&&spot>0&&
+  spotAge!==null&&spotAge>=-5000&&spotAge<=45000&&
+  m?.freshness?.one===true&&m?.freshness?.five===true;
+ txt('live-spot-price',spotFresh?money(spot):'—');
+ txt('live-spot-gap',spotFresh&&strike!==null?
+  'Kraken vs target: '+(spot>=strike?'+':'−')+
+  money(Math.abs(spot-strike))+
+  (spot>=strike?' above target':' below target'):
+  'Fresh Kraken / target comparison unavailable');
+ txt('live-spot-freshness',spotFresh?
+  'Spot reference '+ago(spotTime)+' · NOT official RTI':
+  'Reference unavailable · NOT official RTI');
  const latest=s.latestSettlementDecision||{};
  const idx=n(latest.indexValue),decisionTarget=n(latest.target),observed=n(latest.at);
  const latestFresh=observed!==null&&now-observed>=0&&now-observed<=110000;
