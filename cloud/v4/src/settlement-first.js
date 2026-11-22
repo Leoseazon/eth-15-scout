@@ -50,7 +50,7 @@ export function calculateSettlementEvidence({target,indexValue,one,five,context,
   sign(geometry)&&sign(geometry)!==direction?'OFFICIAL_TARGET_CURRENTLY_OPPOSES_DIRECTION':null,
   sign(momentum)&&sign(momentum)!==direction?'MOMENTUM_OPPOSES_DIRECTION':null,
   sign(contextBias)&&sign(contextBias)!==direction?'HIGHER_TIMEFRAME_OPPOSES_DIRECTION':null,
-  Math.abs(index.price-one.last)>Math.max(3,4*one.sd)?
+  Math.abs(indexValue-one.last)>Math.max(3,4*one.sd)?
     'KRAKEN_OFFICIAL_INDEX_BASIS_WIDE':null
  ].filter(Boolean);
  const families=[geometry,momentum,contextBias].filter(x=>sign(x)===direction&&Math.abs(x)>=.15).length;
