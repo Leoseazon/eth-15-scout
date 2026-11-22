@@ -412,18 +412,20 @@ export class ScoutEngineV4 extends DurableObject {
       try{report=engine.step(market,one,m5,fresh,context)}
       catch(e){error='V2 evaluation failed: '+safeErr(e)}
     }
-    // V4 candidate scanning is read-only: a qualifying heuristic NEVER arms
-    // or purchases a paper contract, even when markets remain uncalibrated.
+    // Exactly ONE active decision philosophy per V4 tick. Do not run the
+    // legacy 7-check candidate probe during the settlement-first experiment.
     let shadowProbe=null;
-    try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
-    catch(e){shadowProbe={status:'UNAVAILABLE',reason:'Shadow probe failure',
-      candidate:null,calibratedProbability:null,executableFillVerified:false}}
-    if(this.paperExperimentAllowed||continueV4Position)
+    if(this.paperExperimentAllowed||continueV4Position){
       shadowProbe={version:SETTLEMENT_FIRST_VERSION,
         status:report.status||'WATCH',reason:report.notice||'',
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
         calibratedProbability:null,executableFillVerified:false};
+    }else{
+      try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
+      catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
+        candidate:null,calibratedProbability:null,executableFillVerified:false}}
+    }
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
     // Chart reuses the engine's successfully fetched reference candles.
