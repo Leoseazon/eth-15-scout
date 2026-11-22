@@ -309,7 +309,7 @@ test('an unsupported Cloudflare WebSocket upgrade is classified separately from 
  assert.equal(client.status().endpoint,'PRIMARY');
 });
 
-test('archive sampling and storage failures leave the live book and gap recovery independent',async()=>{
+test('the archive captures price changes and heartbeats independently of gap recovery',async()=>{
   const ws=new FakeSocket(), archived=[], faults=[];
   let failWrite=false;
   const sql={exec:(_sql,...args)=>{
@@ -328,26 +328,37 @@ test('archive sampling and storage failures leave the live book and gap recovery
     client.handleMessage(JSON.stringify(frame),at+elapsed,ws);
   };
   send(packet(1),0);
-  for(let seq=2;seq<=301;seq++){
+  for(let seq=2;seq<=302;seq++){
     const frame=delta(seq);
     frame.msg.delta_fp='1.00';
     frame.msg.price_dollars=seq%2?'0.4000':'0.4100';
     send(frame,(seq-1)*50);
   }
-  assert.equal(client.book.view(ticker,at+15_000).seq,301);
-  assert.equal(client.book.view(ticker,at+15_000).yesBid.price,.41);
-  assert.deepEqual(archived.map(x=>x.seq),[1,301]);
-  assert.equal(archived[1].archiveIntervalMs,15_000);
-  send(delta(303),15_100);
+  assert.equal(client.book.view(ticker,at+15_050).seq,302);
+  assert.equal(client.book.view(ticker,at+15_050).yesBid.price,.41);
+  assert.deepEqual(archived.map(x=>[x.seq,x.archiveTrigger]),[
+    [1,'snapshot'],[2,'price_change'],[302,'heartbeat']
+  ]);
+  assert.equal(archived[2].archiveIntervalMs,15_000);
+  const removeTop=delta(303);
+  Object.assign(removeTop.msg,{price_dollars:'0.4100',delta_fp:'-151.00'});
+  send(removeTop,15_100);
+  const improveAsk=delta(304);
+  Object.assign(improveAsk.msg,{side:'no',price_dollars:'0.5950',delta_fp:'1.00'});
+  send(improveAsk,15_150);
+  assert.deepEqual(archived.slice(-2).map(x=>[x.seq,x.archiveTrigger,x.yesBid.price,x.yesAsk.price]),[
+    [303,'price_change',.40,.41],[304,'price_change',.40,.405]
+  ]);
+  send(delta(306),15_200);
   assert.ok(faults.includes('SEQUENCE_GAP'));
   assert.equal(ws.sent.at(-1).params.action,'get_snapshot');
-  send(packet(304),15_200);
-  assert.deepEqual(archived.map(x=>x.seq),[1,301,304]);
+  send(packet(307),15_250);
+  assert.deepEqual(archived.map(x=>x.seq),[1,2,302,303,304,307]);
   failWrite=true;
-  send(delta(305),30_200);
-  assert.equal(client.book.view(ticker,at+30_200).valid,true);
+  send(delta(308),30_250);
+  assert.equal(client.book.view(ticker,at+30_250).valid,true);
   assert.ok(!faults.includes('OBSERVATION_HANDLER_FAILURE'));
   failWrite=false;
-  send(packet(306),90_201);
-  assert.equal(archived.at(-1).seq,306);
+  send(packet(309),90_251);
+  assert.equal(archived.at(-1).seq,309);
 });

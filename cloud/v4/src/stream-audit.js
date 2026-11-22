@@ -77,14 +77,24 @@ export function ensureStreamAudit(sql){
 // Archive cadence only. The transport has already applied and sequence-checked the frame.
 const STREAM_ARCHIVE_INTERVAL_MS=15_000;
 export function sampledStreamRecorder(sql){
- let nextDeltaAt=0, retryAt=0;
+ let nextHeartbeatAt=0, retryAt=0;
+ let lastTicker, lastBid, lastAsk;
  return ({type,quote,receivedAt})=>{
+  if(receivedAt<retryAt)return;
   const snapshot=type==='orderbook_snapshot';
-  if(receivedAt<retryAt||(!snapshot&&receivedAt<nextDeltaAt))return;
+  // Kalshi's NO quotes are complements of the YES quotes.
+  const bid=quote.yesBid?.price??null;
+  const ask=quote.yesAsk?.price??null;
+  const priceChanged=quote.ticker!==lastTicker||bid!==lastBid||ask!==lastAsk;
+  if(!snapshot&&!priceChanged&&receivedAt<nextHeartbeatAt)return;
+  const archiveTrigger=snapshot?'snapshot':priceChanged?'price_change':'heartbeat';
   try{
    appendStreamSample(sql,{quote,at:receivedAt,kind:snapshot?'snapshot':'delta',
-    archiveIntervalMs:STREAM_ARCHIVE_INTERVAL_MS});
-   nextDeltaAt=receivedAt+STREAM_ARCHIVE_INTERVAL_MS;
+    archiveIntervalMs:STREAM_ARCHIVE_INTERVAL_MS,archiveTrigger});
+   lastTicker=quote.ticker;
+   lastBid=bid;
+   lastAsk=ask;
+   nextHeartbeatAt=receivedAt+STREAM_ARCHIVE_INTERVAL_MS;
   }catch{
    // A storage error must not invalidate the live book or request a new snapshot.
    retryAt=receivedAt+60_000;
@@ -92,12 +102,12 @@ export function sampledStreamRecorder(sql){
   }
  };
 }
-export function appendStreamSample(sql,{quote,at=Date.now(),kind='delta',archiveIntervalMs}){
+export function appendStreamSample(sql,{quote,at=Date.now(),kind='delta',archiveIntervalMs,archiveTrigger}){
  if(!ETH.test(quote?.ticker||'')||quote.source!=='KALSHI_WEBSOCKET_ORDERBOOK'||
   !ms(at)||!['snapshot','delta','recovery'].includes(kind))
    throw new TypeError('Invalid V4 stream sample');
  const sample={schemaVersion:1,source:quote.source,ticker:quote.ticker,
-  observedAt:at,kind,archiveIntervalMs,sid:Number.isSafeInteger(quote.sid)?quote.sid:null,
+  observedAt:at,kind,archiveIntervalMs,archiveTrigger,sid:Number.isSafeInteger(quote.sid)?quote.sid:null,
   seq:Number.isSafeInteger(quote.seq)?quote.seq:null,
   clock:Number.isSafeInteger(quote.clock)?quote.clock:null,
   receivedAt:ms(quote.receivedAt),sendingAt:ms(quote.sendingAt),
