@@ -9,16 +9,16 @@ export const PRICE_VALUE_RESEARCH_VERSION='V4-PRICE-VALUE-RESEARCH-20261122';
 export const PRICE_VALUE_MAX_BUY_ASK=0.87;
 const legal=x=>Number.isFinite(x)&&x>=0&&x<=1;
 const fixed4=x=>Math.round((x+Number.EPSILON)*10000)/10000;
-const ceilCentiCent=x=>Math.ceil(x*10000-1e-10)/10000;
+const ceilWholeCent=x=>Math.ceil(x*100-1e-8)/100;
 
-/** General KXETH15M taker-fee research baseline, by ORDER, in DOLLARS.
+/** General KXETH15M taker-fee research baseline, rounded UP to next CENT per ORDER, in DOLLARS.
  * Live source fees may change by series/event/fee tier. Always revalidate
  * the effective source-specific fees before economic implementation.
  */
 export function researchTakerFee({ask,quantity,feeMultiplier=1}={}){
  if(!legal(ask)||!Number.isInteger(quantity)||quantity<1||
     !Number.isFinite(feeMultiplier)||feeMultiplier<0)return null;
- return fixed4(ceilCentiCent(.07*feeMultiplier*quantity*ask*(1-ask)));
+ return fixed4(ceilWholeCent(.07*feeMultiplier*quantity*ask*(1-ask)));
 }
 
 /** Provable arithmetic independent of a directional probability model.
