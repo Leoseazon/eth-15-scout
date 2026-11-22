@@ -20,7 +20,7 @@ SCOUT_V4_PAPER_MODE = "enabled"
 # The main v4test.toml remains DISARMED; this opt-in release is explicit.
 V4_SETTLEMENT_FIRST_EXPERIMENT = "true"
 # Dashboard-approved V4-only read-only market-data collection.
-# This is NOT simulated trade activation; SCOUT_V4_PAPER_MODE remains disabled.
+# This captures read-only market data and is distinct from the explicitly enabled PAPER simulator.
 V4_STREAM_CAPTURE_ENABLED = "true"
 # Direct official Kalshi REST depth: strictly historical/read-only, NOT live WS.
 # Uses a new V4-only SQLite table and never drives entries, fills, or P&L.
@@ -37,7 +37,7 @@ V4_FULL_BOOK_ARCHIVE_ENABLED = "false"
 # Six-hour-cached signed GET via existing V4 read-only API credentials. 50 read tokens.
 V4_CF_ACCESS_PROBE_ENABLED = "true"
 # One-shot, non-archiving ETHUSD_RTI WebSocket entitlement check on a separate DO.
-# Explicitly does NOT enable the permanent research stream or simulated trading.
+# One-shot live index diagnostic only; permanent research streaming remains OFF.
 V4_CF_WS_PROBE_ENABLED = "true"
 
 [observability.logs]
