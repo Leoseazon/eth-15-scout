@@ -213,12 +213,12 @@
   </div>
  </section>
  <section id="activity" class="card activity-card" aria-labelledby="activity-title">
-  <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS">PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
+  <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS" title="Only finalized skipped rounds, not temporary WATCH decisions">ROUND PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
   <div class="feed-head"><span>TIME (CT)</span><span>EVENT</span><span>CONTRACT</span><span>DETAILS</span></div>
   <div id="activity-list" class="activity-list"><div class="empty-state">Connect your read-only V4 feed to view actual activity.</div></div>
   <div class="journal-tools"><div><strong>V4 research journal</strong><p id="journal-summary">Permanent cloud journal: awaiting connection</p><small>Paper entries, exits, WATCH/PASS decisions and unresolved settlements. Records are not erased when this page closes.</small></div>
    <div class="journal-actions"><button type="button" id="older-events" disabled>Load older events</button><button type="button" id="export-trades" disabled>Export trades CSV</button><button type="button" id="export-journal" disabled>Export full journal JSON</button></div></div>
-  <p class="activity-footnote" id="journal-message">WATCH is not a final PASS. Pending outcomes are never counted as confirmed wins.</p>
+  <p class="activity-footnote" id="journal-message">Amber WATCH = evaluation still in progress. Purple ROUND PASS = final skipped 15-minute round. Neither is an official market outcome or a paper win.</p>
   <section class="outcome-section" aria-labelledby="outcome-title" hidden>
    <div class="outcome-header"><div><p class="eyebrow">OFFICIAL EXCHANGE RECORD</p>
     <h3 id="outcome-title">15-minute market outcomes</h3>
