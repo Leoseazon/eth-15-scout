@@ -23,6 +23,8 @@ V4_RESEARCH_STREAM_ENABLED = "false"
 # Opt-in only after observing Cloudflare DO write costs and obtaining market-data
 # retention permission. Captures every valid WS snapshot/delta for replay.
 V4_FULL_BOOK_ARCHIVE_ENABLED = "false"
+# Six-hour-cached signed GET via existing V4 read-only API credentials. 50 read tokens.
+V4_CF_ACCESS_PROBE_ENABLED = "false"
 
 [observability.logs]
 enabled = true
