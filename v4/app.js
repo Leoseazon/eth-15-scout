@@ -405,6 +405,12 @@ function render(data){
  const results=s.paperResults||data.activity?.journalTotals?.paperResults||null;
  const wins=n(results?.wins),losses=n(results?.losses),flats=n(results?.flats);
  txt('trades-value',n(results?.completed)===null?'—':results.completed);
+ // This is a durable SQLite COUNT from the V4 engine's decisions table:
+ // one final PASS per unique 15-minute contract ticker. It is NOT an
+ // interim WATCH tally and never derived from a partial event list.
+ const finalizedPasses=n(s.passes);
+ txt('round-pass-count',finalizedPasses!==null&&Number.isSafeInteger(finalizedPasses)&&finalizedPasses>=0?
+   finalizedPasses:'—');
  txt('wins-count',wins===null?'—':wins);
  txt('losses-count',losses===null?'—':losses);
  txt('win-rate',wins!==null&&losses!==null&&(wins+losses)>0?
@@ -457,7 +463,7 @@ function activityRecords(data){
    if(!duplicate){
     const type=/^PAPER SELL/i.test(s.lastNotice)?'PAPER SELL':
       /^SIMULATED BUY|^PAPER BUY/i.test(s.lastNotice)?'PAPER BUY':
-      /^PASS(?! \/ WATCH)/i.test(s.lastNotice)?'PASS':'WATCH';
+      'WATCH';
     // A bot-status line is NOT a validated trade event: do not create fake
     // buys/sells from status text and never use it for audio notifications.
     if(type==='WATCH')out.push({time:s.lastTick,type:'WATCH',ticker:s.lastMarket||'',
@@ -468,7 +474,7 @@ function activityRecords(data){
   if(s.lastNotice&&s.lastTick){
    const type=/^PAPER SELL/i.test(s.lastNotice)?'PAPER SELL':
      /^SIMULATED BUY|^PAPER BUY/i.test(s.lastNotice)?'PAPER BUY':
-     /^PASS(?! \/ WATCH)/i.test(s.lastNotice)?'PASS':'WATCH';
+     'WATCH';
    out.push({time:s.lastTick,type,ticker:s.lastMarket||'',details:s.lastNotice});
   }
   for(const d of decisions){out.push({time:d.time||0,type:'PASS',
@@ -516,7 +522,11 @@ function renderFeed(data){
   const time=document.createElement('time');time.textContent=ct(row.time);
   const pillWrap=document.createElement('div'),pill=document.createElement('span');pill.className='event-pill '+
    (row.type==='PAPER BUY'?'buy':row.type==='PAPER SELL'?'sell':row.type==='PASS'?'pass':'watch');
-  pill.textContent=row.type;pillWrap.append(pill);
+  // Only the persistent final per-round decision/event earns a purple label.
+  // Status messages, including "PASS / WATCH", remain amber WATCH.
+  pill.textContent=row.type==='PASS'?'ROUND PASS':row.type;
+  if(row.type==='PASS')pill.title='Final bot skip of this 15-minute round; not a Kalshi settlement result';
+  pillWrap.append(pill);
   const ticker=document.createElement('span');ticker.className='ticker';ticker.textContent=row.ticker||'—';
   const desc=document.createElement('span');desc.className='notes';desc.textContent=row.details||'—';
   item.append(time,pillWrap,ticker,desc);root.append(item);
