@@ -89,7 +89,9 @@ export class KalshiResearchSocket {
   let p;try{p=JSON.parse(raw)}catch{this.event('CF_PARSE_ERROR');return}
   this.lastMessageAt=receivedAt;
   if(p?.type==='error'){
-   if(p.id===2)this.event('TRADE_SUBSCRIPTION_ERROR');
+   // Trade-channel errors 13/14 may omit the command ID entirely.
+   const code=p?.msg?.code;
+   if(p.id===2||code===13||code===14)this.event('TRADE_SUBSCRIPTION_ERROR');
    else this.event('CF_SUBSCRIPTION_ERROR');
    return;
   }
