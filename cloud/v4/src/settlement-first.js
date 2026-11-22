@@ -3,7 +3,8 @@
  * at official CF ETHUSD_RTI final-minute average. NO calibrated probability,
  * NO real orders, no learned model, no historical outcomes at decision time.
  */
-export const SETTLEMENT_FIRST_VERSION='V4-SETTLEMENT-FIRST-CONTEXT-20261122';
+import {bestContextualOpportunity} from './context-opportunity.js';
+export const SETTLEMENT_FIRST_VERSION='V4-TARGET-CONTEXTUAL-VALUE-20261122';
 // Normal premium cutoff is 85c; 85.01–87c needs stronger evidence.
 // 87c is the absolute PAPER BUY ask ceiling. 96c is a separate SELL target.
 export const NORMAL_PREMIUM_ASK=0.85;
@@ -11,16 +12,14 @@ export const MAX_PAPER_ENTRY_ASK=0.87;
 // Shared exceptional admission rule, used at candidate selection AND paper debit.
 // All input metrics are contemporaneous; this is not calibrated win probability.
 export function exceptionalPremiumEligible(d){
- if(!d||!Number.isFinite(d.ask)||d.ask<=NORMAL_PREMIUM_ASK||
-   d.ask>MAX_PAPER_ENTRY_ASK||!['UP','DOWN'].includes(d.side)||
-   ![d.score,d.geometry,d.momentum,d.structure,d.spread].every(Number.isFinite)||
-   !Number.isFinite(d.remainingSeconds)||d.remainingSeconds<=90||
-   d.remainingSeconds>300||d.spread<0||Math.round(d.spread*10000)>300||
-   d.familySupport!==3||!Array.isArray(d.contradictionReasons)||
-   d.contradictionReasons.length!==0)return false;
- const direction=d.side==='UP'?1:-1;
- return d.score*direction>=.78&&d.geometry*direction>=.30&&
-   d.momentum*direction>=.25&&d.structure*direction>=.25;
+ const e=d?.contextualOpportunity;
+ return !!d&&Number.isFinite(d.ask)&&d.ask>NORMAL_PREMIUM_ASK&&
+  d.ask<=MAX_PAPER_ENTRY_ASK&&Number.isFinite(d.remainingSeconds)&&
+  d.remainingSeconds>90&&d.remainingSeconds<=750&&
+  Number.isFinite(d.spread)&&Math.round(d.spread*10000)<=300&&
+  e?.status==='QUALIFIED'&&e.side===d.side&&e.ask===d.ask&&
+  e.conservativeEdge+1e-8>=.07&&e.allIn>0&&
+  e.calibratedProbability===null;
 }
 const numeric=x=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const bounded=(x,a=-1,b=1)=>Math.max(a,Math.min(b,x));
@@ -75,7 +74,8 @@ export function calculateSettlementEvidence({target,indexValue,one,five,context,
  return {delta,expectedMove,normalizedDistance,geometry,momentum,
   contextBias,combined,side,contradictions,families};
 }
-export function evaluateSettlementFirst({market,index,one,five,context,book,now=Date.now()}={}){
+export function evaluateSettlementFirst({market,index,one,five,context,book,
+ now=Date.now(),budget=3,riskMode='NORMAL'}={}){
  if(!market||!tickerOk(market.ticker))return watch('ACTUAL_KALSHI_MARKET_MISSING');
  const closeAt=Date.parse(market.close_time),target=numeric(market.floor_strike);
  if(!Number.isFinite(closeAt)||target===null||target<=0)
@@ -104,39 +104,50 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
   one,five,context,remainingSeconds});
  if(!computed)return watch('COMPLETE_CONTEXT_REQUIRED');
  const {delta,expectedMove,normalizedDistance,geometry,momentum,contextBias,
-  combined,side,contradictions,families}=computed;
- const observedPrice={UP:{ask:book.yesAsk,bid:book.yesBid},
-  DOWN:{ask:book.noAsk,bid:book.noBid}}[side];
- const ask=numeric(observedPrice.ask?.price),bid=numeric(observedPrice.bid?.price);
- const askDepth=numeric(observedPrice.ask?.sizeFp),bidDepth=numeric(observedPrice.bid?.sizeFp);
+  combined}=computed;
+ // Compare BOTH contract sides against the SAME official target, uncertainty,
+ // time-to-final-average, direction context and fee-inclusive risk-adjusted value.
+ // No indicator vote can independently create a trade.
+ const opportunity=bestContextualOpportunity({
+  target,indexValue:index.price,one,five,context,remainingSeconds,book,
+  budget,riskMode});
+ const choice=opportunity.selected||null;
+ const side=choice?.side||(combined>0?'UP':'DOWN');
+ const direction=side==='UP'?1:-1;
+ const families=[geometry,momentum,contextBias].filter(
+  x=>sign(x)===direction&&Math.abs(x)>=.15).length;
+ const contradictions=[
+  sign(geometry)&&sign(geometry)!==direction?'OFFICIAL_TARGET_CURRENTLY_OPPOSES_DIRECTION':null,
+  sign(momentum)&&sign(momentum)!==direction?'MOMENTUM_OPPOSES_DIRECTION':null,
+  sign(contextBias)&&sign(contextBias)!==direction?'HIGHER_TIMEFRAME_OPPOSES_DIRECTION':null,
+  Math.abs(index.price-one.last)>Math.max(3,4*one.sd)?
+   'KRAKEN_OFFICIAL_INDEX_BASIS_WIDE':null
+ ].filter(Boolean);
+ const observed=side==='UP'?
+  {ask:book.yesAsk,bid:book.yesBid}:{ask:book.noAsk,bid:book.noBid};
+ const ask=numeric(observed.ask?.price),bid=numeric(observed.bid?.price);
+ const askDepth=numeric(observed.ask?.sizeFp),bidDepth=numeric(observed.bid?.sizeFp);
  const priceSpread=ask!==null&&bid!==null?ask-bid:null;
- const minimumScore=ask!==null&&ask>=NORMAL_PREMIUM_ASK?.78:ask!==null&&ask>=.65?.62:.43;
- const minimumFamilies=2;
  const insight={target,indexValue:index.price,indexSourceAt:index.sourceAt,
   officialDistance:delta,normalizedDistance,expectedMove,remainingSeconds,
   geometry:Number(geometry.toFixed(5)),momentum:Number(momentum.toFixed(5)),
   structure:Number(contextBias.toFixed(5)),score:Number(combined.toFixed(5)),
-  scoreKind:'NON_CALIBRATED_HEURISTIC',familySupport:families,
+  scoreKind:'NON_CALIBRATED_CONTEXT_HEURISTIC',familySupport:families,
   contradictionReasons:contradictions,ask,bid,askDepth,bidDepth,
-  spread:priceSpread,bookReceiptAt:book.receivedAt};
- // A hard ceiling is independent of model strength, time or confidence.
- if(ask!==null&&ask>MAX_PAPER_ENTRY_ASK)
-  return watch('PRICE_ABOVE_87C_HARD_BUY_LIMIT',{...insight,candidateSide:side});
- if(ask!==null&&ask>NORMAL_PREMIUM_ASK&&
-    !exceptionalPremiumEligible({...insight,side}))
-  return watch('PREMIUM_85_TO_87_EXCEPTION_NOT_MET',{...insight,candidateSide:side});
- if(Math.abs(combined)<minimumScore||families<minimumFamilies)
-  return watch('WEAK_OR_CONTRADICTED_SETTLEMENT_SIDE_EVIDENCE',
-   {...insight,candidateSide:side});
- if(ask===null||bid===null||ask<=0||ask>MAX_PAPER_ENTRY_ASK||bid<0||bid>ask||
-   priceSpread===null||priceSpread>.05||
-   askDepth===null||askDepth<1||bidDepth===null)
-  return watch('KALSHI_ASK_SPREAD_OR_DISPLAYED_DEPTH_UNSUITABLE',
-   {...insight,candidateSide:side});
- if(ask>=NORMAL_PREMIUM_ASK&&remainingMinutes>5)
-  return watch('EXPENSIVE_CONTRACT_TOO_EARLY',{...insight,candidateSide:side});
+  spread:priceSpread,bookReceiptAt:book.receivedAt,
+  contextualOpportunity:choice,
+  valueScenario:opportunity.scenario,
+  consideredSideValues:opportunity.options};
+ if(opportunity.status!=='CANDIDATE')
+  return watch(opportunity.reason,{...insight,candidateSide:side});
+ if(ask===null||ask>MAX_PAPER_ENTRY_ASK||bid===null||bid>ask)
+  return watch('INVALID_BID_ASK_AFTER_CONTEXT_EVALUATION',{
+   ...insight,candidateSide:side});
+ if(ask>NORMAL_PREMIUM_ASK&&!exceptionalPremiumEligible({...insight,side}))
+  return watch('PREMIUM_85_TO_87_VALUE_EXCEPTION_NOT_MET',{
+   ...insight,candidateSide:side});
  return {version:SETTLEMENT_FIRST_VERSION,status:'CANDIDATE',side,reason:
-  'Official index/target geometry with independent momentum and 3m/5m context',
+  'Target-centered scenario analysis chooses best fee-inclusive side under conservative uncertainty',
   ...insight,calibratedProbability:null,settlementPredictionVerified:false,
   executionVerified:false,entryBudgetIncludesFees:true};
 }
