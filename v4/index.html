@@ -11,6 +11,7 @@
 <script src="./sounds.js" defer></script>
 <script src="./stop-postmortem.js" defer></script>
 <script src="./app.js" defer></script>
+<script src="./cf-ws-probe-ui.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -158,6 +159,13 @@
       <small>Checks Kalshi API access only; no account data, no API keys in this website, and no simulated trades.</small>
     </div>
     <div class="journal-actions"><button type="button" id="cf-access-check">Check index access</button></div>
+  </div>
+  <div class="journal-tools" aria-label="One-shot CF Benchmarks WebSocket verification">
+    <div><strong>Live ETH index WebSocket verification</strong>
+      <p id="cf-ws-probe-status">Not checked. Requires the isolated V4 verifier release.</p>
+      <small>One-time authentication, indexlist, and fresh ETHUSD_RTI reading check. No raw frames saved, no simulated orders, no continuous recording.</small>
+    </div>
+    <div class="journal-actions"><button type="button" id="cf-ws-probe-button">Verify live WebSocket</button></div>
   </div>
   <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
     <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
