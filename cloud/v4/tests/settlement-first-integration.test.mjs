@@ -27,3 +27,21 @@ test('new paper engine uses official RTI input and immutable prediction journal,
  const paper=readFileSync(root+'cloud/v4/src/settlement-first-paper.js','utf8');
  assert.doesNotMatch(paper,/create_order|POST \/trade|\/portfolio\/orders/);
 });
+
+test('opt-in V4 paper release differs from default only in two explicit paper flags',()=>{
+ const defaultText=readFileSync(root+'cloud/wrangler.v4test.toml','utf8');
+ const paperText=readFileSync(root+'cloud/wrangler.v4paper.toml','utf8');
+ const normalize=t=>t.split('\\n').filter(x=>!/^\\s*#/.test(x)&&x.trim()!=='')
+  .map(x=>x.replace(/SCOUT_V4_PAPER_MODE = "(enabled|disabled)"/,
+    'SCOUT_V4_PAPER_MODE = "PAPER_SWITCH"')
+   .replace(/V4_SETTLEMENT_FIRST_EXPERIMENT = "(true|false)"/,
+     'V4_SETTLEMENT_FIRST_EXPERIMENT = "EXPERIMENT_SWITCH"')).join('\\n');
+ assert.equal(normalize(defaultText),normalize(paperText));
+ assert.match(paperText,/SCOUT_V4_PAPER_MODE = "enabled"/);
+ assert.match(paperText,/V4_SETTLEMENT_FIRST_EXPERIMENT = "true"/);
+ for(const [flag,value] of [
+  ['V4_DATA_RESEARCH_AUTHORIZED','false'],
+  ['V4_RESEARCH_STREAM_ENABLED','false'],
+  ['V4_FULL_BOOK_ARCHIVE_ENABLED','false']
+ ])assert.ok(paperText.includes(flag+' = "'+value+'"'));
+});
