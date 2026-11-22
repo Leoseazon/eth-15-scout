@@ -35,8 +35,35 @@ export function paperResults(sql,releaseTag) {
       AND json_extract(data,'$.confirmed')=1
       AND json_type(data,'$.pnl') IN ('integer','real')`,
     'V4-TARGET-CONTEXTUAL-VALUE-20261122').toArray()[0]:null;
+  // Distinguish value-qualified V4 trades from the optional exploratory
+  // sampling cohort. The legacy contextualCohort and cash totals remain
+  // unchanged for continuity, but must NOT be interpreted as a pure
+  // conservative-value strategy score once exploration is enabled.
+  const research=contextualRelease?sql.exec(
+    `SELECT
+       COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.researchMode'),'CONSERVATIVE')='CONSERVATIVE' THEN 1 ELSE 0 END),0) conservativeCompleted,
+       COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.researchMode'),'CONSERVATIVE')='CONSERVATIVE' AND json_extract(data,'$.pnl')>0 THEN 1 ELSE 0 END),0) conservativeWins,
+       COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.researchMode'),'CONSERVATIVE')='CONSERVATIVE' AND json_extract(data,'$.pnl')<0 THEN 1 ELSE 0 END),0) conservativeLosses,
+       COALESCE(SUM(CASE WHEN COALESCE(json_extract(data,'$.researchMode'),'CONSERVATIVE')='CONSERVATIVE' THEN json_extract(data,'$.pnl') ELSE 0 END),0) conservativeNetPnl,
+       COALESCE(SUM(CASE WHEN json_extract(data,'$.researchMode')='EXPLORATORY' THEN 1 ELSE 0 END),0) exploratoryCompleted,
+       COALESCE(SUM(CASE WHEN json_extract(data,'$.researchMode')='EXPLORATORY' AND json_extract(data,'$.pnl')>0 THEN 1 ELSE 0 END),0) exploratoryWins,
+       COALESCE(SUM(CASE WHEN json_extract(data,'$.researchMode')='EXPLORATORY' AND json_extract(data,'$.pnl')<0 THEN 1 ELSE 0 END),0) exploratoryLosses,
+       COALESCE(SUM(CASE WHEN json_extract(data,'$.researchMode')='EXPLORATORY' THEN json_extract(data,'$.pnl') ELSE 0 END),0) exploratoryNetPnl
+      FROM trades WHERE json_extract(data,'$.strategyVersion')=?
+      AND json_extract(data,'$.confirmed')=1
+      AND json_type(data,'$.pnl') IN ('integer','real')`,
+    'V4-TARGET-CONTEXTUAL-VALUE-20261122').toArray()[0]:null;
+  const researchCohorts=research?{
+    conservative:{completed:research.conservativeCompleted,
+      wins:research.conservativeWins,losses:research.conservativeLosses,
+      netPnl:research.conservativeNetPnl},
+    exploratory:{completed:research.exploratoryCompleted,
+      wins:research.exploratoryWins,losses:research.exploratoryLosses,
+      netPnl:research.exploratoryNetPnl}
+   }:null;
   return {...results,revisedFirstTick:revisedAt,originalFirstTick:originalAt,
     latestFirstTick:latestAt,contextualCohort:cohort,
+    researchCohorts,
     definition:'Realized, fee-adjusted per-position paper P/L (early exits independent of window outcome)'};
 }
 // Official Kalshi market finalization is required; never infer from spot ETH.
