@@ -87,7 +87,7 @@ test('soft daily-loss mode refuses normal-grade setup rather than reusing legacy
  const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',
   year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(T));
  s.dailyRisk={day,mode:'SOFT'};
- const moderate={...args,index:{...index,price:1801.9}};
+ const moderate={...args,index:{...index,price:1801.2}};
  const normal=settlementFirstPaperStep(setup(),moderate);
  assert.equal(normal.status,'PAPER_BUY','Moderate signal must be eligible in normal risk mode');
  const r=settlementFirstPaperStep(s,moderate);
