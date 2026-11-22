@@ -54,6 +54,7 @@ function shouldSwitchHost(reason){
 }
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
 export const KALSHI_READONLY_REST_PATH='/trade-api/v2/portfolio/balance';
+export const KALSHI_CF_VALUES_PATH='/trade-api/v2/cfbenchmarks/values';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
 // Error reason codes are safe for the private V4 audit database. Never persist
@@ -65,7 +66,8 @@ function base64(bytes){
   return btoa(s);
 }
 async function signedReadHeaders({keyId,privatePem,now,subtle,signPath}){
-  if(signPath!==KALSHI_SIGN_PATH&&signPath!==KALSHI_READONLY_REST_PATH)
+  if(signPath!==KALSHI_SIGN_PATH&&signPath!==KALSHI_READONLY_REST_PATH&&
+     signPath!==KALSHI_CF_VALUES_PATH)
     throw authError('AUTH_PATH_NOT_ALLOWLISTED');
   if(typeof keyId!=='string'||!keyId.trim()||keyId.trim().length>200||
     typeof privatePem!=='string'||!Number.isSafeInteger(now)||now<=0)
@@ -108,6 +110,9 @@ export async function wsAuthHeaders({keyId,privatePem,now=Date.now(),subtle=cryp
 export async function readonlyRestAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
   // Dedicated read-only endpoint with no body parsing, trading or transfers.
   return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_READONLY_REST_PATH});
+}
+export async function cfValuesAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
+  return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_CF_VALUES_PATH});
 }
 export class KalshiReadOnlySocket {
   constructor({fetcher=fetch,onObservation=()=>{},onRawFrame=()=>{},onFault=()=>{}}={}){
