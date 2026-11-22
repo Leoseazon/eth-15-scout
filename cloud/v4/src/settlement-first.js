@@ -78,7 +78,7 @@ export function calculateSettlementEvidence({target,indexValue,one,five,context,
   contextBias,combined,side,contradictions,families};
 }
 export function evaluateSettlementFirst({market,index,one,five,context,book,
- now=Date.now(),budget=3,riskMode='NORMAL'}={}){
+ now=Date.now(),budget=3,riskMode='NORMAL',allowExploration=false}={}){
  if(!market||!tickerOk(market.ticker))return watch('ACTUAL_KALSHI_MARKET_MISSING');
  const closeAt=Date.parse(market.close_time),target=numeric(market.floor_strike);
  if(!Number.isFinite(closeAt)||target===null||target<=0)
@@ -115,7 +115,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
  // No indicator vote can independently create a trade.
  const opportunity=bestContextualOpportunity({
   target,indexValue:index.price,one,five,context,remainingSeconds,book,
-  budget,riskMode});
+  budget,riskMode,allowExploration});
  const choice=opportunity.selected||null;
  const side=choice?.side||(combined>0?'UP':'DOWN');
  const direction=side==='UP'?1:-1;
@@ -141,8 +141,10 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   contradictionReasons:contradictions,ask,bid,askDepth,bidDepth,
   spread:priceSpread,bookReceiptAt:book.receivedAt,
   contextualOpportunity:choice,
+  researchMode:opportunity.researchMode||'CONSERVATIVE',
   valueScenario:opportunity.scenario,
-  consideredSideValues:opportunity.options};
+  consideredSideValues:opportunity.options,
+  exploratorySideValues:opportunity.exploratoryOptions||null};
  if(opportunity.status!=='CANDIDATE'){
   // Preserve clear absolute-ceiling diagnostics instead of masking them
   // under the generic value-rejection reason.
@@ -159,7 +161,9 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   return watch('PREMIUM_85_TO_87_VALUE_EXCEPTION_NOT_MET',{
    ...insight,candidateSide:side});
  return {version:SETTLEMENT_FIRST_VERSION,status:'CANDIDATE',side,reason:
-  'Target-centered scenario analysis chooses best fee-inclusive side under conservative uncertainty',
+  opportunity.researchMode==='EXPLORATORY'?
+   'Research-only central scenario candidate; NOT a conservative-qualified trade':
+   'Target-centered scenario analysis chooses best fee-inclusive side under conservative uncertainty',
   ...insight,calibratedProbability:null,settlementPredictionVerified:false,
   executionVerified:false,entryBudgetIncludesFees:true};
 }
