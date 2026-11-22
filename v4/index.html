@@ -70,6 +70,7 @@
   <div class="health-meta"><span class="health-age" id="v4-health-age">—</span>
    <span id="mode-badge" class="pill pill-neutral"><span class="dot"></span>Disconnected</span>
    <span id="updated-label" class="micro">No data loaded</span>
+   <span id="v4-release-verification" class="micro" aria-live="polite">Contextual V4 release not verified</span>
   </div>
   <details id="v4-health-details" class="health-details" hidden><summary>Diagnose issue</summary>
    <div id="v4-health-detail" class="health-detail"><ul id="v4-health-list"></ul>
@@ -78,14 +79,14 @@
  </section>
  <section id="live-action" class="live-action" aria-labelledby="live-action-title">
   <div class="live-action-heading">
-   <div><p class="eyebrow">TOP PRIORITY · LIVE V4 PAPER BOT</p><h1 id="live-action-title">Current 15-minute round</h1></div>
+   <div><p class="eyebrow">TOP PRIORITY · V4 PAPER ENGINE · VERIFY STATUS</p><h1 id="live-action-title">Current 15-minute round</h1></div>
    <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span><span id="live-proxy-age" class="micro">Kalshi quote age unavailable</span></div>
   </div>
   <div class="contract-box live-contract-board" aria-label="Current Kalshi contract and latest publicly available prices">
-   <div class="board-market"><p class="mini-label">CURRENT KALSHI 15-MINUTE CONTRACT</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
+   <div class="board-market"><p class="mini-label">CURRENT KALSHI CONTRACT · PUBLIC PRICE REFERENCE</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
    <div class="board-target"><span class="mini-label">ETH TARGET / STRIKE</span><strong id="contract-strike">Target unavailable</strong><small>Official contract reference, not Kraken settlement</small></div>
-   <div class="board-price up"><span class="mini-label">UP / YES · BUY PRICE</span><strong id="up-quote">—</strong><small>Best ask · <span id="up-bid">Bid —</span></small></div>
-   <div class="board-price down"><span class="mini-label">DOWN / NO · BUY PRICE</span><strong id="down-quote">—</strong><small>Best ask · <span id="down-bid">Bid —</span></small></div>
+   <div class="board-price up"><span class="mini-label">UP / YES · PUBLIC ASK REFERENCE</span><strong id="up-quote">—</strong><small>Public snapshot, not verified paper entry · <span id="up-bid">Bid —</span></small></div>
+   <div class="board-price down"><span class="mini-label">DOWN / NO · PUBLIC ASK REFERENCE</span><strong id="down-quote">—</strong><small>Public snapshot, not verified paper entry · <span id="down-bid">Bid —</span></small></div>
   </div>
   <div class="live-action-body">
    <div class="live-action-main">
@@ -124,7 +125,7 @@
     <div class="last-execution"><span>LAST RECORDED PAPER TRADE</span><strong id="live-last-trade">None recorded</strong><small id="live-last-trade-at">—</small></div>
    </div>
   </div>
-  <p class="live-action-footnote">This is a <strong>simulated</strong> signal monitor. It never places an actual Kalshi order. Data becomes stale if the engine stops reporting.</p>
+  <p class="live-action-footnote">This is a <strong>simulated</strong> paper-trade monitor. It never places an actual Kalshi order. The UP/DOWN quote panels above may reflect a public REST snapshot; only fresh authenticated WebSocket order-book values can support a simulated paper decision. Check model version and data freshness before following any displayed trade.</p>
  </section>
  <div class="main-grid">
   <section class="card chart-card" aria-labelledby="market-title">
@@ -139,22 +140,22 @@
     <div class="decision-banner chart-decision"><span class="decision-dot">◎</span><div><strong>Bot market note</strong><p id="current-notice">Awaiting V4 engine activity</p></div><span id="notice-time" class="micro">—</span></div>
   </section>
 <section id="signals" class="card signals-card" aria-labelledby="signals-title">
-   <div class="card-heading"><div><p class="eyebrow">WEIGHTED EVIDENCE</p><h2 id="signals-title">Signal hierarchy</h2></div><span class="badge neutral">Reference</span></div>
-   <p class="section-helper">Higher-timeframe structure leads. Short-term oscillators cannot override a primary rejection. These market snapshots are calculated separately from the bot's own decisions.</p>
-   <div class="signal-section"><div class="section-strip"><span>01 · Primary structure</span><small>DECISION FILTERS</small></div>
-    <div class="signal-row"><div><strong>5-minute trend</strong><small>Primary directional filter</small></div><span id="sig-5m" class="value-pill neutral">—</span></div>
+   <div class="card-heading"><div><p class="eyebrow">CHART CONTEXT · NOT ENTRY VOTES</p><h2 id="signals-title">Reference indicators</h2></div><span class="badge neutral">Reference</span></div>
+   <p class="section-helper">The contextual V4 engine evaluates the official Kalshi target, remaining uncertainty, UP/DOWN asks, fees and risk together. These separately calculated website indicators provide reference, not independent permission to BUY.</p>
+   <div class="signal-section"><div class="section-strip"><span>01 · Higher-timeframe reference</span><small>CHART DISPLAY</small></div>
+    <div class="signal-row"><div><strong>5-minute trend</strong><small>Reference; actual engine uses its own closed candles</small></div><span id="sig-5m" class="value-pill neutral">—</span></div>
     <div class="signal-row"><div><strong>3-minute structure</strong><small>Completed candles only</small></div><span id="sig-3m" class="value-pill neutral">—</span></div>
-    <div class="signal-row"><div><strong>Support / resistance</strong><small>5-minute confirmed levels</small></div><span id="sig-levels" class="signal-number">—</span></div>
+    <div class="signal-row"><div><strong>Support / resistance</strong><small>Reference only; not a V4 BUY gate</small></div><span id="sig-levels" class="signal-number">—</span></div>
     <div class="signal-row"><div><strong>EMA 21 / EMA 50</strong><small>5-minute alignment</small></div><span id="sig-emas" class="value-pill neutral">—</span></div>
-    <div class="signal-row"><div><strong>Rolling volume-weighted price</strong><small>Up to 96 completed 5m Kraken candles; not session VWAP</small></div><span id="sig-vwap" class="signal-number">—</span></div>
+    <div class="signal-row"><div><strong>Rolling volume-weighted price</strong><small>Display only; up to 96 closed 5m candles, not session VWAP</small></div><span id="sig-vwap" class="signal-number">—</span></div>
    </div>
-   <div class="signal-section"><div class="section-strip secondary"><span>02 · Secondary confirmation</span><small>NEVER LEADS</small></div>
+   <div class="signal-section"><div class="section-strip secondary"><span>02 · Supplemental chart context</span><small>NOT STANDALONE SIGNALS</small></div>
     <div class="signal-row"><div><strong>RSI 14</strong><small>5-minute strength</small></div><span id="sig-rsi" class="signal-number">—</span></div>
     <div class="signal-row"><div><strong>Bollinger Bands (20, 2)</strong><small>3-minute position</small></div><span id="sig-bands" class="value-pill neutral">—</span></div>
     <div class="signal-row"><div><strong>Accumulation / Distribution</strong><small>3-minute volume pressure</small></div><span id="sig-ad" class="value-pill neutral">—</span></div>
     <div class="signal-row"><div><strong>Daily BTC / ETH regime</strong><small>Bot's last daily context</small></div><span id="sig-regime" class="value-pill neutral">—</span></div>
    </div>
-   <p class="signal-footer">Computed reference ≠ a recommendation or guaranteed Kalshi outcome. No standalone indicator creates a paper trade.</p>
+   <p class="signal-footer">Actual BUY eligibility comes from fresh authenticated target/index/order-book data and a conservative scenario-value assessment. These independent chart indicators do not create paper trades.</p>
   </section>
   <aside class="right-column">
    <section class="card risk-card" aria-labelledby="risk-title">
