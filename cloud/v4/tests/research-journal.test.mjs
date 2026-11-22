@@ -45,6 +45,7 @@ test('complete V4 research tick captures V3 evidence and extra stop reasons with
  assert.equal(r.decision.exitAtThisTick.netPnl,-.90);
  assert.equal(r.decision.exitAtThisTick.officialSettlementVerified,false);
  assert.equal(r.kraken.five.e50,1738.50);
+ assert.equal(r.kraken.oneClosedAt,(Math.floor(start/1000)-60)*1000);
  assert.equal(r.decision.observedEvents[0].type,'PAPER SELL');
 });
 test('missing feeds, missing quotes, and stale claimed prices remain explicitly unavailable',()=>{
@@ -62,7 +63,8 @@ test('append-only engine writer inserts one complete versioned row',()=>{
  const calls=[];const sql={exec:(...a)=>{calls.push(a);return {toArray:()=>[]}}};
  ensureResearchJournal(sql);
  const r=recordResearchTick(sql,inputs);
- assert.equal(r.schemaVersion,1);
+ assert.equal(r.schemaVersion,2);
+ assert.equal(r.kraken.oneClosedAt,(Math.floor(start/1000)-60)*1000);
  const query=calls.find(x=>x[0].startsWith('INSERT OR IGNORE INTO research_ticks'));
  assert.ok(query);
  assert.equal(query[1],start);
