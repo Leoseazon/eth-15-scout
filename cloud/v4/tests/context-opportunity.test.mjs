@@ -89,3 +89,22 @@ test('evaluate BOTH sides, do not wait to buy at 85c',()=>{
  const expensive=bestContextualOpportunity({...data,book:book(.87),budget:3});
  assert.equal(expensive.status,'WATCH');
 });
+
+test('SOFT risk is stricter without contradicting the exceptional 87c maximum',()=>{
+ const veryStrong={status:'SCENARIOS_READY',
+  UP:{lower:.99,central:.995,upper:1},
+  DOWN:{lower:0,central:.005,upper:.01}};
+ const eligible=priceAwareOpportunity({side:'UP',book:book(.87,.85),
+  scenario:veryStrong,remainingSeconds:240,budget:1.5,riskMode:'SOFT'});
+ assert.equal(eligible.status,'QUALIFIED',JSON.stringify(eligible));
+ assert.ok(eligible.allIn<=1.5);
+ assert.ok(eligible.requiredEdge>0.07);
+ const weaker={...veryStrong,UP:{lower:.94,central:.95,upper:.96}};
+ const rejected=priceAwareOpportunity({side:'UP',book:book(.87,.85),
+  scenario:weaker,remainingSeconds:240,budget:1.5,riskMode:'SOFT'});
+ assert.equal(rejected.status,'REJECT');
+ assert.equal(rejected.reason,'CONSERVATIVE_SCENARIO_VALUE_INSUFFICIENT');
+ const over=priceAwareOpportunity({side:'UP',book:book(.88,.86),
+  scenario:veryStrong,remainingSeconds:240,budget:1.5,riskMode:'SOFT'});
+ assert.equal(over.reason,'PRICE_ABOVE_87C_HARD_BUY_LIMIT');
+});
