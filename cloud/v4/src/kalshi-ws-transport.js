@@ -54,6 +54,7 @@ function shouldSwitchHost(reason){
 }
 export const KALSHI_SIGN_PATH='/trade-api/ws/v2';
 export const KALSHI_READONLY_REST_PATH='/trade-api/v2/portfolio/balance';
+export const KALSHI_CF_LATEST_PATH='/trade-api/v2/cfbenchmarks/latest_values';
 const TICKER=/^KXETH15M-[A-Za-z0-9-]{5,80}$/;
 const enc=new TextEncoder();
 // Error reason codes are safe for the private V4 audit database. Never persist
@@ -65,7 +66,8 @@ function base64(bytes){
   return btoa(s);
 }
 async function signedReadHeaders({keyId,privatePem,now,subtle,signPath}){
-  if(signPath!==KALSHI_SIGN_PATH&&signPath!==KALSHI_READONLY_REST_PATH)
+  if(signPath!==KALSHI_SIGN_PATH&&signPath!==KALSHI_READONLY_REST_PATH&&
+     signPath!==KALSHI_CF_LATEST_PATH)
     throw authError('AUTH_PATH_NOT_ALLOWLISTED');
   if(typeof keyId!=='string'||!keyId.trim()||keyId.trim().length>200||
     typeof privatePem!=='string'||!Number.isSafeInteger(now)||now<=0)
@@ -109,9 +111,12 @@ export async function readonlyRestAuthHeaders({keyId,privatePem,now=Date.now(),s
   // Dedicated read-only endpoint with no body parsing, trading or transfers.
   return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_READONLY_REST_PATH});
 }
+export async function cfValuesAuthHeaders({keyId,privatePem,now=Date.now(),subtle=crypto.subtle}){
+  return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_CF_LATEST_PATH});
+}
 export class KalshiReadOnlySocket {
-  constructor({fetcher=fetch,onObservation=()=>{},onFault=()=>{}}={}){
-    this.fetcher=fetcher;this.onObservation=onObservation;this.onFault=onFault;
+  constructor({fetcher=fetch,onObservation=()=>{},onRawFrame=()=>{},onFault=()=>{}}={}){
+    this.fetcher=fetcher;this.onObservation=onObservation;this.onRawFrame=onRawFrame;this.onFault=onFault;
     this.book=new KalshiBookStream();this.socket=null;this.ticker=null;
     this.lastMessageAt=null;this.lastSubscriptionAt=null;
     this.attempts=0;this.retryAfter=0;this.commandId=1;
@@ -271,6 +276,10 @@ export class KalshiReadOnlySocket {
       } // Usable snapshot, not handshake, proves recovery.
       try{this.onObservation({result:outcome,quote:this.book.view(this.ticker,receivedAt),
         type:packet.type,receivedAt})}catch{this.fault('OBSERVATION_HANDLER_FAILURE',receivedAt)}
+      // Optional raw recording runs after applying the validated update.
+      // A failed archive write cannot corrupt the in-memory book.
+      try{this.onRawFrame({packet,receivedAt})}
+      catch{try{this.onFault('BOOK_ARCHIVE_WRITE_FAILED')}catch{}}
     }
     if(outcome?.resync && !outcome.snapshot){
       // Demand a fresh snapshot; repeated subscribe does NOT re-snapshot.

@@ -123,3 +123,20 @@ export function measureBookCoverage(samples,{ticker,startAt,endAt,maxGapMs=5000}
   reliable:gapCount===0&&unique.length>=2,
   note:'Coverage proxy based on receipt cadence, not proof of unchanged exchange book or execution'};
 }
+
+/*
+ * A 15-second sampled book archive is NOT a frame-by-frame source.
+ * Score its own expected observation cadence, separately from WebSocket
+ * sequence continuity and actual live connection diagnostics.
+ * A healthy cadence alone can never certify a replay-complete order book.
+ */
+export function measureSampledBookCadence(samples,{
+ ticker,startAt,endAt,maxArchiveGapMs=30000}={}){
+ const result=measureBookCoverage(samples,{
+  ticker,startAt,endAt,maxGapMs:maxArchiveGapMs});
+ return {...result,source:'V4_15S_SAMPLED_BOOK_ARCHIVE',
+  expectedHeartbeatMs:15000,maxArchiveGapMs,
+  sampledCadenceOkay:result.gapsOverThreshold===0&&result.receivedSamples>=2,
+  sequenceContinuityVerified:false,replayComplete:false,reliable:false,
+  note:'Sampled price/heartbeat cadence only. A good cadence is not proof of all book deltas or executable fills.'};
+}

@@ -4,6 +4,8 @@ name = "eth-15-scout-cloud-v3test"
 main = "src/worker.js"
 compatibility_date = "2026-11-18"
 workers_dev = false
+# Preserve unrelated V3 settings/secrets when disabling V3 paper entries.
+keep_vars = true
 
 [vars]
 MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"

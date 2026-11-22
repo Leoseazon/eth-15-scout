@@ -1,0 +1,58 @@
+# EXPLICIT PAPER-ONLY RELEASE. Not the default V4 research deployment.
+# Same separate V4 DO class and Worker; NEVER use for V3. No order API exists.
+# Intended only after full CI and owner-authorized on-screen deployment.
+# Restore disabled mode via: wrangler deploy --config wrangler.v4test.toml
+
+# Separate, authorized V4 experimental PAPER simulator; read-only market APIs; NO real orders.
+name = "eth-15-scout-cloud-v4test"
+main = "v4/src/worker.js"
+compatibility_date = "2026-11-18"
+# Preserve V4-only dashboard variables, including the user-enabled streaming flag.
+# Newly created Workers remain disabled unless the flag is explicitly set.
+keep_vars = true
+workers_dev = false
+preview_urls = false # keep private version/preview URLs disabled
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+SCOUT_V4_PAPER_MODE = "enabled"
+# Separate explicit control for isolated experimental settlement-first PAPER simulation.
+# The main v4test.toml remains DISARMED; this opt-in release is explicit.
+V4_SETTLEMENT_FIRST_EXPERIMENT = "true"
+# Dashboard-approved V4-only read-only market-data collection.
+# This captures read-only market data and is distinct from the explicitly enabled PAPER simulator.
+V4_STREAM_CAPTURE_ENABLED = "true"
+# Direct official Kalshi REST depth: strictly historical/read-only, NOT live WS.
+# Uses a new V4-only SQLite table and never drives entries, fills, or P&L.
+V4_REST_BOOK_CAPTURE_ENABLED = "true"
+# Optional supplemental official index/public-trades research. Requires entitlement and
+# data-retention approval before owner enables. Never affects V4 paper state.
+# Requires written authorization covering purpose, retention and any model use.
+# A live WebSocket success is not a license to archive or train.
+V4_DATA_RESEARCH_AUTHORIZED = "false"
+V4_RESEARCH_STREAM_ENABLED = "false"
+# Opt-in only after observing Cloudflare DO write costs and obtaining market-data
+# retention permission. Captures every valid WS snapshot/delta for replay.
+V4_FULL_BOOK_ARCHIVE_ENABLED = "false"
+# Six-hour-cached signed GET via existing V4 read-only API credentials. 50 read tokens.
+V4_CF_ACCESS_PROBE_ENABLED = "true"
+# One-shot, non-archiving ETHUSD_RTI WebSocket entitlement check on a separate DO.
+# One-shot live index diagnostic only; permanent research streaming remains OFF.
+V4_CF_WS_PROBE_ENABLED = "true"
+
+[observability.logs]
+enabled = true
+
+[observability.issues]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "SCOUT_V4"
+class_name = "ScoutEngineV4"
+
+[[migrations]]
+tag = "v4-new-class-v1"
+new_sqlite_classes = ["ScoutEngineV4"]
+
+[triggers]
+crons = ["* * * * *"]

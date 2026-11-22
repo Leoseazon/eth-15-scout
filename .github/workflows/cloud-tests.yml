@@ -34,6 +34,20 @@ jobs:
       - run: node --check v4/src/kalshi-ws-transport.js
       - run: node --check v4/src/kalshi-network-diagnostic.js
       - run: node --check v4/src/kalshi-rest-orderbook.js
+      - run: node --check v4/src/research-sources.js
+      - run: node --check v4/src/research-socket.js
+      - run: node --check v4/src/full-book-archive.js
+      - run: node --check v4/src/cf-access.js
+      - run: node --check v4/src/cf-ws-probe.js
+      - run: node --check v4/src/storage-inventory.js
+      - run: node --check v4/src/history-90d-audit.js
+      - run: node --check v4/src/context-opportunity.js
+      - run: node --check v4/src/price-value-research.js
+      - run: node --check v4/src/settlement-first.js
+      - run: node --check v4/src/buy-confidence.js
+      - run: node --check v4/src/settlement-first-paper.js
+      - run: node --check v4/src/settlement-predictions.js
+      - run: node --check v4/src/settlement-replay.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
@@ -42,5 +56,25 @@ jobs:
       - run: node --check ../v4/stop-postmortem.js
       - run: node --check v4/src/v2.js
       - run: node --check ../v4/app.js
+      - run: node --check ../v4/cf-ws-probe-ui.js
+      - run: node --check ../v4/storage-inventory-ui.js
+      - run: node --check ../v4/settlement-paper-ui.js
+      - run: node --check ../v4/confidence-ui.js
+      - run: node --check ../v4/health-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
+      - run: npx wrangler deploy --config wrangler.v4paper.toml --dry-run --outdir .cloudflare-build-v4paper
+      - name: Parse Windows single-paste V4 deployment runner
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/deploy-v4-contextual-paper.ps1', [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) {
+            $parseErrors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
+      - name: Audit public 90-day KXETH15M round availability (aggregate only)
+        continue-on-error: true
+        timeout-minutes: 4
+        run: node v4/tools/public-90day-audit.mjs

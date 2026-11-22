@@ -15,13 +15,26 @@ import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttp
 import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
 import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
+import {KalshiResearchSocket} from './research-socket.js';
+import {checkCFValuesAccess} from './cf-access.js';
+import {verifyCFWebSocket} from './cf-ws-probe.js';
+import {getV4StorageInventory} from './storage-inventory.js';
+import {settlementFirstPaperStep} from './settlement-first-paper.js';
+import {ensureSettlementPredictions,appendSettlementPrediction,
+ reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
+import {SETTLEMENT_FIRST_VERSION} from './settlement-first.js';
+import {scoreHeldConfidence} from './buy-confidence.js';
+import {ensureFullBookArchive,appendFullBookFrame,
+ fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
+import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
+ appendResearchFeedEvent,independentResearchStatus,independentResearchPage} from './research-sources.js';
 
 // Poll every 15 seconds (REST data only; not a tick-level stream).
 // Re-evaluation still requires fully closed 1m/5m Kraken candles.
 const INTERVAL_MS=15000;
 const REST_BOOK_INTERVAL_MS=15000;
 const REST_BOOK_RETRY_AFTER_429_MS=120000;
-const RELEASE_TAG='V4-FOUNDATION-20261121';
+const RELEASE_TAG='V4-CONTEXTUAL-VALUE-20261122';
 const PHASE1_TAG='V3-PHASE1-FEED-RELIABILITY-20261120';
 const SOFT_GUARD_HOTFIX_TAG='V4-SHADOW-FOUNDATION-SOFT-GUARD-BYPASS-20261120';
 const PRE_RELEASE_NOTED_AT='2026-11-19T23:40:00-06:00'; // Approximate, user-supplied change milestone.
@@ -90,6 +103,26 @@ export class ScoutEngineV4 extends DurableObject {
     ensureResearchJournal(this.ctx.storage.sql);
     ensureStreamAudit(this.ctx.storage.sql);
     ensureRestBookArchive(this.ctx.storage.sql);
+    ensureFullBookArchive(this.ctx.storage.sql);
+    ensureIndependentResearch(this.ctx.storage.sql);
+    ensureSettlementPredictions(this.ctx.storage.sql);
+    // Two explicit deployment switches; no code path contains a real order API.
+    this.paperExperimentAllowed=env.SCOUT_V4_PAPER_MODE==='enabled' &&
+      env.V4_SETTLEMENT_FIRST_EXPERIMENT==='true';
+    this.researchStream=null;
+    // Formal permission gate is separate from each capture switch. Rest/pass-through
+    // and WebSocket entitlement alone do NOT permit bulk retention/model training.
+    this.dataResearchAuthorized=env.V4_DATA_RESEARCH_AUTHORIZED==='true';
+    this.fullBookRecordingEnabled=this.dataResearchAuthorized&&
+      env.V4_FULL_BOOK_ARCHIVE_ENABLED==='true';
+    if(this.dataResearchAuthorized&&env.V4_RESEARCH_STREAM_ENABLED==='true'){
+      const sql=this.ctx.storage.sql;
+      this.researchStream=new KalshiResearchSocket({
+        onCF:v=>appendCFValue(sql,v),
+        onTrade:v=>appendPublicTrade(sql,v),
+        onEvent:(kind,at)=>appendResearchFeedEvent(sql,kind,at)
+      });
+    }
     this.restBookCaptureEnabled=env.V4_REST_BOOK_CAPTURE_ENABLED==='true';
     // Zero connections unless the NEW V4-only feature flag is explicitly set.
     // The stream requires a dedicated READ-only Kalshi key, not a trading key.
@@ -98,6 +131,8 @@ export class ScoutEngineV4 extends DurableObject {
     if(env.V4_STREAM_CAPTURE_ENABLED==='true'){
       this.stream=new KalshiReadOnlySocket({
         onObservation:sampledStreamRecorder(this.ctx.storage.sql),
+        onRawFrame:this.fullBookRecordingEnabled?
+          ({packet,receivedAt})=>appendFullBookFrame(this.ctx.storage.sql,packet,receivedAt):()=>{},
         onFault:reason=>{
           const at=Date.now();
           // Include every distinct fault and repeat faults at most once/30sec.
@@ -117,7 +152,7 @@ export class ScoutEngineV4 extends DurableObject {
     // Disabled/missing flag ALWAYS overrides old persisted armed state.
     // 'enabled' authorizes PAPER simulated entries only; no broker API exists.
     // Hard disarm: V4 is shadow-only even if a config variable is enabled.
-    s.armed=false;
+    s.armed=this.paperExperimentAllowed&&s.monitoring;
     s.trades=this.ctx.storage.sql.exec('SELECT data FROM trades ORDER BY exit_at DESC LIMIT 130')
       .toArray().map(r=>JSON.parse(r.data));
     this.loadedTradeTickers=new Set(s.trades.map(t=>t.ticker));
@@ -125,7 +160,11 @@ export class ScoutEngineV4 extends DurableObject {
   }
   save(s,meta={}){
     const sql=this.ctx.storage.sql;
+    const forecastToCommit=s.pendingPredictionToCommit||null;
+    // Prediction INSERT and synthetic bank/cash state must commit or roll back
+    // together; an orphan forecast or unrecorded cash debit is unacceptable.
     this.ctx.storage.transactionSync(()=>{
+      if(forecastToCommit)appendSettlementPrediction(sql,forecastToCommit);
       for(const t of s.trades) if(t.ticker&&Number.isFinite(t.exitAt)&&!this.loadedTradeTickers?.has(t.ticker))
         sql.exec('INSERT OR IGNORE INTO trades(ticker,exit_at,data) VALUES(?,?,?)',
           t.ticker,t.exitAt,JSON.stringify(t));
@@ -139,6 +178,7 @@ export class ScoutEngineV4 extends DurableObject {
       }
       const runtime={...s,...meta,trades:[],decisions:[],events:[],
         blocked:s.blocked.slice(-200)};
+      delete runtime.pendingPredictionToCommit;
       // Read-only production safety check from Data Studio, no public URL required.
       sql.exec(`INSERT INTO runtime_status(id,armed,monitoring,observed_at,last_market,last_error)
         VALUES(1,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
@@ -148,6 +188,7 @@ export class ScoutEngineV4 extends DurableObject {
         meta.lastTick||Date.now(),meta.lastMarket??null,meta.lastError??null);
       this.ctx.storage.kv.put('runtime',runtime);
     });
+    if(forecastToCommit)delete s.pendingPredictionToCommit;
   }
   async captureOfficialWindows(now=Date.now()){
     // Independent archival poll. Failure never changes strategy/entries/P&L.
@@ -186,11 +227,38 @@ export class ScoutEngineV4 extends DurableObject {
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
-    // Separate V4 cohort; no inherited V3 hotfix/soft-guard transition markers.
-    this.ctx.storage.sql.exec(
-      'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
-      RELEASE_TAG,now,'not applicable',
-      'V4 shadow foundation with V3 baseline logic; paper entries hard-disabled');
+    // FAST PAPER EXIT PATH (BEFORE Kraken/market-proxy requests).
+    // A delayed Kraken candle or nonessential regime fetch must NOT delay
+    // protection of an existing V4 paper position with a fresh Kalshi WS bid.
+    // Reuses the original persisted ticker/closeTime, and never fabricates a
+    // sale if the stream is stale, disconnected or short of displayed depth.
+    if(s.open?.strategy==='V4_SETTLEMENT_FIRST'){
+      const earlier=s.open;
+      const fastBook=this.stream?.status(Date.now())?.quote||null;
+      try{
+        const exit=settlementFirstPaperStep(s,{
+          market:{ticker:earlier.ticker,close_time:earlier.closeTime},
+          book:fastBook,now:Date.now()
+        });
+        if(exit.status==='PAPER_SELL'||s.open===null)
+          this.save(s,{lastTick:Date.now(),lastMarket:earlier.ticker,
+            lastNotice:exit.notice||'V4 paper position exit evaluated',
+            lastError:null});
+      }catch{
+        // The full tick will retry exit assessment with validated sources.
+        // No guessed exit or P&L is written on fast-path error.
+      }
+    }
+    // The release marker is ONLY the first engine tick under the explicit
+    // V4 contextual paper configuration. It is NOT a trade, successful
+    // settlement, healthy feed, or evidence that the GitHub website was
+    // published. Preserve old release markers for historical audit.
+    if(this.paperExperimentAllowed){
+      this.ctx.storage.sql.exec(
+        'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+        RELEASE_TAG,now,'not applicable',
+        'V4 target-centered contextual paper model activated; first runtime tick only');
+    }
     const engine=makeV2Engine(s,{softGuardEnabled:true});
     let market=null,one=null,m5=null,error=null,fresh=false;
     let fiveCandles=[],oneCandles=[],tickerSpot=null;
@@ -282,14 +350,131 @@ export class ScoutEngineV4 extends DurableObject {
     }
     context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
-    try{report=engine.step(market,one,m5,fresh,context)}
-    catch(e){error='V2 evaluation failed: '+safeErr(e)}
-    // V4 candidate scanning is read-only: a qualifying heuristic NEVER arms
-    // or purchases a paper contract, even when markets remain uncalibrated.
+    // Disarming new entries must NOT switch an existing V4 position to the
+    // unrelated V3-derived close/stop policy. Manage it with its original
+    // V4 paper exit rules until it is safely settled.
+    const continueV4Position=s.open?.strategy==='V4_SETTLEMENT_FIRST';
+    if(this.paperExperimentAllowed||continueV4Position){
+      let index=null;
+      // Check book locally before making a signed official-index REST call:
+      // this avoids 4 requests/minute when WS is disconnected or stale.
+      const book=this.stream?.status(Date.now())?.quote||null;
+      const bookReady=book?.ticker===market?.ticker&&
+        book?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
+        book.valid===true&&book.fresh===true&&
+        Number.isSafeInteger(book.receivedAt)&&
+        Date.now()-book.receivedAt<=5000;
+      const remainingForEntry=market?
+        (Date.parse(market.close_time)-Date.now())/1000:null;
+      const marketReady=!!market&&Number.isFinite(remainingForEntry)&&
+        remainingForEntry>90&&remainingForEntry<=750;
+      const entrySourcesReady=s.armed&&!s.open&&marketReady&&
+        !!one&&!!m5&&!!context.three&&!!context.five&&
+        !s.blocked.includes(market.ticker)&&bookReady;
+      const confidenceSourcesReady=s.open?.strategy==='V4_SETTLEMENT_FIRST'&&
+        market?.ticker===s.open.ticker&&!!one&&!!m5&&
+        !!context.three&&!!context.five&&bookReady;
+      // The latest-value REST request is also a source for live position
+      // confidence. It does NOT change the entry or exit decision rules.
+      if(entrySourcesReady||confidenceSourcesReady){
+        const verified=await checkCFValuesAccess({
+          keyId:this.env.KALSHI_V4_READ_KEY_ID,
+          privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
+          now:Date.now()
+        });
+        s.lastOfficialIndexCheck={
+          at:Date.now(),state:verified.state,
+          fresh:verified.state==='HTTP_200_VALID_ETH_INDEX'&&
+            Number.isSafeInteger(verified.sourceAt)&&
+            Date.now()-verified.sourceAt<=15000,
+          sourceAgeMs:Number.isSafeInteger(verified.sourceAt)?
+            Date.now()-verified.sourceAt:null
+        };
+        if(s.lastOfficialIndexCheck.fresh)index=verified;
+      }
+      // REST verification may take seconds; re-read the live socket NOW,
+      // otherwise the entry simulator might evaluate a stale book snapshot.
+      const decisionBook=this.stream?.status(Date.now())?.quote||null;
+      const decisionBookFresh=decisionBook?.ticker===market?.ticker&&
+        decisionBook?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
+        decisionBook.valid===true&&decisionBook.fresh===true&&
+        Number.isSafeInteger(decisionBook.receivedAt)&&
+        Date.now()-decisionBook.receivedAt<=5000;
+      if(!entrySourcesReady&&!s.open){
+        s.lastOfficialIndexCheck={at:Date.now(),
+          state:bookReady?'SKIPPED_OTHER_ENTRY_PREREQUISITE':'SKIPPED_NO_FRESH_WS_BOOK',
+          fresh:false,sourceAgeMs:null};
+      }
+      s.lastPaperFeedHealth={
+        at:Date.now(),marketTicker:market?.ticker||null,
+        marketProxyValid:feedChecks.kalshi?.ok===true,
+        krakenOneMinuteFresh:!!one,
+        krakenFiveMinuteFresh:!!m5&&fresh,
+        krakenThreeMinuteFresh:!!context.three,
+        kalshiWsConnected:this.stream?.status(Date.now())?.connected===true,
+        kalshiWsBookFresh:decisionBookFresh,
+        kalshiBookAgeMs:Number.isSafeInteger(decisionBook?.receivedAt)?
+          Date.now()-decisionBook.receivedAt:null,
+        officialIndexLastState:s.lastOfficialIndexCheck?.state||'NOT_CHECKED',
+        officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
+        liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
+      };
+      try{
+        report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
+          book:decisionBook,now:Date.now(),
+          onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
+      }catch{
+        // Fail closed and send a sanitized code to the existing red health strip.
+        error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
+        report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+      // Read-only observation: confidence is computed AFTER the normal paper
+      // step so it cannot veto buys, override 96c/stop exits or alter cash.
+      if(s.open?.strategy==='V4_SETTLEMENT_FIRST'){
+        const pos=s.open;
+        const checkedAt=Date.now();
+        let live;
+        try{
+          live=scoreHeldConfidence({position:pos,index,one,five:m5,
+            context,book:decisionBook,now:checkedAt});
+        }catch{
+          live={status:'UNAVAILABLE',reason:'CONFIDENCE_EVALUATION_ERROR',
+            value:null,calibrated:false,winProbability:null};
+        }
+        const previous=Array.isArray(pos.confidenceHistory)?
+          pos.confidenceHistory.at(-1):null;
+        if(live.status==='CURRENT'&&Number.isInteger(live.value)){
+          live.deltaFromEntry=Number.isInteger(pos.entryConfidence?.value)?
+            live.value-pos.entryConfidence.value:null;
+          live.deltaFromPrevious=Number.isInteger(previous?.value)?
+            live.value-previous.value:null;
+          if(!Array.isArray(pos.confidenceHistory))pos.confidenceHistory=[];
+          if(!previous||previous.value!==live.value||
+             checkedAt-previous.at>=60000){
+            pos.confidenceHistory.push({at:checkedAt,value:live.value});
+            pos.confidenceHistory=pos.confidenceHistory.slice(-60);
+          }
+        }
+        pos.liveConfidence=live;
+      }
+    }else{
+      try{report=engine.step(market,one,m5,fresh,context)}
+      catch(e){error='V2 evaluation failed: '+safeErr(e)}
+    }
+    // Exactly ONE active decision philosophy per V4 tick. Do not run the
+    // legacy 7-check candidate probe during the settlement-first experiment.
     let shadowProbe=null;
-    try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
-    catch(e){shadowProbe={status:'UNAVAILABLE',reason:'Shadow probe failure',
-      candidate:null,calibratedProbability:null,executableFillVerified:false}}
+    if(this.paperExperimentAllowed||continueV4Position){
+      shadowProbe={version:SETTLEMENT_FIRST_VERSION,
+        status:report.status||'WATCH',reason:report.notice||'',
+        candidate:report.candidate||null,
+        decision:s.lastV4SettlementDecision||null,
+        calibratedProbability:null,executableFillVerified:false};
+    }else{
+      try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
+      catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
+        candidate:null,calibratedProbability:null,executableFillVerified:false}}
+    }
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
     // Chart reuses the engine's successfully fetched reference candles.
@@ -303,7 +488,11 @@ export class ScoutEngineV4 extends DurableObject {
         contract:{ticker:market.ticker,close_time:market.close_time,
           floor_strike:market.floor_strike,
           yes_ask_dollars:market.yes_ask_dollars,
-          no_ask_dollars:market.no_ask_dollars},
+          no_ask_dollars:market.no_ask_dollars,
+          yes_bid_dollars:market.yes_bid_dollars,
+          no_bid_dollars:market.no_bid_dollars,
+          quoteObservedAt:s.lastQuoteRetrievedAt,
+          quoteSource:'Kalshi REST proxy receipt time; may be cached; V4 PAPER fills use authenticated WS book'},
         freshness:{one:oneCandles.length>=25,three:!!context.three,five:true},
         primary:{five:viewStructure(context.five),three:viewStructure(context.three),
           ema21:finite(m5.e21),ema50:finite(m5.e50),vwap:finite(m5.vwap),
@@ -323,8 +512,16 @@ export class ScoutEngineV4 extends DurableObject {
     // The read-only viewer sees this tick without waiting for archival IO.
     s.lastMarketDataAt=fresh&&one&&context.three&&market?now:null;
     s.lastDecisionProcessingMs=Date.now()-now;
-    // V4 shadow evidence journal: log every evaluated tick, including no-market,
-    // feed degradation, WATCH and explicit engine messages. No paper order implied.
+    // Commit the official-target prediction, synthetic bankroll and runtime
+    // together FIRST. If that transaction fails, no "PAPER BUY" research
+    // record is allowed to claim a simulated purchase succeeded.
+    const tickMeta={lastTick:Date.now(),lastError:error,
+      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
+      lastFeedOkay:!!(fresh&&one&&context.three&&market)};
+    this.save(s,tickMeta);
+    // Auxiliary research logs are intentionally NON-CRITICAL. Save the latest
+    // research receipt afterward; a failed auxiliary write cannot roll back
+    // an already committed paper bankroll and unique forecast.
     try{
       const research=recordResearchTick(this.ctx.storage.sql,{
         startedAt:now,finishedAt:Date.now(),market,
@@ -335,12 +532,8 @@ export class ScoutEngineV4 extends DurableObject {
       s.lastResearchTickAt=research.observedAt;
       s.lastResearchError=null;
     }catch(e){
-      // Preserve the live baseline behavior even if research SQLite fails.
       s.lastResearchError=safeErr(e);
     }
-    const tickMeta={lastTick:Date.now(),lastError:error,
-      lastMarket:market?.ticker||null,lastNotice:report.notice||'',
-      lastFeedOkay:!!(fresh&&one&&context.three&&market)};
     this.save(s,tickMeta);
     // Archiving is noncritical. It does not change the strategy or P&L.
     if(now-(s.lastWindowScanAt||0)>=SCAN_INTERVAL_MS){
@@ -358,6 +551,8 @@ export class ScoutEngineV4 extends DurableObject {
     // Only official finalized outcomes resolve paper holdings.
     const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
     if(settled>0)this.save(s,tickMeta);
+    try{reconcileSettlementPredictions(this.ctx.storage.sql,Date.now())}
+    catch{ /* Official outcome scoring remains unresolved; never assume success. */ }
     // Research stream always follows critical paper accounting and journal IO.
     // NO stream data is fed into the existing V3-derived entry/exit engine.
     if(this.stream){
@@ -420,6 +615,22 @@ export class ScoutEngineV4 extends DurableObject {
         appendStreamEvent(this.ctx.storage.sql,{
           kind:'STREAM_RESEARCH_ERROR',ticker:market?.ticker||null,
           at:Date.now(),detail:'Isolated stream path unavailable'});
+      }
+    }
+    // Supplemental CF Benchmarks and Kalshi public-trades research only.
+    // Never used for this tick's baseline signal or any simulated fill.
+    if(this.researchStream){
+      try{
+        this.researchStream.watchdog(Date.now());
+        const keyId=this.env.KALSHI_V4_READ_KEY_ID;
+        const privatePem=this.env.KALSHI_V4_READ_PRIVATE_KEY;
+        if(market&&typeof keyId==='string'&&typeof privatePem==='string')
+          await this.researchStream.ensure(market.ticker,{keyId,privatePem},Date.now());
+        else if(market&&(!keyId||!privatePem))
+          appendResearchFeedEvent(this.ctx.storage.sql,'RESEARCH_STREAM_CONFIG_MISSING');
+      }catch{
+        // Research failure never changes the V3-derived shadow evaluation.
+        try{appendResearchFeedEvent(this.ctx.storage.sql,'CF_CONNECT_ERROR')}catch{}
       }
     }
     // Isolated official REST depth archive; no influence on engine, paper, or P&L.
@@ -488,7 +699,13 @@ export class ScoutEngineV4 extends DurableObject {
         'SELECT (SELECT count(*) FROM trades) as trades,(SELECT count(*) FROM decisions) as passes'
       ).toArray()[0];
       return json({monitoring:s.monitoring,armed:s.armed,paperOnly:true,
-        paperMode:'disabled',shadowOnly:true,
+        paperMode:this.paperExperimentAllowed?'enabled':'disabled',
+        shadowOnly:!this.paperExperimentAllowed,
+        continuingPreDisarmV4Position:s.open?.strategy==='V4_SETTLEMENT_FIRST'&&!this.paperExperimentAllowed,
+        settlementPaperAllowed:this.paperExperimentAllowed,
+        settlementModelVersion:SETTLEMENT_FIRST_VERSION,
+        latestSettlementDecision:s.lastV4SettlementDecision||null,
+        settlementPredictionStats:settlementPredictionStats(this.ctx.storage.sql),
         initial:s.initial,cash:s.cash,
         realized:s.realized,risk:s.risk,open:s.open,pending:s.pending.length,
         ...counts,lastTick:s.lastTick||null,lastError:s.lastError||null,
@@ -504,11 +721,19 @@ export class ScoutEngineV4 extends DurableObject {
         streamArchive:latestStreamStatus(this.ctx.storage.sql),
         restBookCaptureEnabled:this.restBookCaptureEnabled,
         restBookArchive:latestRestBookStatus(this.ctx.storage.sql),
+        supplementaryResearchEnabled:!!this.researchStream,
+        supplementaryResearchConnection:this.researchStream?this.researchStream.status():
+          {connected:false,reason:'V4 research feed disabled pending validation'},
+        supplementaryResearch:independentResearchStatus(this.ctx.storage.sql),
+        fullBookArchiveEnabled:this.fullBookRecordingEnabled,
+        additionalDataRecordingAuthorized:this.dataResearchAuthorized,
+        additionalDataRecordingBlocked:!this.dataResearchAuthorized,
+        fullBookArchive:fullBookArchiveStatus(this.ctx.storage.sql),
         lastRestBookAt:s.lastRestBookAt||null,
         lastRestBookReceivedAt:s.lastRestBookReceivedAt||null,
         lastRestBookStatus:s.lastRestBookStatus||'NOT_CAPTURED',
         lastRestBookError:s.lastRestBookError||null,
-        policyVersion:'V4-SHADOW-FOUNDATION',
+        policyVersion:this.paperExperimentAllowed?SETTLEMENT_FIRST_VERSION:'V4-SHADOW-FOUNDATION',
         dailyRisk:s.dailyRisk||null,
         dailyRegime:s.dailyRegime||null,
         recentTrades:s.trades.slice(0,10),
@@ -519,7 +744,11 @@ export class ScoutEngineV4 extends DurableObject {
         marketSnapshot:s.marketSnapshot||null,
         settlementPhase:settlementClockPhase(
           s.marketSnapshot?.contract?.close_time||s.open?.closeTime||'',Date.now()),
-        officialSettlementIndexAvailable:false,
+        officialSettlementIndexAvailable:!!s.lastOfficialIndexCheck?.fresh&&
+          Number.isSafeInteger(s.lastOfficialIndexCheck.at)&&
+          Date.now()-s.lastOfficialIndexCheck.at<=30000,
+        officialIndexFeedCheck:s.lastOfficialIndexCheck||{state:'NOT_YET_CHECKED'},
+        paperFeedHealth:s.lastPaperFeedHealth||null,
         releaseMarkers:this.ctx.storage.sql.exec(
           'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
@@ -610,6 +839,74 @@ export class ScoutEngineV4 extends DurableObject {
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
     }
+    if(path==='/v1/storage-inventory'&&req.method==='GET'){
+      // Explicit authenticated viewer request only; no background inventory scans.
+      // Returns table counts/age/size only, never licensed raw observations.
+      try{return json(getV4StorageInventory(this.ctx.storage.sql))}
+      catch{return json({error:'V4 storage inventory unavailable'},503)}
+    }
+    if(path==='/v1/cf-ws-verify'&&req.method==='GET'){
+      // Called by the authenticated viewer on a SEPARATE named Durable Object,
+      // never the V4 recording/decision instance. Does not record market values.
+      if(this.env.V4_CF_WS_PROBE_ENABLED!=='true')
+        return json({state:'WS_PROBE_DISABLED',websocketVerified:false,archived:false});
+      const now=Date.now(),last=this.ctx.storage.kv.get('cf-ws-verification-last-at')||0;
+      if(now-last<90000)
+        return json({state:'WS_PROBE_COOLDOWN',nextEligibleAt:last+90000,
+          websocketVerified:false,archived:false});
+      this.ctx.storage.kv.put('cf-ws-verification-last-at',now);
+      let result;
+      try{
+        result=await verifyCFWebSocket({
+          keyId:this.env.KALSHI_V4_READ_KEY_ID,
+          privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
+          nowFn:Date.now,timeoutMs:10000
+        });
+      }catch{result={state:'WS_PROBE_ERROR',websocketVerified:false,archived:false}}
+      return json({...result,checkedAt:Date.now(),readOnly:true,paperOnly:true});
+    }
+    if(path==='/v1/cf-access'&&req.method==='GET'){
+      if(this.env.V4_CF_ACCESS_PROBE_ENABLED!=='true')
+        return json({state:'DISABLED',validValuesVerified:false,readOnly:true,paperOnly:true});
+      const now=Date.now(),cached=this.ctx.storage.kv.get('cf-access-result-v2-latest');
+      if(cached&&Number.isSafeInteger(cached.checkedAt)&&now-cached.checkedAt<(cached.validValuesVerified?6*60*60*1000:5*60*1000))
+        return json({...cached,readOnly:true,paperOnly:true,cached:true});
+      const result=await checkCFValuesAccess({
+        keyId:this.env.KALSHI_V4_READ_KEY_ID,
+        privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,now});
+      const clean={...result,checkedAt:Date.now(),source:'KALSHI_AUTHENTICATED_CF_VALUES_REST'};
+      this.ctx.storage.kv.put('cf-access-result-v2-latest',clean);
+      return json({...clean,readOnly:true,paperOnly:true,cached:false});
+    }
+    if(path==='/v1/full-book'&&req.method==='GET'){
+      const q=new URL(req.url).searchParams;
+      const limit=q.get('limit')||'40',anchor=q.get('anchor'),
+        before=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limit)||Number(limit)>100||(anchor!==null&&!valid(anchor))||
+         (before!==null&&!valid(before))||
+         (ticker!==null&&!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker)))
+        return json({error:'Invalid raw book archive request'},400);
+      try{return json(fullBookArchivePage(this.ctx.storage.sql,{
+        limit:Number(limit),anchor:anchor===null?null:Number(anchor),
+        before:before===null?null:Number(before),ticker
+      }))}catch{return json({error:'Raw book history unavailable'},400)}
+    }
+    if((path==='/v1/benchmark'||path==='/v1/public-trades')&&req.method==='GET'){
+      const q=new URL(req.url).searchParams,
+        limit=q.get('limit')||'60',anchor=q.get('anchor'),
+        before=q.get('before'),ticker=q.get('ticker');
+      const valid=v=>/^\d{1,15}$/.test(v);
+      if(!valid(limit)||Number(limit)>100||
+        (anchor!==null&&!valid(anchor))||(before!==null&&!valid(before))||
+        (ticker!==null&&!/^KXETH15M-[A-Za-z0-9-]{5,80}$/.test(ticker)))
+        return json({error:'Invalid research-source request'},400);
+      try{return json(independentResearchPage(this.ctx.storage.sql,{
+        kind:path==='/v1/benchmark'?'benchmark':'trades',
+        anchor:anchor===null?null:Number(anchor),
+        before:before===null?null:Number(before),limit:Number(limit),ticker
+      }))}catch{return json({error:'Research source page unavailable'},400)}
+    }
     if(path==='/v1/rest-book'&&req.method==='GET'){
       const q=new URL(req.url).searchParams,limitRaw=q.get('limit')||'60',
         anchorRaw=q.get('anchor'),beforeRaw=q.get('before'),ticker=q.get('ticker');
@@ -657,6 +954,7 @@ export class ScoutEngineV4 extends DurableObject {
       // Stopping V4 monitoring must also terminate the paid outbound stream.
       // This is a server-admin action; no viewer/public endpoint exposes it.
       this.stream?.stop();
+      this.researchStream?.stop();
       s.monitoring=false;s.armed=false;this.save(s);
       await this.ctx.storage.deleteAlarm();
       if(this.stream)appendStreamEvent(this.ctx.storage.sql,{

@@ -1,0 +1,43 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../../../',import.meta.url));
+const read=p=>readFileSync(root+p,'utf8');
+test('Hub no longer describes V3 8-min honey-pot milestones as current V4 release',()=>{
+ const html=read('v4/index.html'),client=read('v4/app.js'),worker=read('cloud/v4/src/worker.js');
+ assert.match(html,/CONTEXTUAL V4 · 50–100 COMPLETED PAPER TRADES/);
+ assert.match(html,/FIRST CONTEXTUAL PAPER ENGINE TICK/);
+ assert.match(html,/OFFICIAL SETTLEMENT PREDICTIONS VERIFIED/);
+ assert.doesNotMatch(html,/NEW 8-MIN \/ HONEY-POT RULE START|PRIOR REVISED RULE START/);
+ assert.doesNotMatch(client,/V4-80C-EIGHTMIN-20261120|V4-TIME40-6M-20261120/);
+ assert.match(client,/V4-CONTEXTUAL-VALUE-20261122/);
+ assert.match(client,/contextualCohort/);
+ assert.match(client,/settlementPredictionStats/);
+ assert.match(worker,/const RELEASE_TAG='V4-CONTEXTUAL-VALUE-20261122'/);
+ assert.match(worker,/if\(this.paperExperimentAllowed\)\{/);
+ assert.doesNotMatch(worker,/V4 shadow foundation with V3 baseline logic; paper entries hard-disabled/);
+});
+test('One-paste script only publishes two V4 UI files and pauses V3 before V4 release',()=>{
+ const x=read('cloud/scripts/deploy-v4-contextual-paper.ps1');
+ assert.equal((x.match(/^function Must\(/gm)||[]).length,1);
+ assert.equal((x.match(/^\} finally \{/gm)||[]).length,1);
+ assert.match(x,/ExpectedMainSha/);
+ assert.match(x,/rev-parse FETCH_HEAD/);
+ assert.match(x,/Hub publish must change exactly the two audited files/);
+ assert.match(x,/worktree','add','--detach/);
+ assert.match(x,/git' @\('-C',\$siteFolder,'push','origin','HEAD:refs\/heads\/main'\)/);
+ assert.doesNotMatch(x,/git\s+push\s+--force|--force-with-lease|HEAD:refs\/heads\/v3/);
+ assert.ok(x.indexOf("'Deploy disabled V3 entry flag'")<x.indexOf("'Publish only V4 Update Hub files'"));
+ assert.ok(x.indexOf("'Publish only V4 Update Hub files'")<x.indexOf("'Deploy experimental V4 paper engine'"));
+ assert.match(x,/SCOUT_V4_PAPER_MODE/);
+ assert.match(x,/SCOUT_PAPER_MODE/);
+});
+test('Observation cohort includes both early sales and finalized settlements and is distinct from target-side accuracy',()=>{
+ const ledger=read('cloud/v4/src/paper-ledger.js');
+ assert.match(ledger,/contextualCohort:cohort/);
+ assert.match(ledger,/V4-TARGET-CONTEXTUAL-VALUE-20261122/);
+ assert.match(ledger,/OFFICIAL SETTLEMENT/);
+ assert.match(ledger,/EARLY SALE/);
+ assert.match(read('v4/app.js'),/official results/);
+});

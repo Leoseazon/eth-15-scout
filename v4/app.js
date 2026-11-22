@@ -7,7 +7,11 @@ const JOURNAL_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/jou
 const RESEARCH_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/research';
 const QUOTE_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/quote-archive';
 const REST_BOOK_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/rest-book';
+const CF_ACCESS_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/cf-access';
 const KEY='eth15scout:v4:login-session';
+// Source-of-truth V4 contextual BUY/SELL engine version. Runtime must report
+// this same version; loading the static website alone proves no deployment.
+const EXPECTED_CONTEXTUAL_MODEL='V4-TARGET-CONTEXTUAL-VALUE-20261122';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
 const money=(v,sign=false)=>n(v)===null?'—':(sign&&v>0?'+':'')+
@@ -54,8 +58,11 @@ function reset(message='You have signed out. Use your same username and password
  researchState={ready:false,anchor:null,offset:0,rows:[],anchorTotal:0,currentTotal:0};
  try{sessionStorage.removeItem(KEY);localStorage.removeItem(KEY)}catch{}
  connectionVisible(true);txt('sync-label','Not connected');txt('updated-label','No data loaded');
+ txt('v4-release-verification','Contextual V4 release not verified');
+ txt('v4-official-rti-gap','Official index / target gap not verified');
  txt('mode-badge','Disconnected');cls('mode-badge','neutral');
  connectMessage(message);
+ document.dispatchEvent(new CustomEvent('v4:dashboard-reset'));
 }
 function sanitizeErr(response){
  if(response.status===401)return 'Your session expired. Please sign in again using the same username and password.';
@@ -110,6 +117,7 @@ async function load(){
   txt('sync-label','Connection issue');
   if(!lastPayload)connectionVisible(true);
   connectMessage(msg,true);
+  document.dispatchEvent(new CustomEvent('v4:dashboard-error'));
   if(lastPayload)txt('updated-label','Last successful update '+ago(lastPayload.receivedAt)+' · retrying');
  }finally{busy=false}
 }
@@ -139,30 +147,47 @@ function latestPaperExecution(data){
  return candidates[0]||null;
 }
 function renderObservationCohort(data){
- const markers=Array.isArray(data.activity?.releaseMarkers)?data.activity.releaseMarkers:[];
- const original=markers.find(x=>x.tag==='V4-OBSERVATION-50-100-20261119');
- const revised=markers.find(x=>x.tag==='V4-TIME40-6M-20261120');
- const latest=markers.find(x=>x.tag==='V4-80C-EIGHTMIN-20261120');
- const first=Number(original?.first_engine_tick_at);
- const prior=Number(revised?.first_engine_tick_at);
- const current=Number(latest?.first_engine_tick_at);
- const date=x=>new Date(x).toLocaleString('en-US',{timeZone:'America/Chicago',
-  month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' CT';
- txt('release-first-tick',Number.isFinite(first)&&first>0?date(first):'Awaiting original release');
- txt('revised-first-tick',Number.isFinite(prior)&&prior>0?date(prior):'Awaiting prior revision');
- txt('latest-first-tick',Number.isFinite(current)&&current>0?date(current):
-   'Awaiting 8-min and honey-pot rule deployment');
- const feedTick=Number(markers.find(x=>x.tag==='V4-PHASE1-FEED-RELIABILITY-20261120')?.first_engine_tick_at);
- txt('feed-first-tick',Number.isFinite(feedTick)&&feedTick>0?date(feedTick):'Awaiting patch marker');
- const stats=data.status?.paperResults||{};
- const nLatest=stats.latestCohort;
- const nPrior=stats.revisedCohort;
- txt('observation-progress',Number.isFinite(nLatest)&&current>0?
-  nLatest+' / 50–100 new-rule early paper exits · earlier trades separate':
-  Number.isFinite(nPrior)&&prior>0?
-   nPrior+' prior-rule early exits · new build not yet live':
-   'Not started · awaiting confirmed strategy version');
+ const markers=Array.isArray(data.activity?.releaseMarkers)?
+  data.activity.releaseMarkers:[];
+ const first=markers.find(x=>x.tag==='V4-CONTEXTUAL-VALUE-20261122');
+ const at=Number(first?.first_engine_tick_at);
+ const s=data.status||{},stats=s.paperResults||{},
+  cohort=stats.contextualCohort||{};
+ const versionMatches=s.settlementModelVersion===EXPECTED_CONTEXTUAL_MODEL;
+ const hasMarker=Number.isFinite(at)&&at>0;
+ const active=s.monitoring===true&&s.armed===true&&
+  s.settlementPaperAllowed===true&&versionMatches;
+ const completed=Number.isFinite(cohort.completed)?cohort.completed:0;
+ txt('observation-progress',versionMatches&&hasMarker?
+   completed+' / 50–100 completed contextual V4 paper trades'+
+   (active?' · engine active':' · paper entries not active'):
+   'Not started · no matching contextual V4 release marker');
+ txt('release-first-tick',hasMarker&&versionMatches?
+   new Date(at).toLocaleString('en-US',{timeZone:'America/Chicago',
+    month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+
+    ' CT · version reported':
+   'Awaiting first contextual V4 paper engine tick');
+ const verified=Number(s.settlementPredictionStats?.verified);
+ const correct=Number(s.settlementPredictionStats?.correct);
+ txt('revised-first-tick',versionMatches&&Number.isFinite(verified)&&verified>0?
+  verified+' official results · '+(Number.isFinite(correct)?correct:0)+
+  ' correct (separate from early-sale P/L)':
+  'No finalized target-side predictions yet');
+ const decision=s.latestSettlementDecision;
+ const age=Number(decision?.at);
+ const validDecision=versionMatches&&Number.isFinite(age)&&
+  age>0&&Date.now()-age>=0&&Date.now()-age<=110000;
+ txt('latest-first-tick',validDecision?
+  String(decision?.status||'WATCH')+' · '+
+  String(decision?.side||'PASS')+' · '+ago(age):
+  'No recent matching contextual decision');
+ const feed=s.lastPaperFeedHealth||{};
+ const ready=active&&feed.liveSourcesReady===true;
+ txt('feed-first-tick',ready?
+  'Fresh Kalshi book + official RTI + closed Kraken context':
+  'Not all required live entry sources verified');
 }
+
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
  const tickAge=Date.now()-Number(s.lastTick);
@@ -200,7 +225,10 @@ function renderLiveAction(data){
  if(side)cls('live-side',side==='UP'?'success':'danger');
  txt('live-decision',desc);
  txt('live-contract-id',ticker||'No market reported');
- txt('live-freshness',isLive?'● LIVE BOT FEED':s.monitoring?'● STALE':'● OFFLINE');
+ txt('live-freshness',isLive?
+  (s.armed&&s.settlementPaperAllowed===true?'● ENGINE REPORTING · PAPER ON':
+   '● ENGINE REPORTING · PAPER OFF'):
+  s.monitoring?'● ENGINE STALE':'● ENGINE OFFLINE');
  cls('live-freshness',isLive?'success':'warning');
  txt('live-asof',s.lastTick?'Last tick '+ago(s.lastTick):'No engine timestamp');
  const quoteAt=n(s.lastQuoteRetrievedAt);
@@ -213,6 +241,16 @@ function renderLiveAction(data){
   txt('live-position-state',String(open.side||'')+' · '+String(open.qty||'—')+' contracts');
   txt('live-position-detail','Simulated entry '+ct(open.time)+' CT · '+String(open.ticker||''));
   txt('live-entry',quote(open.entry)+' / '+money(open.cost));
+  const stream=s.streamConnection||{},book=stream.quote||{};
+  const bid=open.side==='UP'?book.yesBid:book.noBid;
+  const age=Date.now()-Number(book.receivedAt);
+  const current=stream.connected===true&&stream.needResync!==true&&
+   book.ticker===open.ticker&&book.valid===true&&book.fresh===true&&
+   Number.isSafeInteger(book.receivedAt)&&age>=0&&age<=5000;
+  txt('live-exit-bid',current?quote(Number(bid?.price)):'Unavailable');
+  $('live-exit-bid').title=current?
+   'Authenticated observed book bid; not a guaranteed execution or fill.':
+   'Kalshi book is stale, unavailable or mismatched; do not use an old bid.';
   txt('live-mark-pnl',n(open.markPnl)!==null?money(open.markPnl,true):'Not quotable');
   $('live-mark-pnl').style.color=n(open.markPnl)>0?'var(--mint)':
     n(open.markPnl)<0?'var(--red)':'var(--text)';
@@ -220,6 +258,8 @@ function renderLiveAction(data){
   txt('live-position-state','NONE');
   txt('live-position-detail','No active simulated position on the bot');
   txt('live-entry','—');
+  txt('live-exit-bid','—');
+  $('live-exit-bid').title='No open paper position';
   txt('live-mark-pnl','—');
   $('live-mark-pnl').style.color='var(--text)';
  }
@@ -234,6 +274,24 @@ function render(data){
   sec=m.secondary||{},three=pr.three,five=pr.five,now=Date.now();
  const recentTick=Number.isFinite(s.lastTick)&&now-s.lastTick<110000;
  const active=s.monitoring&&recentTick;
+ const modelSource=typeof s.settlementModelVersion==='string'?
+  s.settlementModelVersion:null;
+ const codeMatches=modelSource===EXPECTED_CONTEXTUAL_MODEL;
+ const paperArmed=s.paperMode==='enabled'&&s.settlementPaperAllowed===true&&
+  s.armed===true;
+ const contextualLive=codeMatches&&active&&paperArmed;
+ const versionLabel=contextualLive?
+  'Contextual V4 engine version verified · paper enabled':
+  codeMatches&&!paperArmed?
+  'Contextual V4 code reported · paper entries disabled':
+  codeMatches?
+  'Contextual V4 version present · runtime not live':
+  modelSource?
+  'V4 engine version MISMATCH · latest contextual release not verified':
+  'Contextual V4 engine not verified';
+ txt('v4-release-verification',versionLabel);
+ $('v4-release-verification').style.color=contextualLive?'var(--mint)':
+  codeMatches&&!paperArmed?'var(--sub)':'var(--amber)';
  txt('sync-label',active?'Feed connected':s.monitoring?'Stale feed':'Offline');
  txt('metric-monitor',s.monitoring?(active?'Online':'Stale'):'Stopped');
  $('metric-monitor').style.color=active?'var(--mint)':s.monitoring?'var(--amber)':'var(--red)';
@@ -258,6 +316,19 @@ function render(data){
  const strike=c.floor_strike!==null&&c.floor_strike!==undefined&&c.floor_strike!==''?
   n(Number(c.floor_strike)):null;
  txt('contract-strike',strike!==null?money(strike):'Target unavailable');
+ const latest=s.latestSettlementDecision||{};
+ const idx=n(latest.indexValue),decisionTarget=n(latest.target),observed=n(latest.at);
+ const latestFresh=observed!==null&&now-observed>=0&&now-observed<=110000;
+ const matchingTarget=strike!==null&&decisionTarget!==null&&
+  Math.abs(strike-decisionTarget)<.0001;
+ // The official index value was valid at the engine's decision timestamp;
+ // it is NOT the final-minute settlement result or a current live tick.
+ const targetReference=active&&codeMatches&&latestFresh&&matchingTarget&&idx!==null?
+  'Official RTI at '+ago(observed)+': '+money(idx)+
+  ' · gap '+(idx>=strike?'+':'−')+money(Math.abs(idx-strike))+
+  ' vs opening target · not settlement':
+  'Official RTI vs target: no matching recent verified model snapshot';
+ txt('v4-official-rti-gap',targetReference);
  const quoteTime=n(c.quoteObservedAt)??n(m.asOf);
  const quoteFresh=quoteTime!==null&&now-quoteTime<45000&&now-quoteTime>=-5000;
  const contractCurrent=c.ticker===ticker&&Date.parse(c.close_time)>now;
@@ -335,9 +406,18 @@ function render(data){
  const used=n(risk.netRiskPnl)===null?0:Math.min(100,Math.max(0,-risk.netRiskPnl/20*100));
  $('risk-fill').style.width=used+'%';
  txt('risk-help',riskMode==='HARD'?'Hard halt reached: no further paper entries today.':
- riskMode==='SOFT'?'Soft limit reached: maximum $1.50 paper entry, strict 7/7 confirmations.':
+ riskMode==='SOFT'?(s.settlementPaperAllowed?
+  'Soft $1.50 PAPER: target cushion, 3 aligned independent families, <=3c spread and 2x bid/ask depth.' :
+  'Soft $1.50 legacy baseline: 7/7 checklist confirmations.') :
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
+ renderLiveAction(data);
+ document.dispatchEvent(new CustomEvent('v4:dashboard-health',{detail:data}));
+ txt('v4-stage-note',s.settlementPaperAllowed===true?
+  'Experimental paper simulation enabled. No real-money orders.':
+  'Research/shadow monitoring; no experimental paper entries or real orders.');
+ // Confidence is read-only, derived from existing authenticated status data.
+ document.dispatchEvent(new CustomEvent('v4:dashboard-confidence',{detail:data}));
+ renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
@@ -1076,6 +1156,33 @@ async function exportCompleteEvidence(){
    String(err?.message||err));
  }finally{if(lastPayload)renderResearch();}
 }
+async function checkOfficialIndexAccess(){
+ const btn=$('cf-access-check');
+ if(!token){txt('cf-access-status','Sign in to V4 first.');return}
+ btn.disabled=true;txt('cf-access-status','Checking official index access using server-side credentials…');
+ try{
+  const r=await fetch(CF_ACCESS_API,{cache:'no-store',mode:'cors',
+   headers:{Authorization:'Bearer '+token}});
+  if(!r.ok)throw Error('Access check unavailable (HTTP '+r.status+')');
+  const d=await r.json();
+  const good=d.state==='HTTP_200_VALID_ETH_INDEX'&&d.validValuesVerified===true;
+  const label=good?
+   'Official ETHUSD_RTI REST reading verified: '+fmt(d.price,2)+' USD. Source age '+
+   String(d.ageSeconds??'unknown')+' seconds. WebSocket and settlement are not yet verified.':
+   d.state==='HTTP_200_STALE_ETH_VALUE'?
+   'Kalshi returned an ETH index reading, but its timestamp is stale.':
+   d.state==='HTTP_200_NO_ETH_INDEX'?
+   'Kalshi replied without an ETHUSD_RTI value; access is not verified.':
+   d.state==='DISABLED'?
+   'V4 access check is disabled pending deployment.':
+   d.state==='CREDENTIALS_NOT_CONFIGURED'?
+   'V4 read-only credentials are not configured on Cloudflare.':
+   'Index access: '+String(d.state||'UNKNOWN')+'. No fresh index reading verified.';
+  txt('cf-access-status',label+(d.checkedAt?' · Checked '+ago(d.checkedAt):''));
+ }catch(e){txt('cf-access-status','Access check unavailable: '+String(e?.message||e))}
+ finally{btn.disabled=false}
+}
+$('cf-access-check').addEventListener('click',checkOfficialIndexAccess);
 $('research-older').addEventListener('click',loadOlderResearch);
 $('research-export').addEventListener('click',exportCompleteEvidence);
 
@@ -1161,4 +1268,18 @@ function renderStreamHealth(data){
  txt('v4-rest-book-received',Number.isSafeInteger(restAt)?
    ago(restAt)+' · '+(rest.last?.ticker||'unknown contract')+
    ' · receipt-only observation':'No direct REST depth observation');
+ const extra=s.supplementaryResearch||{},connection=s.supplementaryResearchConnection||{};
+ txt('v4-cf-stream-status',!s.supplementaryResearchEnabled?
+  'Disabled · pending entitlement and source retention review':
+  connection.connected?'Connected · index '+(connection.indexAvailable||'unverified'):
+  'Enabled but not connected · official data not verified');
+ txt('v4-cf-count',Number.isFinite(extra.benchmark?.count)?
+  extra.benchmark.count.toLocaleString('en-US')+' archived · source timestamps':
+  'Not available');
+ txt('v4-public-trades-count',Number.isFinite(extra.publicTrades?.count)?
+  extra.publicTrades.count.toLocaleString('en-US')+' archived · market executions':
+  'Not available');
+ txt('v4-raw-book-count',s.fullBookArchiveEnabled?
+  String(s.fullBookArchive?.total??'—')+' frames · expensive full depth logging':
+  'Disabled pending cost and rights approval');
 }
