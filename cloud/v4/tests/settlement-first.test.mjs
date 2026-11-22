@@ -56,11 +56,23 @@ test('WebSocket top of book must be usable; REST quotes never treated as fills',
  assert.equal(evaluateSettlementFirst({...input,book:{...book,receivedAt:T-10000,fresh:true}}).side,'PASS');
  assert.equal(evaluateSettlementFirst({...input,book:{...book,yesAsk:{price:.45,sizeFp:'0.00'}}}).side,'PASS');
 });
-test('no new entry in final minute, no entry beyond explicit 12.5m',()=>{
- assert.equal(evaluateSettlementFirst({...input,market:{...market,
-  close_time:new Date(T+40000).toISOString()}}).side,'PASS');
- assert.equal(evaluateSettlementFirst({...input,market:{...market,
-  close_time:new Date(T+13*60000).toISOString()}}).side,'PASS');
+test('first 60 seconds are observation-only; clock opens at 14m and closes at 90s remaining',()=>{
+ for(const seconds of [900,899,841,840.001]){
+  const r=evaluateSettlementFirst({...input,market:{...market,
+   close_time:new Date(T+seconds*1000).toISOString()}});
+  assert.equal(r.status,'WATCH');
+  assert.equal(r.reason,'OUTSIDE_EARLY_PAPER_ENTRY_WINDOW');
+ }
+ for(const seconds of [840,839,750,91]){
+  const r=evaluateSettlementFirst({...input,market:{...market,
+   close_time:new Date(T+seconds*1000).toISOString()}});
+  assert.notEqual(r.reason,'OUTSIDE_EARLY_PAPER_ENTRY_WINDOW',seconds+'s should be clock-eligible');
+ }
+ for(const seconds of [90,89,40,0]){
+  const r=evaluateSettlementFirst({...input,market:{...market,
+   close_time:new Date(T+seconds*1000).toISOString()}});
+  assert.equal(r.reason,'OUTSIDE_EARLY_PAPER_ENTRY_WINDOW');
+ }
 });
 test('no apparent 90c+ safe bet mechanically overrides economic/time gates',()=>{
  const r=evaluateSettlementFirst({...input,book:{...book,

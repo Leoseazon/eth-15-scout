@@ -22,7 +22,8 @@ import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
 import {ensureSettlementPredictions,appendSettlementPrediction,
  reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
-import {SETTLEMENT_FIRST_VERSION} from './settlement-first.js';
+import {SETTLEMENT_FIRST_VERSION,ENTRY_MIN_REMAINING_SECONDS,
+ ENTRY_MAX_REMAINING_SECONDS} from './settlement-first.js';
 import {scoreHeldConfidence} from './buy-confidence.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
@@ -367,7 +368,8 @@ export class ScoutEngineV4 extends DurableObject {
       const remainingForEntry=market?
         (Date.parse(market.close_time)-Date.now())/1000:null;
       const marketReady=!!market&&Number.isFinite(remainingForEntry)&&
-        remainingForEntry>90&&remainingForEntry<=750;
+        remainingForEntry>ENTRY_MIN_REMAINING_SECONDS&&
+        remainingForEntry<=ENTRY_MAX_REMAINING_SECONDS;
       const entrySourcesReady=s.armed&&!s.open&&marketReady&&
         !!one&&!!m5&&!!context.three&&!!context.five&&
         !s.blocked.includes(market.ticker)&&bookReady;

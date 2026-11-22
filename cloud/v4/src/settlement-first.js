@@ -3,7 +3,9 @@
  * at official CF ETHUSD_RTI final-minute average. NO calibrated probability,
  * NO real orders, no learned model, no historical outcomes at decision time.
  */
-import {bestContextualOpportunity} from './context-opportunity.js';
+import {bestContextualOpportunity,ENTRY_MIN_REMAINING_SECONDS,
+ ENTRY_MAX_REMAINING_SECONDS} from './context-opportunity.js';
+export {ENTRY_MIN_REMAINING_SECONDS,ENTRY_MAX_REMAINING_SECONDS} from './context-opportunity.js';
 export const SETTLEMENT_FIRST_VERSION='V4-TARGET-CONTEXTUAL-VALUE-20261122';
 // Normal premium cutoff is 85c; 85.01–87c needs stronger evidence.
 // 87c is the absolute PAPER BUY ask ceiling. 96c is a separate SELL target.
@@ -15,7 +17,8 @@ export function exceptionalPremiumEligible(d){
  const e=d?.contextualOpportunity;
  return !!d&&Number.isFinite(d.ask)&&d.ask>NORMAL_PREMIUM_ASK&&
   d.ask<=MAX_PAPER_ENTRY_ASK&&Number.isFinite(d.remainingSeconds)&&
-  d.remainingSeconds>90&&d.remainingSeconds<=750&&
+  d.remainingSeconds>ENTRY_MIN_REMAINING_SECONDS&&
+  d.remainingSeconds<=ENTRY_MAX_REMAINING_SECONDS&&
   Number.isFinite(d.spread)&&Math.round(d.spread*10000)<=300&&
   e?.status==='QUALIFIED'&&e.side===d.side&&e.ask===d.ask&&
   e.conservativeEdge+1e-8>=.07&&e.allIn>0&&
@@ -82,7 +85,9 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   return watch('OFFICIAL_TARGET_OR_CLOSING_TIME_MISSING');
  const remainingSeconds=(closeAt-now)/1000;
  const remainingMinutes=remainingSeconds/60;
- if(!Number.isFinite(remainingSeconds)||remainingSeconds<=90||remainingSeconds>750)
+ if(!Number.isFinite(remainingSeconds)||
+    remainingSeconds<=ENTRY_MIN_REMAINING_SECONDS||
+    remainingSeconds>ENTRY_MAX_REMAINING_SECONDS)
   return watch('OUTSIDE_EARLY_PAPER_ENTRY_WINDOW',{remainingSeconds});
  if(index?.indexId!=='ETHUSD_RTI'||index.validValuesVerified!==true||
     !Number.isSafeInteger(index.sourceAt)||!Number.isFinite(index.price)||
