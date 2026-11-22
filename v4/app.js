@@ -147,30 +147,47 @@ function latestPaperExecution(data){
  return candidates[0]||null;
 }
 function renderObservationCohort(data){
- const markers=Array.isArray(data.activity?.releaseMarkers)?data.activity.releaseMarkers:[];
- const original=markers.find(x=>x.tag==='V4-OBSERVATION-50-100-20261119');
- const revised=markers.find(x=>x.tag==='V4-TIME40-6M-20261120');
- const latest=markers.find(x=>x.tag==='V4-80C-EIGHTMIN-20261120');
- const first=Number(original?.first_engine_tick_at);
- const prior=Number(revised?.first_engine_tick_at);
- const current=Number(latest?.first_engine_tick_at);
- const date=x=>new Date(x).toLocaleString('en-US',{timeZone:'America/Chicago',
-  month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+' CT';
- txt('release-first-tick',Number.isFinite(first)&&first>0?date(first):'Awaiting original release');
- txt('revised-first-tick',Number.isFinite(prior)&&prior>0?date(prior):'Awaiting prior revision');
- txt('latest-first-tick',Number.isFinite(current)&&current>0?date(current):
-   'Awaiting 8-min and honey-pot rule deployment');
- const feedTick=Number(markers.find(x=>x.tag==='V4-PHASE1-FEED-RELIABILITY-20261120')?.first_engine_tick_at);
- txt('feed-first-tick',Number.isFinite(feedTick)&&feedTick>0?date(feedTick):'Awaiting patch marker');
- const stats=data.status?.paperResults||{};
- const nLatest=stats.latestCohort;
- const nPrior=stats.revisedCohort;
- txt('observation-progress',Number.isFinite(nLatest)&&current>0?
-  nLatest+' / 50–100 new-rule early paper exits · earlier trades separate':
-  Number.isFinite(nPrior)&&prior>0?
-   nPrior+' prior-rule early exits · new build not yet live':
-   'Not started · awaiting confirmed strategy version');
+ const markers=Array.isArray(data.activity?.releaseMarkers)?
+  data.activity.releaseMarkers:[];
+ const first=markers.find(x=>x.tag==='V4-CONTEXTUAL-VALUE-20261122');
+ const at=Number(first?.first_engine_tick_at);
+ const s=data.status||{},stats=s.paperResults||{},
+  cohort=stats.contextualCohort||{};
+ const versionMatches=s.settlementModelVersion===EXPECTED_CONTEXTUAL_MODEL;
+ const hasMarker=Number.isFinite(at)&&at>0;
+ const active=s.monitoring===true&&s.armed===true&&
+  s.settlementPaperAllowed===true&&versionMatches;
+ const completed=Number.isFinite(cohort.completed)?cohort.completed:0;
+ txt('observation-progress',versionMatches&&hasMarker?
+   completed+' / 50–100 completed contextual V4 paper trades'+
+   (active?' · engine active':' · paper entries not active'):
+   'Not started · no matching contextual V4 release marker');
+ txt('release-first-tick',hasMarker&&versionMatches?
+   new Date(at).toLocaleString('en-US',{timeZone:'America/Chicago',
+    month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit'})+
+    ' CT · version reported':
+   'Awaiting first contextual V4 paper engine tick');
+ const verified=Number(s.settlementPredictionStats?.verified);
+ const correct=Number(s.settlementPredictionStats?.correct);
+ txt('revised-first-tick',versionMatches&&Number.isFinite(verified)&&verified>0?
+  verified+' official results · '+(Number.isFinite(correct)?correct:0)+
+  ' correct (separate from early-sale P/L)':
+  'No finalized target-side predictions yet');
+ const decision=s.latestSettlementDecision;
+ const age=Number(decision?.at);
+ const validDecision=versionMatches&&Number.isFinite(age)&&
+  age>0&&Date.now()-age>=0&&Date.now()-age<=110000;
+ txt('latest-first-tick',validDecision?
+  String(decision?.status||'WATCH')+' · '+
+  String(decision?.side||'PASS')+' · '+ago(age):
+  'No recent matching contextual decision');
+ const feed=s.lastPaperFeedHealth||{};
+ const ready=active&&feed.liveSourcesReady===true;
+ txt('feed-first-tick',ready?
+  'Fresh Kalshi book + official RTI + closed Kraken context':
+  'Not all required live entry sources verified');
 }
+
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
  const tickAge=Date.now()-Number(s.lastTick);
