@@ -72,7 +72,8 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  }
  if(s.open){
   const pos=s.open;
-  if(active?.ticker===pos.ticker&&book?.ticker===pos.ticker&&book.valid===true&&
+  if(active?.ticker===pos.ticker&&book?.ticker===pos.ticker&&
+     book?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&book.valid===true&&
      book.fresh===true&&book.receivedAt<=now&&now-book.receivedAt<=5000){
    const b=pos.side==='UP'?book.yesBid:book.noBid;
    const bid=Number(b?.price),size=Number(b?.sizeFp);
@@ -119,6 +120,23 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  const budget=entryBudget(s.cash,s.risk,cap);
  let qty=Math.floor(budget/d.ask);
  while(qty>0&&qty*d.ask+fee(d.ask,qty)>budget)qty--;
+ // Soft daily-loss mode: THREE distinct agreeing evidence families,
+ // never 7 correlated checkboxes. Require stronger target geometry,
+ // tighter spread, and 2x displayed liquidity than ordinary entries.
+ if(r.mode==='SOFT'){
+  const direction=d.side==='UP'?1:-1;
+  const strong=d.familySupport===3&&d.geometry*direction>=.30&&
+    d.momentum*direction>=.25&&d.structure*direction>=.25&&
+    Math.abs(d.score)>=.72&&d.contradictionReasons.length===0&&
+    valid(d.spread)&&d.spread<=.03&&
+    valid(d.askDepth)&&d.askDepth>=2*qty&&
+    valid(d.bidDepth)&&d.bidDepth>=2*qty;
+  if(!strong||qty<1){
+   const reason='SOFT risk: strong target, 3 agreeing families, <=3c spread and >=2x book depth required';
+   if(s.window)s.window.reason=reason;
+   return {status:'WATCH',notice:reason,candidate:d};
+  }
+ }
  if(qty<1||!valid(d.askDepth)||d.askDepth<qty){
   const reason='Insufficient fee-inclusive budget or displayed ask depth';
   if(s.window)s.window.reason=reason;
@@ -137,8 +155,8 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    remainingSeconds:d.remainingSeconds},
   entryQuoteSource:'KALSHI_WEBSOCKET_ORDERBOOK_DISPLAYED_ONLY',fillVerified:false,
   calibratedProbability:null,markPnl:null};
- // Recording a unique settlement prediction is REQUIRED before spending
- // even simulated cash. SQL failure causes a clean PASS, never an unlogged fill.
+ // Stage a unique settlement prediction before simulated debit. The caller
+ // must COMMIT forecast and bankroll in one atomic storage transaction.
  try{onPrediction(pos)}
  catch{
   note(s,now,'PAPER ENTRY BLOCKED','Forecast journal unavailable; no cash debited',active.ticker);
