@@ -141,3 +141,24 @@ test('all existing app static DOM references remain available after layout move'
   if(!ids.has(m[1]))missing.add(m[1]);
  assert.deepEqual([...missing],[],Array.from(missing).join(', '));
 });
+
+test('V4 update hub distinguishes public quotes, contextual decision inputs and verified release state',()=>{
+ const html=readFileSync(root+'v4/index.html','utf8');
+ const app=readFileSync(root+'v4/app.js','utf8');
+ const engine=readFileSync(root+'cloud/v4/src/settlement-first.js','utf8');
+ assert.match(html,/id="v4-release-verification"/);
+ assert.match(html,/id="v4-official-rti-gap"/);
+ assert.match(html,/PUBLIC ASK REFERENCE/);
+ assert.match(html,/public REST snapshot|Public snapshot, not verified paper entry/i);
+ assert.match(html,/target, remaining uncertainty, UP\/DOWN asks, fees and risk/);
+ assert.match(html,/Reference only; not a V4 BUY gate/);
+ assert.doesNotMatch(html,/WEIGHTED EVIDENCE|DECISION FILTERS|TOP PRIORITY · LIVE V4 PAPER BOT/);
+ assert.match(app,/const EXPECTED_CONTEXTUAL_MODEL='V4-TARGET-CONTEXTUAL-VALUE-20261122'/);
+ assert.match(engine,/const SETTLEMENT_FIRST_VERSION='V4-TARGET-CONTEXTUAL-VALUE-20261122'/);
+ assert.match(app,/modelSource===EXPECTED_CONTEXTUAL_MODEL/);
+ assert.match(app,/codeMatches&&active&&paperArmed/);
+ assert.match(app,/s\.latestSettlementDecision\|\|\{\}/);
+ assert.match(app,/Math\.abs\(strike-decisionTarget\)<\.0001/);
+ assert.match(app,/Official RTI vs target: no matching recent verified model snapshot/);
+ assert.match(html,/not verified paper entry/);
+});
