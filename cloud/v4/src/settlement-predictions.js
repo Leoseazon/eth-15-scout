@@ -36,6 +36,7 @@ export function appendSettlementPrediction(sql,pos){
    target:pos.target,indexValue:pos.indexValue,indexSourceAt:pos.indexSourceAt,
    entry:pos.entry,cost:pos.cost,qty:pos.qty,strategyVersion:pos.strategyVersion,
    evidence:pos.modelEvidence||null,
+   entryConfidence:pos.entryConfidence||null,
    executionVerified:false,calibratedProbability:null}));
 }
 export function reconcileSettlementPredictions(sql,now=Date.now()){
