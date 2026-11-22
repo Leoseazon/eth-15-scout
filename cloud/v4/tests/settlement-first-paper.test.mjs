@@ -126,15 +126,24 @@ test('a seemingly favorable ask without matching exit-side bid depth must PASS',
  assert.equal(s.open,null);assert.equal(s.cash,100);
 });
 
-test('paper BUY cannot exceed 85c, while 96c BID still triggers SELL',()=>{
- const asks=[.8501,.86,.90,.95,.99];
- for(const ask of asks){
+test('conditional buys through 87c, hard >87c block and 96c SELL remain separate',()=>{
+ const strong={...args,index:{...index,price:1808},
+  one:{...one,last:1808,e8:1805,e21:1802},
+  market:{...market,close_time:new Date(T+4*60000).toISOString()}};
+ for(const ask of [.8501,.86,.87]){
   const s=setup();
-  const result=settlementFirstPaperStep(s,{...args,
-   index:{...index,price:1808},one:{...one,last:1808,e8:1805,e21:1802},
-   market:{...market,close_time:new Date(T+4*60000).toISOString()},
-   book:{...book,yesBid:{price:.83,sizeFp:'20.00'},
-    yesAsk:{price:ask,sizeFp:'20.00'}}});
+  const result=settlementFirstPaperStep(s,{...strong,book:{...book,
+   yesBid:{price:.84,sizeFp:'20.00'},
+   yesAsk:{price:ask,sizeFp:'20.00'}}});
+  assert.equal(result.status,'PAPER_BUY',ask+' '+result.notice);
+  assert.equal(s.open.entry,ask);
+  assert.ok(s.open.cost<=3);
+ }
+ for(const ask of [.8701,.88,.90,.95,.99]){
+  const s=setup();
+  const result=settlementFirstPaperStep(s,{...strong,book:{...book,
+   yesBid:{price:.84,sizeFp:'20.00'},
+   yesAsk:{price:ask,sizeFp:'20.00'}}});
   assert.equal(result.status,'WATCH','ask '+ask);
   assert.equal(s.open,null);assert.equal(s.cash,100);
   assert.equal(s.blocked.length,0);
