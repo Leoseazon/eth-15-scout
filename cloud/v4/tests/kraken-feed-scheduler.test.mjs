@@ -90,8 +90,8 @@ test('strict 1m closed-bar cache and 5m cache do not reuse data across candle ro
   now,{state,wait:noWait});
  assert.equal(after.checks.kraken5m.cached,false);
  assert.equal(count(provider.calls,'interval=5'),2);
- assert.equal(count(provider.calls,'interval=1'),2,
-  '1m reuse stays within 55s TTL and latest completed candle');
+ assert.equal(count(provider.calls,'interval=1'),3,
+  '1m refreshes independently on each new minute, including the 5m rollover');
 });
 
 test('five-minute rollover invalidates earlier bars even if cache TTL not expired',async()=>{
@@ -228,4 +228,43 @@ test('1m returned cache never survives restart and never bypasses a new minute b
   at,{state:cold,wait:noWait});
  assert.equal(afterRestart.checks.kraken1m.cached,false);
  assert.equal(count(provider.calls,'interval=1'),1);
+});
+
+
+test('5m cached CLOSED candle reused beyond 60s, without unnecessary provider requests',async()=>{
+ let at=T;
+ const state={},provider=makeFetcher({oneClock:()=>at});
+ const first=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,at,
+  {state,wait:noWait});
+ assert.equal(first.checks.kraken5m.ok,true);
+ assert.equal(first.checks.kraken5m.cached,false);
+ for(const elapsed of [60000,120000,180000,210000]){
+  at=T+elapsed;
+  const step=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,at,
+   {state,wait:noWait});
+  assert.equal(step.checks.kraken5m.ok,true);
+  assert.equal(step.checks.kraken5m.cached,true);
+  assert.equal(step.checks.kraken5m.sourceRetrievedAt,T);
+ }
+ assert.equal(count(provider.calls,'interval=5'),1,
+  'no extra 5m REST requests while the newest completed 5m candle is unchanged');
+});
+test('5m rollover fails closed and requests the new completed bar regardless of cache TTL',async()=>{
+ const state={},before=makeFetcher({oneClock:()=>T});
+ await collectThrottledMarketFeeds(before.fetcher,marketUrl,base,T,
+  {state,wait:noWait});
+ const rollover=Date.parse('2026-11-22T09:40:00.000Z');
+ const oldData=makeFetcher({fiveAt:T,oneClock:()=>rollover});
+ const missing=await collectThrottledMarketFeeds(oldData.fetcher,marketUrl,base,
+  rollover,{state,wait:noWait});
+ assert.equal(missing.checks.kraken5m.ok,false);
+ assert.equal(missing.checks.kraken5m.cached,false);
+ assert.equal(state.five,null);
+ assert.equal(count(oldData.calls,'interval=5'),1,
+  'rollover must fetch; it cannot use the formerly latest closed 5m bar');
+ const recovered=makeFetcher({fiveAt:rollover+16000,oneClock:()=>rollover+16000});
+ const step=await collectThrottledMarketFeeds(recovered.fetcher,marketUrl,base,
+  rollover+16000,{state,wait:noWait});
+ assert.equal(step.checks.kraken5m.ok,true);
+ assert.equal(step.checks.kraken5m.cached,false);
 });
