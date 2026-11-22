@@ -340,7 +340,10 @@ function render(data){
   'Soft $1.50 PAPER: target cushion, 3 aligned independent families, <=3c spread and 2x bid/ask depth.' :
   'Soft $1.50 legacy baseline: 7/7 checklist confirmations.') :
  'Normal: max $3 per paper entry; at −$12 stricter rules begin, at −$20 new entries stop.');
- renderLiveAction(data);renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
+ renderLiveAction(data);
+ // Confidence is read-only, derived from existing authenticated status data.
+ document.dispatchEvent(new CustomEvent('v4:dashboard-confidence',{detail:data}));
+ renderObservationCohort(data);renderFeed(data);renderOutcomes(data);updateJournalControls(data);renderResearch();renderStreamHealth(data);drawChart();drawQuoteChart();
 }
 function remaining(value){
  const d=Date.parse(value),s=Math.ceil((d-Date.now())/1000);
