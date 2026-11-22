@@ -720,3 +720,27 @@ footer{margin:16px 0}
  #live-action .live-contract-board .board-price strong{font-size:24px}
  #performance .account-summary-stats .account-row strong{font-size:13px}
 }
+
+/* Permanent closed-round no-entry decision: deliberate violet vs amber WATCH.
+   Uses existing durable V4 decision count; presentation only, no extra reads. */
+#performance .round-pass-stat{
+ grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;
+ gap:12px;min-width:0;padding:10px 12px;border:1px solid #745eab;
+ border-radius:9px;background:#28233e;color:#e8ddff
+}
+#performance .round-pass-stat>div{min-width:0}
+#performance .round-pass-stat span{display:block;font-size:11px;font-weight:800;letter-spacing:.045em}
+#performance .round-pass-stat small{display:block;margin-top:3px;color:#c3b6e0;font-size:10px;line-height:1.35}
+#performance .round-pass-stat strong{
+ flex:none;color:#f0e8ff;font-size:22px;line-height:1.1;font-weight:850;
+ font-variant-numeric:tabular-nums
+}
+.activity-item .event-pill.pass{background:#38294f;color:#e7dbff;border-color:#8666b8;min-width:89px}
+.filters button[data-filter="PASS"]{color:#e5d9fa;border-color:#6c5790;background:#2b263e}
+.filters button.selected[data-filter="PASS"]{color:#f6edff;background:#513973;border-color:#ab89d6}
+@media(max-width:600px){
+ #performance .round-pass-stat{padding:9px 10px}
+ #performance .round-pass-stat strong{font-size:20px}
+ #performance .round-pass-stat small{font-size:10px}
+ .activity-item .event-pill.pass{min-width:0;padding:4px 5px;font-size:9px}
+}
