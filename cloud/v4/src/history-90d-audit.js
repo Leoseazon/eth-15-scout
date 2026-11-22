@@ -69,7 +69,7 @@ export async function auditHistorical90Days({fetcher=fetch,now=Date.now(),
  // Bound requests and stop only AFTER the API proves oldest-first coverage;
  // no assumption that a page is ordered. Use upper page cap and report truncation.
  for(const [tier,endpoint] of [
-  ['historical','/historical/markets?series_ticker=KXETH15M&mve_filter=exclude&limit=1000'],
+  ['historical','/historical/markets?series_ticker=KXETH15M&limit=1000'],
   ['live','/markets?series_ticker=KXETH15M&status=settled&mve_filter=exclude&limit=1000']
  ]){
   let cursor='',pages=0,fetched=0,stoppedByCap=false,complete=false;
