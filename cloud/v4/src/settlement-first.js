@@ -4,8 +4,24 @@
  * NO real orders, no learned model, no historical outcomes at decision time.
  */
 export const SETTLEMENT_FIRST_VERSION='V4-SETTLEMENT-FIRST-CONTEXT-20261122';
-// User's HARD max buy ask, inclusive. 96c is a SELL target, not permission to BUY.
-export const MAX_PAPER_ENTRY_ASK=0.85;
+// Normal premium cutoff is 85c; 85.01–87c needs stronger evidence.
+// 87c is the absolute PAPER BUY ask ceiling. 96c is a separate SELL target.
+export const NORMAL_PREMIUM_ASK=0.85;
+export const MAX_PAPER_ENTRY_ASK=0.87;
+// Shared exceptional admission rule, used at candidate selection AND paper debit.
+// All input metrics are contemporaneous; this is not calibrated win probability.
+export function exceptionalPremiumEligible(d){
+ if(!d||!Number.isFinite(d.ask)||d.ask<=NORMAL_PREMIUM_ASK||
+   d.ask>MAX_PAPER_ENTRY_ASK||!['UP','DOWN'].includes(d.side)||
+   ![d.score,d.geometry,d.momentum,d.structure,d.spread].every(Number.isFinite)||
+   !Number.isFinite(d.remainingSeconds)||d.remainingSeconds<=90||
+   d.remainingSeconds>300||d.spread<0||d.spread>.03||
+   d.familySupport!==3||!Array.isArray(d.contradictionReasons)||
+   d.contradictionReasons.length!==0)return false;
+ const direction=d.side==='UP'?1:-1;
+ return d.score*direction>=.78&&d.geometry*direction>=.30&&
+   d.momentum*direction>=.25&&d.structure*direction>=.25;
+}
 const numeric=x=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const bounded=(x,a=-1,b=1)=>Math.max(a,Math.min(b,x));
 const sign=x=>x>0?1:x<0?-1:0;
@@ -94,7 +110,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
  const ask=numeric(observedPrice.ask?.price),bid=numeric(observedPrice.bid?.price);
  const askDepth=numeric(observedPrice.ask?.sizeFp),bidDepth=numeric(observedPrice.bid?.sizeFp);
  const priceSpread=ask!==null&&bid!==null?ask-bid:null;
- const minimumScore=ask!==null&&ask>=.85?.78:ask!==null&&ask>=.65?.62:.43;
+ const minimumScore=ask!==null&&ask>=NORMAL_PREMIUM_ASK?.78:ask!==null&&ask>=.65?.62:.43;
  const minimumFamilies=2;
  const insight={target,indexValue:index.price,indexSourceAt:index.sourceAt,
   officialDistance:delta,normalizedDistance,expectedMove,remainingSeconds,
@@ -105,7 +121,10 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
   spread:priceSpread,bookReceiptAt:book.receivedAt};
  // A hard ceiling is independent of model strength, time or confidence.
  if(ask!==null&&ask>MAX_PAPER_ENTRY_ASK)
-  return watch('PRICE_ABOVE_85C_HARD_BUY_LIMIT',{...insight,candidateSide:side});
+  return watch('PRICE_ABOVE_87C_HARD_BUY_LIMIT',{...insight,candidateSide:side});
+ if(ask!==null&&ask>NORMAL_PREMIUM_ASK&&
+    !exceptionalPremiumEligible({...insight,side}))
+  return watch('PREMIUM_85_TO_87_EXCEPTION_NOT_MET',{...insight,candidateSide:side});
  if(Math.abs(combined)<minimumScore||families<minimumFamilies)
   return watch('WEAK_OR_CONTRADICTED_SETTLEMENT_SIDE_EVIDENCE',
    {...insight,candidateSide:side});
@@ -114,7 +133,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
    askDepth===null||askDepth<1||bidDepth===null)
   return watch('KALSHI_ASK_SPREAD_OR_DISPLAYED_DEPTH_UNSUITABLE',
    {...insight,candidateSide:side});
- if(ask>=.85&&remainingMinutes>5)
+ if(ask>=NORMAL_PREMIUM_ASK&&remainingMinutes>5)
   return watch('EXPENSIVE_CONTRACT_TOO_EARLY',{...insight,candidateSide:side});
  return {version:SETTLEMENT_FIRST_VERSION,status:'CANDIDATE',side,reason:
   'Official index/target geometry with independent momentum and 3m/5m context',
