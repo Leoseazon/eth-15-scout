@@ -1,4 +1,4 @@
-# Separate, paper-disabled V4 shadow Worker: deploy ONLY with explicit later approval.
+# Default disarmed V4 research Worker; redeploy this config to stop NEW paper entries.
 name = "eth-15-scout-cloud-v4test"
 main = "v4/src/worker.js"
 compatibility_date = "2026-11-18"
