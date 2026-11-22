@@ -19,6 +19,10 @@ SCOUT_V4_PAPER_MODE = "enabled"
 # Separate explicit control for isolated experimental settlement-first PAPER simulation.
 # The main v4test.toml remains DISARMED; this opt-in release is explicit.
 V4_SETTLEMENT_FIRST_EXPERIMENT = "true"
+# Explicit user-requested RESEARCH sampling experiment: paper-only, not guaranteed
+# two BUYs per hour; original conservative strategy has priority.
+# Do not deploy this configuration until CI and user review are complete.
+V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "true"
 # Dashboard-approved V4-only read-only market-data collection.
 # This captures read-only market data and is distinct from the explicitly enabled PAPER simulator.
 V4_STREAM_CAPTURE_ENABLED = "true"
