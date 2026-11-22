@@ -138,8 +138,15 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   contextualOpportunity:choice,
   valueScenario:opportunity.scenario,
   consideredSideValues:opportunity.options};
- if(opportunity.status!=='CANDIDATE')
-  return watch(opportunity.reason,{...insight,candidateSide:side});
+ if(opportunity.status!=='CANDIDATE'){
+  // Preserve clear absolute-ceiling diagnostics instead of masking them
+  // under the generic value-rejection reason.
+  const sideQuote=side==='UP'?book.yesAsk:book.noAsk;
+  const proposedAsk=numeric(sideQuote?.price);
+  const reason=proposedAsk!==null&&proposedAsk>MAX_PAPER_ENTRY_ASK?
+   'PRICE_ABOVE_87C_HARD_BUY_LIMIT':opportunity.reason;
+  return watch(reason,{...insight,candidateSide:side});
+ }
  if(ask===null||ask>MAX_PAPER_ENTRY_ASK||bid===null||bid>ask)
   return watch('INVALID_BID_ASK_AFTER_CONTEXT_EVALUATION',{
    ...insight,candidateSide:side});
