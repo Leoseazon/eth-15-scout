@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluateOfficialHoldout,measureBookCoverage} from '../src/validation-gates.js';
+import {evaluateOfficialHoldout,measureBookCoverage,measureSampledBookCadence} from '../src/validation-gates.js';
 const t=i=>'KXETH15M-26NOV21-'+String(i).padStart(5,'0');
 const at=1795200000000;
 const windows=Array.from({length:120},(_,i)=>({
@@ -58,4 +58,18 @@ test('stream coverage reveals gaps rather than replacing missing observations',(
  assert.equal(missing.reliable,false);
  assert.ok(missing.longestGapMs>=25000);
  assert.ok(missing.approximateCoverageFraction<1);
+});
+
+test('15-second archive cadence is not confused with raw frame continuity',()=>{
+ const ticker='KXETH15M-26NOV221200-15',startAt=1770000000000,endAt=startAt+60000;
+ const samples=[0,15000,30000,45000,60000].map(delta=>({
+  ticker,receivedAt:startAt+delta,valid:true,fresh:true}));
+ const r=measureSampledBookCadence(samples,{ticker,startAt,endAt});
+ assert.equal(r.sampledCadenceOkay,true);
+ assert.equal(r.replayComplete,false);
+ assert.equal(r.sequenceContinuityVerified,false);
+ assert.equal(r.reliable,false);
+ const missing=measureSampledBookCadence(samples.slice(0,2),{ticker,startAt,endAt});
+ assert.equal(missing.sampledCadenceOkay,false);
+ assert.ok(missing.gapsOverThreshold>0);
 });
