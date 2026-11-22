@@ -154,3 +154,27 @@ test('conditional buys through 87c, hard >87c block and 96c SELL remain separate
   book:{...book,receivedAt:T+149000,yesBid:{price:.96,sizeFp:'20.00'}}});
  assert.equal(sold.status,'PAPER_SELL');
 });
+
+test('first eligible lower-priced quote BUYs immediately without waiting for 85c',()=>{
+ // A 10-minute-left window: a valid cheaper setup must not wait for
+ // the >=85c five-minute entry gate or an arbitrary premium-price target.
+ for(const ask of [.20,.35,.45,.55,.65]){
+  const s=setup();
+  const result=settlementFirstPaperStep(s,{...args,
+   market:{...market,close_time:new Date(T+10*60000).toISOString()},
+   book:{...book,
+    yesBid:{price:Number((ask-.02).toFixed(2)),sizeFp:'20.00'},
+    yesAsk:{price:ask,sizeFp:'20.00'}}});
+  assert.equal(result.status,'PAPER_BUY','ask '+ask+' '+result.notice);
+  assert.equal(s.open?.entry,ask);
+  assert.ok(s.open.cost<=3);
+ }
+ // No premium chase: the same early-minute conditions at 85c must WATCH.
+ const s=setup();
+ const early=settlementFirstPaperStep(s,{...args,
+  market:{...market,close_time:new Date(T+10*60000).toISOString()},
+  book:{...book,yesBid:{price:.83,sizeFp:'20.00'},
+   yesAsk:{price:.85,sizeFp:'20.00'}}});
+ assert.equal(early.status,'WATCH');
+ assert.equal(s.open,null);
+});
