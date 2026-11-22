@@ -4,6 +4,7 @@
  */
 import {assessDailyRisk,entryBudget,PAPER_POLICY} from './v3-policy.js';
 import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION} from './settlement-first.js';
+import {scoreBuyConfidence} from './buy-confidence.js';
 const valid=n=>Number.isFinite(n);
 const cents=n=>Math.ceil(Math.max(0,n)*100-1e-8)/100;
 const dollar=n=>Number(n.toFixed(2));
@@ -145,6 +146,15 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  }
  const entryFee=fee(d.ask,qty),cost=dollar(qty*d.ask+entryFee);
  if(cost>s.cash||cost>3.000001)throw Error('Paper stake ceiling violated');
+ const entryConfidence=scoreBuyConfidence({
+  side:d.side,score:d.score,geometry:d.geometry,momentum:d.momentum,
+  structure:d.structure,familySupport:d.familySupport,
+  contradictionReasons:d.contradictionReasons,spread:d.spread,
+  indexAgeMs:Math.max(0,now-d.indexSourceAt),
+  bookAgeMs:Math.max(0,now-d.bookReceiptAt)
+ });
+ if(!entryConfidence)return {status:'WATCH',
+  notice:'Buy-confidence inputs unavailable; no paper entry'};
  const pos={ticker:active.ticker,side:d.side,qty,entry:d.ask,entryFee,
   cost,time:now,target:d.target,indexValue:d.indexValue,
   indexSourceAt:d.indexSourceAt,closeTime:active.close_time,
@@ -155,6 +165,11 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    familySupport:d.familySupport,bookReceiptAt:d.bookReceiptAt,
    remainingSeconds:d.remainingSeconds},
   entryQuoteSource:'KALSHI_WEBSOCKET_ORDERBOOK_DISPLAYED_ONLY',fillVerified:false,
+  entryConfidence,
+  liveConfidence:{...entryConfidence,status:'CURRENT',asOf:now,
+    contractTicker:active.ticker,side:d.side,
+    caveat:'Initial heuristic signal score; not a probability of winning.'},
+  confidenceHistory:[{at:now,value:entryConfidence.value}],
   calibratedProbability:null,markPnl:null};
  // Stage a unique settlement prediction before simulated debit. The caller
  // must COMMIT forecast and bankroll in one atomic storage transaction.
@@ -169,7 +184,31 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  s.cash=dollar(s.cash-cost);s.open=pos;s.blocked.push(active.ticker);
  if(s.window)s.window.entered=true;
  note(s,now,'PAPER BUY','Settled-side hypothesis '+d.side+' '+qty+' @ '+
-  d.ask.toFixed(4)+'; all-in $'+cost.toFixed(2)+
+  d.ask.toFixed(4)+'; all-in 
+ s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
+  cost,entryFee,entry:d.ask,entryConfidenceScore:entryConfidence.value,
+  confidenceVersion:entryConfidence.version};
+ risk(s,now);
+ return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
+  ' × '+qty+' @ '+d.ask.toFixed(4)+'; 
+  ticker:active.ticker,position:pos};
+}
++cost.toFixed(2)+
+  '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
+  '; source is displayed book, not proven execution',active.ticker);
+ s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
+  cost,entryFee,entry:d.ask};
+ risk(s,now);
+ return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
+  ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees',
+  ticker:active.ticker,position:pos};
+}
++cost.toFixed(2)+' with fees'+
+  '; buy confidence '+entryConfidence.value+'/100 (not win probability)',
+  ticker:active.ticker,position:pos};
+}
++cost.toFixed(2)+
+  '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
   '; source is displayed book, not proven execution',active.ticker);
  s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
   cost,entryFee,entry:d.ask};
