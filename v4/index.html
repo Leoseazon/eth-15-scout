@@ -152,6 +152,13 @@
     <span id="research-count" class="badge neutral">Not collecting yet</span>
   </div>
   <p class="section-helper">Each engine check is logged with the available prices, Kraken reference, signal context, feed health, timestamps and the reason for watching or not entering. Missing data stays missing. V3 trade, PASS, WATCH and settlement journals are preserved separately.</p>
+  <div class="journal-tools" aria-label="Official CF Benchmarks read-only access check">
+    <div><strong>Official ETH settlement index · ETHUSD_RTI</strong>
+      <p id="cf-access-status">Access not checked. The V4-only server must be deployed and the read-only check enabled.</p>
+      <small>Checks Kalshi API access only; no account data, no API keys in this website, and no simulated trades.</small>
+    </div>
+    <div class="journal-actions"><button type="button" id="cf-access-check">Check index access</button></div>
+  </div>
   <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
     <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
     <span><strong>Recorded book observations</strong><small id="v4-stream-count">—</small></span>
@@ -159,6 +166,10 @@
     <span><strong>Last book receipt</strong><small id="v4-stream-received">No authenticated observation</small></span>
     <span><strong>Official REST depth archive</strong><small id="v4-rest-book-count">Not enabled</small></span>
     <span><strong>Last REST receipt</strong><small id="v4-rest-book-received">No direct REST depth observation</small></span>
+    <span><strong>Official ETHUSD_RTI stream</strong><small id="v4-cf-stream-status">Not verified</small></span>
+    <span><strong>Stored official index values</strong><small id="v4-cf-count">—</small></span>
+    <span><strong>Stored public Kalshi trades</strong><small id="v4-public-trades-count">—</small></span>
+    <span><strong>Full book-frame archive</strong><small id="v4-raw-book-count">Disabled pending cost review</small></span>
   </div>
   <div class="research-grid-head"><span>OBSERVED (CT)</span><span>CONTRACT</span><span>FEEDS / QUOTE</span><span>DECISION EVIDENCE</span></div>
   <div id="research-list" class="research-list" aria-live="polite">
