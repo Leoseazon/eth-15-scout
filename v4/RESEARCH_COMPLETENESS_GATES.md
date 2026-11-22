@@ -45,7 +45,7 @@ Scope: *isolated branch only*. V3 never changes. V4 paper trades remain hard-dis
 
 ## Read-only SQLite spot checks (Cloudflare > V4 DO > Data Studio)
 The V4 Durable Object must have been deployed with the new tables.
-\`\`\`sql
+```sql
 SELECT COUNT(*) AS cf_count, datetime(MAX(received_at)/1000,'unixepoch') AS latest_cf_utc FROM v4_cf_values;
 SELECT COUNT(*) AS public_trade_count, datetime(MAX(received_at)/1000,'unixepoch') AS latest_trade_utc FROM v4_public_trades;
 SELECT COUNT(*) AS raw_book_frames, datetime(MAX(received_at)/1000,'unixepoch') AS latest_book_utc FROM v4_book_frames;
@@ -53,7 +53,7 @@ SELECT kind, COUNT(*) AS total FROM v4_research_feed_events GROUP BY kind ORDER 
 SELECT schemaVersion, COUNT(*) AS records FROM
   (SELECT json_extract(payload,'$.schemaVersion') AS schemaVersion FROM research_ticks)
  GROUP BY schemaVersion ORDER BY schemaVersion;
-\`\`\`
+```
 Never paste Kalshi credentials into browsers, logs, chat or GitHub. The URL in a browser needs a full host and cannot authorize a signed API call by itself.
 
 ## Official references
