@@ -110,8 +110,8 @@ export async function readonlyRestAuthHeaders({keyId,privatePem,now=Date.now(),s
   return signedReadHeaders({keyId,privatePem,now,subtle,signPath:KALSHI_READONLY_REST_PATH});
 }
 export class KalshiReadOnlySocket {
-  constructor({fetcher=fetch,onObservation=()=>{},onFault=()=>{}}={}){
-    this.fetcher=fetcher;this.onObservation=onObservation;this.onFault=onFault;
+  constructor({fetcher=fetch,onObservation=()=>{},onRawFrame=()=>{},onFault=()=>{}}={}){
+    this.fetcher=fetcher;this.onObservation=onObservation;this.onRawFrame=onRawFrame;this.onFault=onFault;
     this.book=new KalshiBookStream();this.socket=null;this.ticker=null;
     this.lastMessageAt=null;this.lastSubscriptionAt=null;
     this.attempts=0;this.retryAfter=0;this.commandId=1;
@@ -271,6 +271,10 @@ export class KalshiReadOnlySocket {
       } // Usable snapshot, not handshake, proves recovery.
       try{this.onObservation({result:outcome,quote:this.book.view(this.ticker,receivedAt),
         type:packet.type,receivedAt})}catch{this.fault('OBSERVATION_HANDLER_FAILURE',receivedAt)}
+      // Optional raw recording runs after applying the validated update.
+      // A failed archive write cannot corrupt the in-memory book.
+      try{this.onRawFrame({packet,receivedAt})}
+      catch{try{this.onFault('BOOK_ARCHIVE_WRITE_FAILED')}catch{}}
     }
     if(outcome?.resync && !outcome.snapshot){
       // Demand a fresh snapshot; repeated subscribe does NOT re-snapshot.
