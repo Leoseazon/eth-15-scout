@@ -31,11 +31,11 @@ test('new paper engine uses official RTI input and immutable prediction journal,
 test('opt-in V4 paper release differs from default only in two explicit paper flags',()=>{
  const defaultText=readFileSync(root+'cloud/wrangler.v4test.toml','utf8');
  const paperText=readFileSync(root+'cloud/wrangler.v4paper.toml','utf8');
- const normalize=t=>t.split('\\n').filter(x=>!/^\\s*#/.test(x)&&x.trim()!=='')
+ const normalize=t=>t.split(String.fromCharCode(10)).filter(x=>!/^ *#/.test(x)&&x.trim()!=='')
   .map(x=>x.replace(/SCOUT_V4_PAPER_MODE = "(enabled|disabled)"/,
     'SCOUT_V4_PAPER_MODE = "PAPER_SWITCH"')
    .replace(/V4_SETTLEMENT_FIRST_EXPERIMENT = "(true|false)"/,
-     'V4_SETTLEMENT_FIRST_EXPERIMENT = "EXPERIMENT_SWITCH"')).join('\\n');
+     'V4_SETTLEMENT_FIRST_EXPERIMENT = "EXPERIMENT_SWITCH"')).join(String.fromCharCode(10));
  assert.equal(normalize(defaultText),normalize(paperText));
  assert.match(paperText,/SCOUT_V4_PAPER_MODE = "enabled"/);
  assert.match(paperText,/V4_SETTLEMENT_FIRST_EXPERIMENT = "true"/);
