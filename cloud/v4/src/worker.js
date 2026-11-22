@@ -16,6 +16,7 @@ import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,lat
 import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
 import {KalshiResearchSocket} from './research-socket.js';
+import {checkCFValuesAccess} from './cf-access.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
@@ -650,6 +651,19 @@ export class ScoutEngineV4 extends DurableObject {
           limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
+    }
+    if(path==='/v1/cf-access'&&req.method==='GET'){
+      if(this.env.V4_CF_ACCESS_PROBE_ENABLED!=='true')
+        return json({state:'DISABLED',validValuesVerified:false,readOnly:true,paperOnly:true});
+      const now=Date.now(),cached=this.ctx.storage.kv.get('cf-access-result');
+      if(cached&&Number.isSafeInteger(cached.checkedAt)&&now-cached.checkedAt<6*60*60*1000)
+        return json({...cached,readOnly:true,paperOnly:true,cached:true});
+      const result=await checkCFValuesAccess({
+        keyId:this.env.KALSHI_V4_READ_KEY_ID,
+        privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,now});
+      const clean={...result,checkedAt:Date.now(),source:'KALSHI_AUTHENTICATED_CF_VALUES_REST'};
+      this.ctx.storage.kv.put('cf-access-result',clean);
+      return json({...clean,readOnly:true,paperOnly:true,cached:false});
     }
     if(path==='/v1/full-book'&&req.method==='GET'){
       const q=new URL(req.url).searchParams;
