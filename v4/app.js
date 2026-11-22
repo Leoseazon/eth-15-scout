@@ -7,6 +7,7 @@ const JOURNAL_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/jou
 const RESEARCH_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/research';
 const QUOTE_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/quote-archive';
 const REST_BOOK_ARCHIVE_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/rest-book';
+const CF_ACCESS_API='https://eth-15-scout-v4-view.leoseazon.workers.dev/api/v4/cf-access';
 const KEY='eth15scout:v4:login-session';
 const $=id=>document.getElementById(id);
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:null;
@@ -1076,6 +1077,27 @@ async function exportCompleteEvidence(){
    String(err?.message||err));
  }finally{if(lastPayload)renderResearch();}
 }
+async function checkOfficialIndexAccess(){
+ const btn=$('cf-access-check');
+ if(!token){txt('cf-access-status','Sign in to V4 first.');return}
+ btn.disabled=true;txt('cf-access-status','Checking official index access using server-side credentials…');
+ try{
+  const r=await fetch(CF_ACCESS_API,{cache:'no-store',mode:'cors',
+   headers:{Authorization:'Bearer '+token}});
+  if(!r.ok)throw Error('Access check unavailable (HTTP '+r.status+')');
+  const d=await r.json();
+  const label=d.state==='HTTP_200_DATA_ENVELOPE'?
+   'Kalshi REST access responded successfully. Official ETH readings are not yet validated.':
+   d.state==='DISABLED'?
+   'V4 access check is disabled pending owner-approved deployment and entitlement review.':
+   d.state==='CREDENTIALS_NOT_CONFIGURED'?
+   'V4 server-side read-only credentials are not configured.':
+   'Access check: '+String(d.state||'UNKNOWN')+'. No index values verified.';
+  txt('cf-access-status',label+(d.checkedAt?' · Checked '+ago(d.checkedAt):''));
+ }catch(e){txt('cf-access-status','Access check unavailable: '+String(e?.message||e))}
+ finally{btn.disabled=false}
+}
+$('cf-access-check').addEventListener('click',checkOfficialIndexAccess);
 $('research-older').addEventListener('click',loadOlderResearch);
 $('research-export').addEventListener('click',exportCompleteEvidence);
 
