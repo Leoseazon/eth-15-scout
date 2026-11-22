@@ -56,6 +56,7 @@ jobs:
       - run: node --check ../v4/storage-inventory-ui.js
       - run: node --check ../v4/settlement-paper-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
+      - run: npx wrangler deploy --config wrangler.v4paper.toml --dry-run --outdir .cloudflare-build-v4paper
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
       - name: Audit public 90-day KXETH15M round availability (aggregate only)
         continue-on-error: true
