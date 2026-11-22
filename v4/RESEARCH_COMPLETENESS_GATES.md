@@ -18,7 +18,7 @@ Scope: *isolated branch only*. V3 never changes. V4 paper trades remain hard-dis
 | Official ETHUSD_RTI via Kalshi WS 1Hz | Source-time reference value and supplied final-minute 60s average | New research-socket/research-sources | V4_RESEARCH_STREAM_ENABLED=false by default; entitlement and retention review first |
 | Kalshi public trade channel | Completed trade price, count and taker side | New research-socket/research-sources | Same optional research-only socket and read key |
 | Complete raw WS book frame archive | Preserve accepted snapshot/delta and quantity evolution | New full-book-archive | V4_FULL_BOOK_ARCHIVE_ENABLED=false by default; high write usage requires explicit operator/cost approval |
-| Kalshi signed CF REST response check | Confirm accessible data envelope, not numerical correctness | New cf-access.js | V4_CF_ACCESS_PROBE_ENABLED=false; six-hour cache; costs 50 Kalshi read tokens per call |
+| Kalshi signed CF REST access check | Check a fresh ETHUSD_RTI value and source timestamp from small `/latest_values` response | cf-access.js updated after 128 KiB `/values` audit | V4_CF_ACCESS_PROBE_ENABLED=true; versioned cache, six hours for successful results, five minutes for failures; 50 read tokens per uncached call |
 | Official CF history backfill | Recover verified values with source-time labels | NOT IMPLEMENTED | Requires confirmed entitlement and actual response schema/sample |
 | High-frequency 5Hz official CF source | Higher-resolution optional reference | NOT IMPLEMENTED | 1Hz must first pass verification |
 | Model-relevant market replay | Reconstruct historical decisions without future information | NOT IMPLEMENTED | Need complete synchronized sources and gap reports |
@@ -34,7 +34,7 @@ Scope: *isolated branch only*. V3 never changes. V4 paper trades remain hard-dis
 - [ ] Check GitHub diff: no V3 source, keys, account orders or DO binding changes.
 - [ ] Owner reviews Kalshi/CF data retention/redistribution permissions and Cloudflare storage/write capacity.
 - [ ] Deploy **only** the V4 engine/viewer after human approval. Existing flags remain false.
-- [ ] Enable the six-hour-cached V4_CF_ACCESS_PROBE_ENABLED, verify CF GET is signed with /trade-api/v2/cfbenchmarks/values (without the query), press the V4 dashboard "Check index access" button. A 200 or data envelope alone is **not** proof of valid ETH index values.
+- [ ] Enable the six-hour-cached V4_CF_ACCESS_PROBE_ENABLED, verify the small CF GET is signed with /trade-api/v2/cfbenchmarks/latest_values (without the query), press the V4 dashboard "Check index access" button. The diagnostic must validate an ETHUSD_RTI value, timestamp and freshness. A bare HTTP 200 is **not** proof of index entitlement or usable values.
 - [ ] Independently verify indexlist contains ETHUSD_RTI, source timestamps, actual index value payloads and final-minute averages on a complete 15m market; then enable V4_RESEARCH_STREAM_ENABLED.
 - [ ] Verify public trade feed on the intended market, rollover/reconnect, sequence gaps, and no interference with original orderbook WS.
 - [ ] Compute actual daily write usage for the full-book recorder. Explicit approval is required before enabling V4_FULL_BOOK_ARCHIVE_ENABLED and a retention/rotation policy.
@@ -61,3 +61,6 @@ Never paste Kalshi credentials into browsers, logs, chat or GitHub. The URL in a
 - https://docs.kalshi.com/websockets/cfbenchmarks-value
 - https://docs.kalshi.com/websockets/public-trades
 - https://docs.kalshi.com/websockets/orderbook-updates
+
+## November 21 diagnostic correction
+The first V4 access check returned HTTP 200 but an `HTTP_200_UNREADABLE_DATA` status. The original `/values` endpoint returns approximately one hour of RTI readings, likely exceeding our 128 KiB response cap. Rather than remove the safety cap, the diagnostic now uses `/latest_values`, validates the index-specific value and source timestamp, and has a versioned cache key to bypass the earlier six-hour cached failure. This change requires a new V4-only engine deployment and updated website code. Do not infer live index availability or enable new research streams from the old HTTP 200 status.
