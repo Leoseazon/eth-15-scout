@@ -120,3 +120,14 @@ test('reference REST quote source timestamp is forwarded, not replaced by the la
  assert.match(worker,/quoteObservedAt:s.lastQuoteRetrievedAt/);
  assert.match(worker,/V4 PAPER fills use authenticated WS book/);
 });
+
+test('the live settlement-first path guards the 85c ceiling and reports processing defects',()=>{
+ const src=readFileSync(root+'cloud/v4/src/settlement-first.js','utf8');
+ const paper=readFileSync(root+'cloud/v4/src/settlement-first-paper.js','utf8');
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ assert.match(src,/export const MAX_PAPER_ENTRY_ASK=0\.85/);
+ assert.match(src,/ask>MAX_PAPER_ENTRY_ASK/);
+ assert.match(paper,/d\.ask>MAX_PAPER_ENTRY_ASK/);
+ assert.match(worker,/V4_DECISION_PROCESSING_ERROR/);
+ assert.match(worker,/lastError:error/);
+});
