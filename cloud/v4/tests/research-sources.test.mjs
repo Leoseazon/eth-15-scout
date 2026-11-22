@@ -88,7 +88,7 @@ test('isolated transport subscribes only to benchmark and public trade; indexlis
  assert.deepEqual(ws.sent.slice(0,2).map(x=>x.params.channels),[['cfbenchmarks_value'],['trade']]);
  assert.deepEqual(ws.sent[0].params.index_ids,['ETHUSD_RTI']);
  assert.deepEqual(ws.sent[1].params.market_tickers,[ticker]);
- socket.handleMessage(JSON.stringify({type:'subscribed',id:1,sid:4}),T+100,ws);
+ socket.handleMessage(JSON.stringify({type:'subscribed',id:1,msg:{sid:4,channel:'cfbenchmarks_value'}}),T+100,ws);
  assert.equal(ws.sent[2].params.action,'indexlist');
  socket.handleMessage(JSON.stringify({type:'cfbenchmarks_value_indexlist',sid:4,seq:1,
   msg:{index_ids:['ETHUSD_RTI']}}),T+150,ws);
@@ -111,4 +111,44 @@ test('supplementary research failures never trigger order execution',async()=>{
  socket.handleMessage(JSON.stringify(cf()),T+500,ws);
  assert.ok(events.includes('CF_WRITE_FAILED'));
  assert.equal(socket.status().connected,true);
+});
+
+test('documented msg.sid ACK is required before retaining a CF price',async()=>{
+ const ws=new FakeSocket(),seen=[],events=[];
+ const {privateKey}=generateKeyPairSync('ed25519');
+ const sock=new KalshiResearchSocket({fetcher:async()=>({status:101,webSocket:ws}),
+  onCF:v=>seen.push(v),onEvent:kind=>events.push(kind)});
+ await sock.ensure(ticker,{keyId:'test-read-only',privatePem:privateKey.export({format:'pem',type:'pkcs8'}).toString()},T);
+ // A raw frame before a valid acknowledgement must never reach the journal.
+ sock.handleMessage(JSON.stringify(cf()),T+500,ws);
+ assert.equal(seen.length,0);assert.ok(events.includes('CF_PARSE_ERROR'));
+ sock.handleMessage(JSON.stringify({type:'subscribed',id:1,sid:4}),T+510,ws);
+ assert.equal(sock.indexAvailable,'UNVERIFIED');assert.equal(ws.sent.length,2);
+ sock.handleMessage(JSON.stringify({type:'subscribed',id:1,
+  msg:{sid:4,channel:'cfbenchmarks_value'}}),T+520,ws);
+ assert.equal(ws.sent.length,3);
+ // A forged/unassociated indexlist cannot verify entitlement.
+ sock.handleMessage(JSON.stringify({type:'cfbenchmarks_value_indexlist',sid:999,seq:1,
+  msg:{index_ids:['ETHUSD_RTI']}}),T+530,ws);
+ assert.equal(sock.indexAvailable,'UNVERIFIED');
+ sock.handleMessage(JSON.stringify(cf(1)),T+540,ws);
+ assert.equal(seen.length,0);
+ sock.handleMessage(JSON.stringify({type:'cfbenchmarks_value_indexlist',sid:4,seq:1,
+  msg:{index_ids:['ETHUSD_RTI']}}),T+550,ws);
+ sock.handleMessage(JSON.stringify(cf(2)),T+570,ws);
+ assert.equal(sock.indexAvailable,'AVAILABLE');assert.equal(seen.length,1);
+ sock.stop();
+});
+test('research stream labels every contract rollover as a coverage interruption',async()=>{
+ const ws1=new FakeSocket(),ws2=new FakeSocket(),events=[];
+ const {privateKey}=generateKeyPairSync('ed25519');
+ const sock=new KalshiResearchSocket({fetcher:async()=>({status:101,webSocket:
+  ws1.closed?ws2:ws1}),onEvent:kind=>events.push(kind)});
+ const credentials={keyId:'test-read-only',privatePem:privateKey.export({format:'pem',type:'pkcs8'}).toString()};
+ await sock.ensure(ticker,credentials,T);
+ const next='KXETH15M-26NOV221215-15';
+ await sock.ensure(next,credentials,T+901000);
+ assert.equal(sock.ticker,next);assert.equal(ws1.closed,true);
+ assert.ok(events.includes('RESEARCH_STREAM_ROLLOVER'));
+ sock.stop();
 });
