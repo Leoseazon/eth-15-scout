@@ -18,6 +18,7 @@ import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
 import {KalshiResearchSocket} from './research-socket.js';
 import {checkCFValuesAccess} from './cf-access.js';
 import {verifyCFWebSocket} from './cf-ws-probe.js';
+import {getV4StorageInventory} from './storage-inventory.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
@@ -658,6 +659,12 @@ export class ScoutEngineV4 extends DurableObject {
           limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
+    }
+    if(path==='/v1/storage-inventory'&&req.method==='GET'){
+      // Explicit authenticated viewer request only; no background inventory scans.
+      // Returns table counts/age/size only, never licensed raw observations.
+      try{return json(getV4StorageInventory(this.ctx.storage.sql))}
+      catch{return json({error:'V4 storage inventory unavailable'},503)}
     }
     if(path==='/v1/cf-ws-verify'&&req.method==='GET'){
       // Called by the authenticated viewer on a SEPARATE named Durable Object,
