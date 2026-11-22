@@ -226,6 +226,28 @@ export class ScoutEngineV4 extends DurableObject {
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
+    // FAST PAPER EXIT PATH (BEFORE Kraken/market-proxy requests).
+    // A delayed Kraken candle or nonessential regime fetch must NOT delay
+    // protection of an existing V4 paper position with a fresh Kalshi WS bid.
+    // Reuses the original persisted ticker/closeTime, and never fabricates a
+    // sale if the stream is stale, disconnected or short of displayed depth.
+    if(s.open?.strategy==='V4_SETTLEMENT_FIRST'){
+      const earlier=s.open;
+      const fastBook=this.stream?.status(Date.now())?.quote||null;
+      try{
+        const exit=settlementFirstPaperStep(s,{
+          market:{ticker:earlier.ticker,close_time:earlier.closeTime},
+          book:fastBook,now:Date.now()
+        });
+        if(exit.status==='PAPER_SELL'||s.open===null)
+          this.save(s,{lastTick:Date.now(),lastMarket:earlier.ticker,
+            lastNotice:exit.notice||'V4 paper position exit evaluated',
+            lastError:null});
+      }catch{
+        // The full tick will retry exit assessment with validated sources.
+        // No guessed exit or P&L is written on fast-path error.
+      }
+    }
     // Separate V4 cohort; no inherited V3 hotfix/soft-guard transition markers.
     this.ctx.storage.sql.exec(
       'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
