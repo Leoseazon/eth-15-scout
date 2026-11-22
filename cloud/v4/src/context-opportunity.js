@@ -9,6 +9,10 @@
  * The actual official benchmark/target are mandatory and primary.
  */
 export const CONTEXT_VALUE_VERSION='V4-CONTEXT-VALUE-PAPER-20261122';
+// At least the first 60 seconds of each 15-minute market are observation-only.
+// New paper entry is eligible from 14m remaining down to >90s remaining.
+export const ENTRY_MIN_REMAINING_SECONDS=90;
+export const ENTRY_MAX_REMAINING_SECONDS=14*60;
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
 const finite=Number.isFinite;
 const round=x=>Number(x.toFixed(6));
@@ -90,7 +94,8 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
  const fail=reason=>({side,status:'REJECT',reason});
  if(!['UP','DOWN'].includes(side)||scenario?.status!=='SCENARIOS_READY')
   return fail('SCENARIO_UNAVAILABLE');
- if(!finite(remainingSeconds)||remainingSeconds<=90||remainingSeconds>750)
+ if(!finite(remainingSeconds)||remainingSeconds<=ENTRY_MIN_REMAINING_SECONDS||
+   remainingSeconds>ENTRY_MAX_REMAINING_SECONDS)
   return fail('OUTSIDE_ENTRY_CLOCK');
  const a=side==='UP'?book?.yesAsk:book?.noAsk;
  const b=side==='UP'?book?.yesBid:book?.noBid;
