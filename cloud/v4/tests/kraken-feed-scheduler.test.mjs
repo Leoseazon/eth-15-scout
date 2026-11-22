@@ -118,7 +118,7 @@ test('five-minute rollover invalidates earlier bars even if cache TTL not expire
 
 test('provider does not offer newly closed 5m candle: fail closed, never cache stale data',async()=>{
  const state={},timestamp=Date.parse('2026-11-22T09:40:10Z');
- const provider=makeFetcher({fiveAt:timestamp,old5:true});
+ const provider=makeFetcher({fiveAt:timestamp,old5:true,oneClock:()=>timestamp});
  const response=await collectThrottledMarketFeeds(provider.fetcher,marketUrl,base,
   timestamp,{state,wait:noWait});
  assert.equal(response.checks.kalshi.ok,true);
