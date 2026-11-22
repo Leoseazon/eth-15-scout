@@ -81,3 +81,28 @@ test('unarmed cannot buy, bad book/target/official source WATCH but never debit 
  assert.equal(settlementFirstPaperStep(s,{...args,book:{...book,fresh:false}}).status,'WATCH');
  assert.equal(s.cash,100);
 });
+
+test('soft daily-loss mode refuses normal-grade setup rather than reusing legacy 7/7 checkboxes',()=>{
+ const s=setup();
+ const day=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Chicago',
+  year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(T));
+ s.dailyRisk={day,mode:'SOFT'};
+ const r=settlementFirstPaperStep(s,args);
+ assert.equal(r.status,'WATCH');
+ assert.equal(s.cash,100);
+ assert.equal(s.open,null);
+ assert.match(r.notice,/SOFT risk/);
+});
+test('V4 exit survives disarm and rejects non-WS sources even at a profitable price',()=>{
+ const s=setup();settlementFirstPaperStep(s,args);
+ s.armed=false;
+ const falsePrice=settlementFirstPaperStep(s,{...args,now:T+150000,
+  book:{...book,receivedAt:T+149000,source:'KALSHI_REST',yesBid:{price:.96,sizeFp:'20.00'}}});
+ assert.equal(falsePrice.status,'HOLD');
+ assert.ok(s.open);
+ const validBook=settlementFirstPaperStep(s,{...args,now:T+151000,
+  book:{...book,receivedAt:T+150000,yesBid:{price:.96,sizeFp:'20.00'}}});
+ assert.equal(validBook.status,'PAPER_SELL');
+ assert.equal(s.open,null);
+ assert.equal(s.trades.length,1);
+});
