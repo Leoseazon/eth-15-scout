@@ -15,7 +15,7 @@ export function exceptionalPremiumEligible(d){
    d.ask>MAX_PAPER_ENTRY_ASK||!['UP','DOWN'].includes(d.side)||
    ![d.score,d.geometry,d.momentum,d.structure,d.spread].every(Number.isFinite)||
    !Number.isFinite(d.remainingSeconds)||d.remainingSeconds<=90||
-   d.remainingSeconds>300||d.spread<0||d.spread>.03||
+   d.remainingSeconds>300||d.spread<0||Math.round(d.spread*10000)>300||
    d.familySupport!==3||!Array.isArray(d.contradictionReasons)||
    d.contradictionReasons.length!==0)return false;
  const direction=d.side==='UP'?1:-1;
