@@ -60,8 +60,11 @@ export function evaluateShadowPolicy({policy,ticker,remainingSeconds,
   if(!Number.isSafeInteger(s.quantity)||s.quantity<1||
     s.ask<policyDef.minAsk||s.ask>0.87||s.ask<=0||
     s.bid<0||s.bid>s.ask||s.spread<0||
+    Math.abs(s.ask-s.bid-s.spread)>1e-6||
     s.spread>policyDef.maxSpread+1e-9||
     s.allIn<=0||s.allIn>3.00000001||
+    s.allIn+1e-9<s.quantity*s.ask||
+    Math.abs(s.breakEven-s.allIn/s.quantity)>1e-5||
     (s.ask<0.20&&s.allIn>0.50000001)||
     s.breakEven<0||s.breakEven>1||
     s.lowerScenario<0||s.lowerScenario>1||
