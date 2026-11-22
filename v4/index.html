@@ -14,6 +14,7 @@
 <script src="./cf-ws-probe-ui.js" defer></script>
 <script src="./storage-inventory-ui.js" defer></script>
 <script src="./settlement-paper-ui.js" defer></script>
+<script src="./confidence-ui.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -86,6 +87,19 @@
     <strong id="live-position-state">—</strong>
     <div id="live-position-detail" class="live-position-detail">No data</div>
     <div class="live-position-meta"><div><span>Entry / stake</span><strong id="live-entry">—</strong></div><div><span>Est. open P&amp;L</span><strong id="live-mark-pnl">—</strong></div></div>
+    <div id="buy-confidence-panel" class="confidence-panel" aria-label="Paper position BUY confidence">
+      <div class="confidence-heading"><strong>BUY CONFIDENCE</strong><small id="confidence-quality">No open paper position</small></div>
+      <div class="confidence-metrics">
+        <div><span>At purchase</span><strong id="confidence-entry">—</strong></div>
+        <div><span>Live while holding</span><strong id="confidence-live">—</strong></div>
+        <div><span>Change</span><strong id="confidence-trend">—</strong></div>
+      </div>
+      <div class="confidence-track" role="progressbar" id="confidence-meter" aria-label="Current heuristic BUY confidence" aria-valuemin="0" aria-valuemax="100">
+        <span id="confidence-meter-fill"></span>
+      </div>
+      <svg id="confidence-sparkline" class="confidence-sparkline" viewBox="0 0 240 40" preserveAspectRatio="none" role="img" aria-label="Changes in live confidence since entry"><path id="confidence-sparkline-path" d=""/></svg>
+      <p class="confidence-note" id="confidence-note">Confidence tracks signal strength. It is not the probability of winning this market.</p>
+    </div>
    </div>
    <div class="live-timing">
     <div class="live-position-title">CONTRACT WINDOW</div>
