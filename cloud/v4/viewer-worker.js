@@ -135,7 +135,7 @@ export default {
      token:session.token,expiresAt:session.expiresAt},200,origin);
   }
   if(!['/api/v4/dashboard','/api/v4/journal','/api/v4/research','/api/v4/quote-archive','/api/v4/stream','/api/v4/rest-book',
-     '/api/v4/benchmark','/api/v4/public-trades'].includes(path)||req.method!=='GET')
+     '/api/v4/benchmark','/api/v4/public-trades','/api/v4/full-book'].includes(path)||req.method!=='GET')
    return respond({error:'Not found'},404,origin);
   if(!env.SCOUT_V4||!credentialsConfigured(env))
    return respond({error:'Viewer not configured'},503,origin);
@@ -161,7 +161,7 @@ export default {
      const data=await result.json();
      return respond({...data,version:'V4',source:'Durable Object append-only journal'},200,origin);
    }
-   if(['/api/v4/stream','/api/v4/rest-book','/api/v4/benchmark','/api/v4/public-trades'].includes(path)){
+   if(['/api/v4/stream','/api/v4/rest-book','/api/v4/benchmark','/api/v4/public-trades','/api/v4/full-book'].includes(path)){
 
      const q=new URL(req.url).searchParams,limit=q.get('limit')||'60',
        anchor=q.get('anchor'),before=q.get('before'),ticker=q.get('ticker');
@@ -175,7 +175,8 @@ export default {
      if(before!==null)params.set('before',before);
      if(ticker!==null)params.set('ticker',ticker);
      const route={'/api/v4/stream':'/v1/stream','/api/v4/rest-book':'/v1/rest-book',
-        '/api/v4/benchmark':'/v1/benchmark','/api/v4/public-trades':'/v1/public-trades'};
+        '/api/v4/benchmark':'/v1/benchmark','/api/v4/public-trades':'/v1/public-trades',
+        '/api/v4/full-book':'/v1/full-book'};
       const internal=route[path];
      const result=await stub.fetch('https://internal'+internal+'?'+params.toString());
      if(!result.ok)return respond({error:'Read-only market archive unavailable'},502,origin);
