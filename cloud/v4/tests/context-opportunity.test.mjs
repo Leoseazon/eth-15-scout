@@ -108,3 +108,23 @@ test('SOFT risk is stricter without contradicting the exceptional 87c maximum',(
   scenario:veryStrong,remainingSeconds:240,budget:1.5,riskMode:'SOFT'});
  assert.equal(over.reason,'PRICE_ABOVE_87C_HARD_BUY_LIMIT');
 });
+
+test('V4 scenario-value admission uses the same 60-second opening buffer',()=>{
+ const scenario=targetScenarioEnvelope({...data,remainingSeconds:840});
+ assert.equal(scenario.status,'SCENARIOS_READY');
+ for(const seconds of [900,841,840.001]){
+  const r=priceAwareOpportunity({side:'UP',book:book(.20),scenario,
+   remainingSeconds:seconds,budget:3});
+  assert.equal(r.reason,'OUTSIDE_ENTRY_CLOCK',seconds+'s must be too early');
+ }
+ for(const seconds of [840,839,750,91]){
+  const r=priceAwareOpportunity({side:'UP',book:book(.20),scenario,
+   remainingSeconds:seconds,budget:3});
+  assert.notEqual(r.reason,'OUTSIDE_ENTRY_CLOCK',seconds+'s must be clock-eligible');
+ }
+ for(const seconds of [90,89]){
+  const r=priceAwareOpportunity({side:'UP',book:book(.20),scenario,
+   remainingSeconds:seconds,budget:3});
+  assert.equal(r.reason,'OUTSIDE_ENTRY_CLOCK',seconds+'s must be too late');
+ }
+});
