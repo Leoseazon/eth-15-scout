@@ -655,14 +655,14 @@ export class ScoutEngineV4 extends DurableObject {
     if(path==='/v1/cf-access'&&req.method==='GET'){
       if(this.env.V4_CF_ACCESS_PROBE_ENABLED!=='true')
         return json({state:'DISABLED',validValuesVerified:false,readOnly:true,paperOnly:true});
-      const now=Date.now(),cached=this.ctx.storage.kv.get('cf-access-result');
-      if(cached&&Number.isSafeInteger(cached.checkedAt)&&now-cached.checkedAt<6*60*60*1000)
+      const now=Date.now(),cached=this.ctx.storage.kv.get('cf-access-result-v2-latest');
+      if(cached&&Number.isSafeInteger(cached.checkedAt)&&now-cached.checkedAt<(cached.validValuesVerified?6*60*60*1000:5*60*1000))
         return json({...cached,readOnly:true,paperOnly:true,cached:true});
       const result=await checkCFValuesAccess({
         keyId:this.env.KALSHI_V4_READ_KEY_ID,
         privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,now});
       const clean={...result,checkedAt:Date.now(),source:'KALSHI_AUTHENTICATED_CF_VALUES_REST'};
-      this.ctx.storage.kv.put('cf-access-result',clean);
+      this.ctx.storage.kv.put('cf-access-result-v2-latest',clean);
       return json({...clean,readOnly:true,paperOnly:true,cached:false});
     }
     if(path==='/v1/full-book'&&req.method==='GET'){
