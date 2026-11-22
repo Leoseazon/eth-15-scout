@@ -17,6 +17,45 @@
  const activeAge=(x,now)=>{const t=time(x);return t===null?null:now-t};
  const issue=(code,severity,text,fix,{delay=false}={})=>
   ({code,severity,text,fix,delay});
+ // Safe diagnostic categories only. Never show raw provider messages, stack
+ // traces, account data, or secrets. No extra network requests.
+ const diagnoseEngine=s=>{
+  const raw=String(s?.lastError||'');
+  const rateLimited=x=>/too many requests|rate.?limit|cooldown|429/i.test(x);
+  if(/v4_decision_processing_error/i.test(raw))
+   return {text:'V4 paper decision processing failed on the latest tick.',
+    fix:'Possible decision-code regression. Check V4 Worker logs; consider the prior tested release if recurring.'};
+  if(/uncaught cloud tick/i.test(raw))
+   return {text:'V4 engine threw an uncaught processing error.',
+    fix:'Inspect V4 Durable Object/Worker logs before trusting new entry eligibility.'};
+  for(const [key,label] of [
+   ['kraken5m','Kraken 5-minute candles'],
+   ['kraken1m','Kraken 1-minute candles'],
+   ['krakenTicker','Kraken ETH ticker'],
+   ['kalshi','Kalshi market feed']]){
+   const check=s?.feedChecks?.[key];
+   const affected=new RegExp(key,'i').test(raw)||
+    (check?.ok===false&&typeof check.error==='string'&&
+     raw.includes(String(check.error).slice(0,70)));
+   if(!affected)continue;
+   const limited=rateLimited(raw)||rateLimited(String(check?.error||''));
+   return {text:label+' '+(limited?'was rate-limited or is cooling down.':
+    /stale|latest closed candle/i.test(raw+' '+(check?.error||''))?
+     'did not pass the freshness check.':'failed validation during the latest tick.'),
+    fix:'New paper BUYs require valid feeds. Inspect feed checks and Worker logs; Kalshi-book protective exits remain separate.'};
+  }
+  if(/entryindicators/i.test(raw))
+   return {text:'Kraken indicator calculation failed on the latest tick.',
+    fix:'Check completed-candle freshness and Worker logs.'};
+  if(/recorder:/i.test(raw))
+   return {text:'V4 paper quote or research recording failed.',
+    fix:'Check Durable Object SQLite and Worker logs; verify journal health.'};
+  if(/kalshi/i.test(raw))
+   return {text:'A Kalshi market-data operation failed.',
+    fix:'Check Kalshi price/target feed and Worker logs.'};
+  return {text:'V4 reported an error with an as-yet-unidentified source.',
+   fix:'Inspect authenticated status.lastError and feedChecks, or the V4 Worker logs.'};
+ };
  const fault=(code,now)=>{
   if(!firstFault.has(code))firstFault.set(code,now);
   return now-firstFault.get(code);
@@ -54,9 +93,9 @@
    }
    if(tickAge!==null&&tickAge<=maxAge&&tickAge>=0&&
       typeof s.lastError==='string'&&s.lastError.trim()){
+    const diagnostic=diagnoseEngine(s);
     add(issues,issue('ENGINE_ERROR','error',
-      'Engine reported a processing/feed error on its latest cycle.',
-      'Check V4 Worker logs and the feed checks below.'),now);
+      diagnostic.text,diagnostic.fix),now);
    }
   }
   // Only check REQUIRED live-paper inputs when a paper engine is running.
