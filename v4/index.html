@@ -13,6 +13,7 @@
 <script src="./app.js" defer></script>
 <script src="./cf-ws-probe-ui.js" defer></script>
 <script src="./storage-inventory-ui.js" defer></script>
+<script src="./settlement-paper-ui.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -176,6 +177,16 @@
       <div id="v4-storage-inventory-results" class="fine" aria-live="polite"></div>
     </div>
     <div class="journal-actions"><button type="button" id="v4-storage-inventory-check">Check stored history</button></div>
+  </div>
+  <div class="journal-tools" aria-label="Official Kalshi settlement-side paper prediction results">
+    <div><strong>V4 settlement-first paper research</strong>
+      <p id="v4-settlement-paper-status">No verified paper prediction result yet.</p>
+      <small>Primary metric: did the selected UP/DOWN side match Kalshi's finalized result?
+      This is separate from winning or losing money on an early paper sale.
+      Predictions are experimental and not calibrated probabilities.</small>
+      <div id="v4-settlement-paper-detail" class="fine" aria-live="polite"></div>
+    </div>
+    <div class="journal-actions"><button type="button" id="v4-settlement-score-refresh">Refresh settlement score</button></div>
   </div>
   <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
     <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
