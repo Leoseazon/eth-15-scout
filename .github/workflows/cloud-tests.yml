@@ -44,6 +44,7 @@ jobs:
       - run: node --check v4/src/settlement-first.js
       - run: node --check v4/src/settlement-first-paper.js
       - run: node --check v4/src/settlement-predictions.js
+      - run: node --check v4/src/settlement-replay.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
