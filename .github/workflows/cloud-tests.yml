@@ -40,6 +40,7 @@ jobs:
       - run: node --check v4/src/cf-access.js
       - run: node --check v4/src/cf-ws-probe.js
       - run: node --check v4/src/storage-inventory.js
+      - run: node --check v4/src/history-90d-audit.js
       - run: node --check v4/src/stop-research.js
       - run: node --check v4/src/research-journal.js
       - run: node --check v4/src/stream-audit.js
@@ -52,3 +53,7 @@ jobs:
       - run: node --check ../v4/storage-inventory-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
+      - name: Audit public 90-day KXETH15M round availability (aggregate only)
+        continue-on-error: true
+        timeout-minutes: 4
+        run: node v4/tools/public-90day-audit.mjs
