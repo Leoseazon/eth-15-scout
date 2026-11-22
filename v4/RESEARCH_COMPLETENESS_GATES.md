@@ -104,3 +104,51 @@ its existing operation and archived content need their own permission review.
 The permission and protocol fixes are V4-only changes in a draft research branch.
 Do not deploy them as authorization to retain or train on market data. The
 continuous feed and full-depth recorder stay off unless all release gates pass.
+
+## PRIMARY RESEARCH OBJECTIVE — TARGET-SIDE ACCURACY
+
+**Owner-confirmed research priority:** predict the actual official KXETH15M
+settlement side (UP/YES or DOWN/NO) relative to the exact Kalshi market's
+displayed opening target. Trade profit is a separate, secondary measure.
+
+Every historical unit must be the *actual Kalshi market*, not an arbitrary
+15-minute ETH candle. Capture immutable market ticker, open/close timestamps,
+opening target (floor_strike if available), rules/contract version, official
+Kalshi result, official closing value if available, and provenance.
+Never invent a target or an outcome.
+
+Kalshi describes 15-minute crypto markets as comparing the CF Benchmarks
+60-second average immediately before close to the 60-second average
+immediately before open. The actual contract terms govern tie and other
+special cases. Kalshi's official published result is the primary truth label.
+A single Kraken spot print is NEVER an official settlement substitute.
+
+At each historical decision timestamp, use ONLY data already available then.
+Do not leak later candle closes, closing index minute, revised data,
+future quote data or final result into a feature.
+Mark missing target, quote, index or official result as UNKNOWN.
+
+Required independent outcome fields for each hypothetical entry:
+- Decision timestamp, market ticker and seconds remaining
+- Actual Kalshi target/strike and contemporaneous signed distance from target
+- UP/DOWN/PASS prediction and the indicator interaction that generated it
+- Official outcome and directionCorrect, when verifiably known
+- Trade P&L, fees, entry/exit feasibility, settlement and early-sale status
+- No profitable early sale may be counted as a correct settlement prediction
+- PASS is not a correct directional prediction and is not included in hit rate
+
+Primary report: official settlement-side accuracy ON TRADES, number of valid
+predictions, traded-market coverage, PASS frequency, side-specific precision,
+accuracy by time remaining and distance from target, error bars, and
+comparison with naive UP/DOWN baselines. High accuracy with extremely
+low market coverage is not sufficient evidence of a strong strategy.
+Secondary report: after-fee simulated P&L, exit feasibility, stop-loss
+behavior, entry affordability, and execution-data uncertainties.
+
+90-day study: fetch actual historical KXETH15M contracts and official
+settlements where available. Do not presume all theoretical 8,640 windows
+have accessible complete source data. Develop on an earlier time segment,
+validate on a later untouched holdout, then run live paper forward testing.
+This does not require waiting an additional 90 days.
+
+Kalshi crypto market guidance: https://help.kalshi.com/en/articles/13823838-crypto-markets
