@@ -44,6 +44,7 @@ test('V4 paper release adds only the two paper flags plus separately gated explo
  assert.match(paperText,/SCOUT_V4_PAPER_MODE = "enabled"/);
  assert.match(paperText,/V4_SETTLEMENT_FIRST_EXPERIMENT = "true"/);
  assert.doesNotMatch(defaultText,/V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "true"/);
+ assert.match(defaultText,/V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "false"/);
  assert.match(paperText,/V4_EXPLORATORY_PAPER_SAMPLING_ENABLED = "true"/);
  for(const [flag,value] of [
   ['V4_DATA_RESEARCH_AUTHORIZED','false'],
