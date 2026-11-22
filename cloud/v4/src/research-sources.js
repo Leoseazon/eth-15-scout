@@ -97,7 +97,8 @@ export function appendResearchFeedEvent(sql,kind,at=Date.now()){
  const permitted=new Set(['CF_CONNECT_ERROR','CF_SUBSCRIPTION_ERROR','CF_GAP','CF_PARSE_ERROR',
   'CF_WRITE_FAILED','TRADE_SUBSCRIPTION_ERROR','TRADE_GAP','TRADE_PARSE_ERROR',
   'TRADE_WRITE_FAILED','RESEARCH_STREAM_CLOSED','RESEARCH_STREAM_CONNECTED',
-  'RESEARCH_STREAM_SILENT','RESEARCH_STREAM_CONFIG_MISSING']);
+  'RESEARCH_STREAM_SILENT','RESEARCH_STREAM_CONFIG_MISSING',
+  'RESEARCH_STREAM_ROLLOVER']);
  if(!permitted.has(kind)||ms(at)===null)throw TypeError('Invalid research event');
  sql.exec('INSERT INTO v4_research_feed_events(at,kind,detail) VALUES(?,?,?)',
   at,kind,'V4_RESEARCH_ONLY');
