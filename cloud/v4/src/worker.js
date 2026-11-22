@@ -419,6 +419,8 @@ export class ScoutEngineV4 extends DurableObject {
           book:decisionBook,now:Date.now(),
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
+        // Fail closed and send a sanitized code to the existing red health strip.
+        error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
       // Read-only observation: confidence is computed AFTER the normal paper
