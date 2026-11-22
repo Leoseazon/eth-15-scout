@@ -66,3 +66,17 @@ test('no apparent 90c+ safe bet mechanically overrides economic/time gates',()=>
  assert.equal(r.status,'WATCH');
  assert.equal(r.side,'PASS');
 });
+
+test('all required candle-derived features must be finite; NaN never becomes silent neutral support',()=>{
+ for(const key of ['e8','e21','mNow','sNow','three','rNow']){
+  const r=evaluateSettlementFirst({...input,one:{...one,[key]:NaN}});
+  assert.equal(r.status,'WATCH',key);
+  assert.equal(r.side,'PASS',key);
+  assert.match(r.reason,/COMPLETE_CLOSED/);
+ }
+ for(const key of ['rsi','e21','e50']){
+  assert.equal(evaluateSettlementFirst({...input,five:{...five,[key]:NaN}}).side,'PASS');
+ }
+ assert.equal(evaluateSettlementFirst({...input,
+  context:{three:{trend:'UNKNOWN'},five:{trend:'UP'}}}).side,'PASS');
+});
