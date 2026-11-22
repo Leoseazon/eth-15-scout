@@ -9,7 +9,8 @@ import {aggregate3m,analyzeStructure,completedFresh,buildDailyRegime} from './st
 import {settlementClockPhase} from './v3-policy.js';
 import {parseList,windowEndpointUrl,SCAN_INTERVAL_MS} from './window-journal.js';
 import {paperResults,reconcilePending} from './paper-ledger.js';
-import {collectMarketFeeds,validateKalshiSnapshot} from './feed-health.js';
+import {validateKalshiSnapshot} from './feed-health.js';
+import {collectThrottledMarketFeeds} from './kraken-feed-scheduler.js';
 import {KalshiReadOnlySocket} from './kalshi-ws-transport.js';
 import {probeKalshiPublicRest,probeKalshiSignedRead,probeKalshiWebsocketHostHttps} from './kalshi-network-diagnostic.js';
 import {ensureStreamAudit,sampledStreamRecorder,appendStreamEvent,streamPage,latestStreamStatus} from './stream-audit.js';
@@ -82,6 +83,9 @@ function normalize(s){
 export class ScoutEngineV4 extends DurableObject {
   constructor(ctx,env){
     super(ctx,env); this.busy=null;
+    // Per-DO volatile Kraken cache: eviction/redeployment always forces fresh
+    // validation; never persisted and never used after a failed provider check.
+    this.krakenFeedState={};
     ctx.storage.sql.exec(`CREATE TABLE IF NOT EXISTS trades(
       ticker TEXT PRIMARY KEY, exit_at INTEGER NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS decisions(
@@ -268,7 +272,8 @@ export class ScoutEngineV4 extends DurableObject {
       regime:s.dailyRegime?.day===today?s.dailyRegime:null};
     // PHASE 1: network results are independent: Kraken failure must not
     // prevent paper exits using a validated, executable Kalshi quote.
-    const batch=await collectMarketFeeds(remote,mUrl,API,now);
+    const batch=await collectThrottledMarketFeeds(remote,mUrl,API,now,
+      {state:this.krakenFeedState});
     const feedChecks=batch.checks,feedIssues=[...batch.failures];
     const fail=(source,reason)=>{
       const msg=safeErr(reason);
