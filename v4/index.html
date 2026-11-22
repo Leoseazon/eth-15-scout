@@ -77,6 +77,15 @@
     <small>Reuses existing dashboard refresh · no extra market-data requests.</small></div>
   </details>
  </section>
+ <section id="overview" class="overview">
+  <div class="metric-grid">
+   <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
+   <div class="metric"><span class="metric-label">Paper simulation</span><span class="metric-value" id="metric-arm">—</span><span class="metric-hint">Never places real orders</span></div>
+   <div class="metric"><span class="metric-label">Current market</span><span class="metric-value compact" id="metric-market">—</span><span class="metric-hint">Kalshi ETH 15-minute</span></div>
+   <div class="metric"><span class="metric-label">Daily risk mode</span><span class="metric-value" id="metric-risk">—</span><span class="metric-hint">12% soft · 20% hard</span></div>
+   <div class="metric"><span class="metric-label">Last engine tick</span><span class="metric-value" id="metric-age">—</span><span class="metric-hint" id="metric-feed">Data freshness unknown</span></div>
+  </div>
+ </section>
  <section id="live-action" class="live-action" aria-labelledby="live-action-title">
   <div class="live-action-heading">
    <div><p class="eyebrow">TOP PRIORITY · V4 PAPER ENGINE · VERIFY STATUS</p><h1 id="live-action-title">Current 15-minute round</h1></div>
@@ -203,15 +212,6 @@
    </section>
   </aside>
  </div>
- <section id="overview" class="overview">
-  <div class="metric-grid">
-   <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
-   <div class="metric"><span class="metric-label">Paper simulation</span><span class="metric-value" id="metric-arm">—</span><span class="metric-hint">Never places real orders</span></div>
-   <div class="metric"><span class="metric-label">Current market</span><span class="metric-value compact" id="metric-market">—</span><span class="metric-hint">Kalshi ETH 15-minute</span></div>
-   <div class="metric"><span class="metric-label">Daily risk mode</span><span class="metric-value" id="metric-risk">—</span><span class="metric-hint">12% soft · 20% hard</span></div>
-   <div class="metric"><span class="metric-label">Last engine tick</span><span class="metric-value" id="metric-age">—</span><span class="metric-hint" id="metric-feed">Data freshness unknown</span></div>
-  </div>
- </section>
  <section id="activity" class="card activity-card" aria-labelledby="activity-title">
   <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS" title="Only finalized skipped rounds, not temporary WATCH decisions">ROUND PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
   <div class="feed-head"><span>TIME (CT)</span><span>EVENT</span><span>CONTRACT</span><span>DETAILS</span></div>
