@@ -45,7 +45,13 @@ export class KalshiResearchSocket {
  }
  async ensure(ticker,credentials,now=Date.now()){
   if(!ETH.test(ticker||''))return false;
-  if(this.ticker&&this.ticker!==ticker)this.stop();
+  if(this.ticker&&this.ticker!==ticker){
+   // This implementation reconnects the contract-scoped public trade feed
+   // at rollover. Record the gap explicitly: the CF index does not prove
+   // continuous coverage during this transition.
+   this.event('RESEARCH_STREAM_ROLLOVER');
+   this.stop();
+  }
   if(this.socket?.readyState===1||this.connecting||now<this.retryAfter)return false;
   this.ticker=ticker;this.connecting=true;const generation=++this.generation;
   try{
@@ -88,26 +94,32 @@ export class KalshiResearchSocket {
    return;
   }
   if(p?.type==='subscribed'){
-   if(Number.isSafeInteger(p.sid)&&p.sid>0){
-    if(p.id===1){
-     this.sids.set(p.sid,'cf');
+   const assigned=p?.msg?.sid;
+   // Kalshi's documented 'subscribed' ACK places SID inside msg.sid,
+   // not at the envelope top level. An unconfirmed SID never authorizes
+   // us to archive reference or trade frames.
+   if(Number.isSafeInteger(assigned)&&assigned>0){
+    if(p.id===1 && p.msg.channel==='cfbenchmarks_value'){
+     this.sids.set(assigned,'cf');
      try{this.socket?.send(JSON.stringify({id:3,cmd:'update_subscription',
-      params:{sid:p.sid,action:'indexlist'}}))}catch{this.event('CF_SUBSCRIPTION_ERROR')}
+      params:{sid:assigned,action:'indexlist'}}))}catch{this.event('CF_SUBSCRIPTION_ERROR')}
     }
-    else if(p.id===2)this.sids.set(p.sid,'trade');
-   }
+    else if(p.id===2 && p.msg.channel==='trade')this.sids.set(assigned,'trade');
+   }else this.event(p.id===2?'TRADE_SUBSCRIPTION_ERROR':'CF_SUBSCRIPTION_ERROR');
    return;
   }
   if(p?.type==='cfbenchmarks_value_indexlist'){
    this.indexAvailable=Array.isArray(p.msg?.index_ids)&&
     p.msg.index_ids.includes('ETHUSD_RTI')?'AVAILABLE':'NOT_LISTED';
+   if(this.indexAvailable!=='AVAILABLE')this.event('CF_SUBSCRIPTION_ERROR');
    if(Number.isSafeInteger(p.sid)&&Number.isSafeInteger(p.seq))
     this.seqBySid.set(p.sid,p.seq);
    return;
   }
   if(!['cfbenchmarks_value','trade'].includes(p?.type))return;
   const kind=p.type==='trade'?'trade':'cf';
-  if(Number.isSafeInteger(p.sid)&&this.sids.has(p.sid)&&this.sids.get(p.sid)!==kind){
+  if(!Number.isSafeInteger(p.sid)||this.sids.get(p.sid)!==kind||
+     (kind==='cf'&&this.indexAvailable!=='AVAILABLE')){
    this.event(kind==='trade'?'TRADE_PARSE_ERROR':'CF_PARSE_ERROR');return;
   }
   const previous=this.seqBySid.get(p.sid);
@@ -118,7 +130,7 @@ export class KalshiResearchSocket {
   if(kind==='cf'){
    try{
     const value=parseCFValueFrame(p,receivedAt);
-    this.indexAvailable='AVAILABLE';this.lastCFAt=receivedAt;
+    this.lastCFAt=receivedAt;
     try{this.onCF(value)}catch{this.event('CF_WRITE_FAILED')}
    }catch{this.event('CF_PARSE_ERROR')}
   }else{
