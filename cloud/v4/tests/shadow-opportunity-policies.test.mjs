@@ -50,7 +50,8 @@ test('only a valid baseline conservative rejection is eligible',()=>{
 test('all-in budget, cheap stake, price ceiling and numerical integrity stay intact',()=>{
  for(const x of [side({allIn:3.01}),side({ask:.88}),side({lowerScenario:1.1}),
    side({quantity:1.5}),side({centralScenario:NaN}),side({breakEven:1.2}),
-   side({bid:.60}),side({ask:.15,allIn:1})]){
+   side({bid:.60}),side({ask:.15,allIn:1}),side({spread:.005}),
+   side({breakEven:.52}),side({allIn:2.70})]){
   assert.equal(run('A_STRESS_RELAXED',{consideredSideValues:[x]}).status,'NO_SHADOW_SIGNAL');
  }
 });
