@@ -12,7 +12,9 @@ export const KRAKEN_OHLC_SPACING_MS=1200;
 export const FIVE_RATE_LIMIT_BACKOFF_MS=120000;
 export const ONE_RATE_LIMIT_BACKOFF_MS=60000;
 const CANDLE_FIVE_MS=300000;
-const CANDLE_CLOSE_GRACE_MS=5000;
+// Never assume a just-finished 5m bar is present: fail closed immediately
+// at its boundary until Kraken actually reports that bar as completed.
+const CANDLE_CLOSE_GRACE_MS=0;
 const delayBy=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const rateLimited=value=>{
  const detail=Array.isArray(value?.error)?value.error.join(' '):
