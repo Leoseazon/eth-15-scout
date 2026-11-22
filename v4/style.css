@@ -781,3 +781,60 @@ footer{margin:16px 0}
  #live-action .live-contract-board .board-target strong{font-size:17px}
  #live-action .live-contract-board .board-spot .mini-label{font-size:9px}
 }
+
+/* V4 read-only Opportunity Review: opportunity-cost accountability, no trade quotas */
+body.unauthenticated #opportunity-review{display:none}
+#opportunity-review{margin:0 0 10px}
+#opportunity-review .opportunity-heading{align-items:center;gap:12px}
+#opportunity-review .opportunity-state{
+ display:inline-flex;align-items:center;justify-content:center;
+ border:1px solid #51667a;background:#233246;border-radius:7px;
+ color:#bdcbd8;font-size:10px;font-weight:800;white-space:nowrap;
+ padding:6px 9px;letter-spacing:.025em
+}
+#opportunity-review .opportunity-state.attention{
+ color:#f2d58f;background:#463923;border-color:#a37d37
+}
+#opportunity-review .opportunity-state.unknown{
+ color:#c2cedb;background:#2b3341;border-color:#596b78
+}
+#opportunity-review .opportunity-body{padding:10px 12px 12px}
+#opportunity-review .opportunity-grid{
+ display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px
+}
+#opportunity-review .opportunity-metric{
+ display:flex;flex-direction:column;min-width:0;
+ border:1px solid #34495b;background:#162334;border-radius:9px;padding:10px 12px
+}
+#opportunity-review .opportunity-metric>span{
+ color:#b7cad9;font-size:11px;line-height:1.3;font-weight:650
+}
+#opportunity-review .opportunity-metric strong{
+ color:#e2edf4;font-size:15px;line-height:1.3;
+ overflow-wrap:anywhere;margin:7px 0 5px;font-variant-numeric:tabular-nums
+}
+#opportunity-review .opportunity-metric small{
+ color:#94aabd;line-height:1.4;font-size:10px;margin-top:auto
+}
+#opportunity-review .opportunity-review-note{
+ font-size:11px;line-height:1.45;color:#c7d6df;
+ padding:7px 2px 0;margin:0
+}
+#opportunity-review .opportunity-philosophy{
+ font-size:11px;line-height:1.5;color:#afc2d0;
+ border-top:1px solid #314355;margin:9px 0 0;padding:9px 2px 0
+}
+#opportunity-review .opportunity-philosophy strong{color:#e0ebf3}
+@media(max-width:1050px){
+ #opportunity-review .opportunity-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+ #opportunity-review .opportunity-heading{flex-wrap:wrap}
+ #opportunity-review .opportunity-body{padding:8px}
+ #opportunity-review .opportunity-grid{gap:7px}
+ #opportunity-review .opportunity-metric{padding:9px}
+ #opportunity-review .opportunity-metric strong{font-size:13px}
+}
+@media(max-width:410px){
+ #opportunity-review .opportunity-grid{grid-template-columns:1fr}
+}
