@@ -68,7 +68,7 @@ test('V4 open positions continue V4 exit logic under emergency return to disarme
 });
 test('official index and book are fail-closed, status may not claim an old index reading is fresh',()=>{
  const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
- assert.match(worker,/entrySourcesReady&&index!==null/);
+ assert.match(worker,/entrySourcesReady&&decisionBookFresh&&index!==null/);
  assert.match(worker,/SKIPPED_NO_FRESH_WS_BOOK/);
  assert.match(worker,/officialIndexFeedCheck:/);
  assert.match(worker,/paperFeedHealth:/);
