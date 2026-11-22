@@ -4,6 +4,8 @@
  * NO real orders, no learned model, no historical outcomes at decision time.
  */
 export const SETTLEMENT_FIRST_VERSION='V4-SETTLEMENT-FIRST-CONTEXT-20261122';
+// User's HARD max buy ask, inclusive. 96c is a SELL target, not permission to BUY.
+export const MAX_PAPER_ENTRY_ASK=0.85;
 const numeric=x=>x!==null&&x!==undefined&&x!==''&&Number.isFinite(Number(x))?Number(x):null;
 const bounded=(x,a=-1,b=1)=>Math.max(a,Math.min(b,x));
 const sign=x=>x>0?1:x<0?-1:0;
@@ -63,6 +65,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
  if(!Number.isFinite(closeAt)||target===null||target<=0)
   return watch('OFFICIAL_TARGET_OR_CLOSING_TIME_MISSING');
  const remainingSeconds=(closeAt-now)/1000;
+ const remainingMinutes=remainingSeconds/60;
  if(!Number.isFinite(remainingSeconds)||remainingSeconds<=90||remainingSeconds>750)
   return watch('OUTSIDE_EARLY_PAPER_ENTRY_WINDOW',{remainingSeconds});
  if(index?.indexId!=='ETHUSD_RTI'||index.validValuesVerified!==true||
@@ -100,10 +103,13 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,now=
   scoreKind:'NON_CALIBRATED_HEURISTIC',familySupport:families,
   contradictionReasons:contradictions,ask,bid,askDepth,bidDepth,
   spread:priceSpread,bookReceiptAt:book.receivedAt};
+ // A hard ceiling is independent of model strength, time or confidence.
+ if(ask!==null&&ask>MAX_PAPER_ENTRY_ASK)
+  return watch('PRICE_ABOVE_85C_HARD_BUY_LIMIT',{...insight,candidateSide:side});
  if(Math.abs(combined)<minimumScore||families<minimumFamilies)
   return watch('WEAK_OR_CONTRADICTED_SETTLEMENT_SIDE_EVIDENCE',
    {...insight,candidateSide:side});
- if(ask===null||bid===null||ask<=0||ask>=.96||bid<0||bid>ask||
+ if(ask===null||bid===null||ask<=0||ask>MAX_PAPER_ENTRY_ASK||bid<0||bid>ask||
    priceSpread===null||priceSpread>.05||
    askDepth===null||askDepth<1||bidDepth===null)
   return watch('KALSHI_ASK_SPREAD_OR_DISPLAYED_DEPTH_UNSUITABLE',
