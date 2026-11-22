@@ -73,23 +73,49 @@ export async function auditHistorical90Days({fetcher=fetch,now=Date.now(),
   ['live','/markets?series_ticker=KXETH15M&status=settled&mve_filter=exclude&limit=1000']
  ]){
   let cursor='',pages=0,fetched=0,stoppedByCap=false,complete=false;
+  let observedDescending=true,previousMinClose=null,timeBoundaryReached=false;
   const cursorSeen=new Set();
   while(pages<maxPages&&rows.length<maxRecords){
    const url=new URL(API+endpoint);
    if(cursor)url.searchParams.set('cursor',cursor);
-   let response;try{response=await fetchJson(url.href,{fetcher})}
-   catch(e){errors.push(tier+':'+String(e.message||e).slice(0,70));break}
+   let response,requestError=null;
+   for(let attempt=0;attempt<3;attempt++){
+    try{response=await fetchJson(url.href,{fetcher});requestError=null;break}
+    catch(e){
+     requestError=e;
+     if(!/HTTP_429/.test(String(e.message||e))||attempt===2)break;
+     await new Promise(resolve=>setTimeout(resolve,700*(attempt+1)));
+    }
+   }
+   if(requestError){errors.push(tier+':'+String(requestError.message||requestError).slice(0,70));break}
    if(!Array.isArray(response.markets)){errors.push(tier+':INVALID_MARKET_PAGE');break}
    fetched+=response.markets.length;pages++;
    rows.push(...response.markets);
+   const ts=response.markets.map(m=>stamp(m.close_time));
+   if(ts.some(t=>t===null))observedDescending=false;
+   for(let i=1;i<ts.length;i++)if(ts[i]>ts[i-1])observedDescending=false;
+   if(previousMinClose!==null&&ts.length&&ts[0]>previousMinClose)
+    observedDescending=false;
+   if(ts.length)previousMinClose=Math.min(...ts);
+   // Kalshi historical listing does not document ordering guarantees. An
+   // observed time boundary short-circuits API volume, but NEVER proves that
+   // the remaining cursor pages have no matching markets.
+   if(tier==='historical'&&observedDescending&&
+      previousMinClose!==null&&previousMinClose<startAt){
+    timeBoundaryReached=true;break;
+   }
    const next=typeof response.cursor==='string'?response.cursor:'';
    if(!next||response.markets.length===0){complete=true;break}
    if(cursorSeen.has(next)){errors.push(tier+':CURSOR_LOOP');break}
    cursorSeen.add(next);cursor=next;
+   if(tier==='historical')
+    await new Promise(resolve=>setTimeout(resolve,260));
   }
   if(!complete&&pages>=maxPages)stoppedByCap=true;
   tiers.push({tier,pages,recordsScanned:fetched,completedPagination:complete,
-   truncated:stoppedByCap||rows.length>=maxRecords});
+   timeBoundaryReached,observedDescending,truncated:stoppedByCap||
+    (rows.length>=maxRecords&&!timeBoundaryReached)});
+
  }
  const stats=summarizeMarkets(rows,{startAt,endAt:now});
  return {study:'KXETH15M_90_DAY_MARKET_TRUTH_COVERAGE',researchOnly:true,
