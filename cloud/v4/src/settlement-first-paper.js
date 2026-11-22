@@ -168,7 +168,7 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   entryConfidence,
   liveConfidence:{...entryConfidence,status:'CURRENT',asOf:now,
     contractTicker:active.ticker,side:d.side,
-    caveat:'Initial heuristic signal score; not a probability of winning.'},
+    caveat:'Initial heuristic entry-confidence score, not probability of winning.'},
   confidenceHistory:[{at:now,value:entryConfidence.value}],
   calibratedProbability:null,markPnl:null};
  // Stage a unique settlement prediction before simulated debit. The caller
@@ -184,36 +184,15 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  s.cash=dollar(s.cash-cost);s.open=pos;s.blocked.push(active.ticker);
  if(s.window)s.window.entered=true;
  note(s,now,'PAPER BUY','Settled-side hypothesis '+d.side+' '+qty+' @ '+
-  d.ask.toFixed(4)+'; all-in 
+  d.ask.toFixed(4)+'; all-in $'+cost.toFixed(2)+
+  '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
+  '; displayed book, not a confirmed execution',active.ticker);
  s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
   cost,entryFee,entry:d.ask,entryConfidenceScore:entryConfidence.value,
   confidenceVersion:entryConfidence.version};
  risk(s,now);
  return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
-  ' × '+qty+' @ '+d.ask.toFixed(4)+'; 
-  ticker:active.ticker,position:pos};
-}
-+cost.toFixed(2)+
-  '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
-  '; source is displayed book, not proven execution',active.ticker);
- s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
-  cost,entryFee,entry:d.ask};
- risk(s,now);
- return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
-  ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees',
-  ticker:active.ticker,position:pos};
-}
-+cost.toFixed(2)+' with fees'+
-  '; buy confidence '+entryConfidence.value+'/100 (not win probability)',
-  ticker:active.ticker,position:pos};
-}
-+cost.toFixed(2)+
-  '; confidence '+entryConfidence.value+'/100 (heuristic, not win odds)'+
-  '; source is displayed book, not proven execution',active.ticker);
- s.lastV4SettlementDecision={...s.lastV4SettlementDecision,status:'PAPER_BUY',qty,
-  cost,entryFee,entry:d.ask};
- risk(s,now);
- return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
-  ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees',
+  ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees; '+
+  'BUY confidence '+entryConfidence.value+'/100 (not win probability)',
   ticker:active.ticker,position:pos};
 }
