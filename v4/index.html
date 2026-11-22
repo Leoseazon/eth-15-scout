@@ -12,6 +12,7 @@
 <script src="./stop-postmortem.js" defer></script>
 <script src="./app.js" defer></script>
 <script src="./cf-ws-probe-ui.js" defer></script>
+<script src="./storage-inventory-ui.js" defer></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to dashboard</a>
@@ -166,6 +167,15 @@
       <small>One-time authentication, indexlist, and fresh ETHUSD_RTI reading check. No raw frames saved, no simulated orders, no continuous recording.</small>
     </div>
     <div class="journal-actions"><button type="button" id="cf-ws-probe-button">Verify live WebSocket</button></div>
+  </div>
+  <div class="journal-tools" aria-label="V4 research storage retention and database size">
+    <div>
+      <strong>V4 research history · retention and storage</strong>
+      <p id="v4-storage-status">History currently has no automatic expiration configured.</p>
+      <small>The optional inventory reads stored record counts, date ranges, and database size. It does not read or delete underlying market samples. A 90-day target has not been activated.</small>
+      <div id="v4-storage-inventory-results" class="fine" aria-live="polite"></div>
+    </div>
+    <div class="journal-actions"><button type="button" id="v4-storage-inventory-check">Check stored history</button></div>
   </div>
   <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
     <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
