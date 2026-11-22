@@ -118,7 +118,15 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
  const uncertainty=p.upper-p.lower;
  // A conservative premium contract must have extra room after fees.
  // This is a risk allowance, not a vote among indicators.
- const edgeHurdle=(riskMode==='SOFT'?.20:ask>.85?.07:ask>=.75?.05:.035);
+ const baseEdgeHurdle=ask>.85?.07:ask>=.75?.05:.035;
+ // Under a loss-triggered SOFT state, demand a larger margin. However,
+ // a fixed 20-percentage-point margin would mathematically prohibit every
+ // >=85c contract (its total upside is <=15c before fees), contradicting
+ // the explicit exceptional 85.01-87c policy. Premium SOFT entries therefore
+ // require an exceptional 10-point cushion, while all lower prices require
+ // at least 12 points, on top of tighter liquidity and a reduced stake.
+ const edgeHurdle=riskMode==='SOFT'?
+   (ask>.85?.10:Math.max(.12,baseEdgeHurdle+.035)):baseEdgeHurdle;
  if(lowerEdge+1e-9<edgeHurdle)return {...fail('CONSERVATIVE_SCENARIO_VALUE_INSUFFICIENT'),
   ask,bid,spread,quantity:qty,allIn:round(allIn),breakEven:round(allIn/qty),
   lowerScenario:round(p.lower),centralScenario:round(p.central),
