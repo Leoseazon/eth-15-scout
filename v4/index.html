@@ -139,6 +139,10 @@
     <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
     <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
     <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
+    <div class="round-pass-stat" title="Counted once per Kalshi ETH 15-minute contract recorded as a final PASS in the persistent V4 journal. Temporary WATCH and PASS / WATCH messages never count.">
+     <div><span>FINAL ROUND PASSES</span><small>Completed rounds skipped · not temporary WATCH</small></div>
+     <strong id="round-pass-count" aria-live="polite">—</strong>
+    </div>
    </div>
    <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
   </div>
