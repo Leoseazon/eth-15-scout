@@ -18,12 +18,15 @@ test('the new settlement-first paper bot remains off in the ordinary V4 research
 test('new paper engine uses official RTI input and immutable prediction journal, not legacy 7 checkbox purchase',()=>{
  const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
  assert.match(worker,/settlementFirstPaperStep\(s,/);
- assert.match(worker,/onPrediction:pos=>appendSettlementPrediction\(/);
+ assert.match(worker,/onPrediction:pos=>\{s\.pendingPredictionToCommit=pos\}/);
+ assert.match(worker,/if\(forecastToCommit\)appendSettlementPrediction\(sql,forecastToCommit\)/);
+ assert.match(worker,/delete runtime\.pendingPredictionToCommit/);
+ assert.match(worker,/if\(forecastToCommit\)delete s\.pendingPredictionToCommit/);
  assert.match(worker,/reconcileSettlementPredictions\(this\.ctx\.storage\.sql/);
  assert.match(worker,/settlementPredictionStats\(this\.ctx\.storage\.sql\)/);
  assert.match(worker,/verified\.state==='HTTP_200_VALID_ETH_INDEX'/);
  assert.match(worker,/this\.stream\?\.status\(Date\.now\(\)\)\?\.quote/);
- assert.match(worker,/if\(this\.paperExperimentAllowed\)\{/);
+ assert.match(worker,/if\(this\.paperExperimentAllowed\|\|continueV4Position\)\{/);
  const paper=readFileSync(root+'cloud/v4/src/settlement-first-paper.js','utf8');
  assert.doesNotMatch(paper,/create_order|POST \/trade|\/portfolio\/orders/);
 });
@@ -44,4 +47,30 @@ test('opt-in V4 paper release differs from default only in two explicit paper fl
   ['V4_RESEARCH_STREAM_ENABLED','false'],
   ['V4_FULL_BOOK_ARCHIVE_ENABLED','false']
  ])assert.ok(paperText.includes(flag+' = "'+value+'"'));
+});
+
+test('a simulated cash debit and immutable forecast commit in the SAME storage transaction',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ const begin=worker.indexOf('this.ctx.storage.transactionSync(()=>{',worker.indexOf('save(s,meta={}'));
+ const forecast=worker.indexOf('appendSettlementPrediction(sql,forecastToCommit)',begin);
+ const account=worker.indexOf("this.ctx.storage.kv.put('runtime',runtime)",begin);
+ const completion=worker.indexOf('if(forecastToCommit)delete s.pendingPredictionToCommit;',account);
+ assert.ok(begin>0&&forecast>begin&&account>forecast&&completion>account);
+ assert.doesNotMatch(worker.slice(worker.indexOf('async tick(){'),worker.indexOf('async alarm(){')),
+   /onPrediction:pos=>appendSettlementPrediction\(/);
+});
+test('V4 open positions continue V4 exit logic under emergency return to disarmed config',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ assert.match(worker,/const continueV4Position=s\.open\?\.strategy==='V4_SETTLEMENT_FIRST'/);
+ assert.match(worker,/if\(this\.paperExperimentAllowed\|\|continueV4Position\)/);
+ assert.match(worker,/continuingPreDisarmV4Position:/);
+ assert.match(worker,/s\.armed=this\.paperExperimentAllowed&&s\.monitoring/);
+});
+test('official index and book are fail-closed, status may not claim an old index reading is fresh',()=>{
+ const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
+ assert.match(worker,/entrySourcesReady&&index!==null/);
+ assert.match(worker,/SKIPPED_NO_FRESH_WS_BOOK/);
+ assert.match(worker,/officialIndexFeedCheck:/);
+ assert.match(worker,/paperFeedHealth:/);
+ assert.match(worker,/Date\.now\(\)-s\.lastOfficialIndexCheck\.at<=30000/);
 });
