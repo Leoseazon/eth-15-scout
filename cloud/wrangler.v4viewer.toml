@@ -1,0 +1,20 @@
+# Read-only V4 viewer with separately configured encrypted login/session secrets.
+name = "eth-15-scout-v4-view"
+main = "v4/viewer-worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = true
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+
+[[durable_objects.bindings]]
+name = "SCOUT_V4"
+class_name = "ScoutEngineV4"
+script_name = "eth-15-scout-cloud-v4test"
+
+[[ratelimits]]
+name = "LOGIN_RATE_LIMIT"
+namespace_id = "157211"
+[ratelimits.simple]
+limit = 8
+period = 60

@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="ETH-15 Scout V4 — read-only, paper-only Kalshi ETH 15-minute trading monitor.">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://eth-15-scout-v4-view.leoseazon.workers.dev; img-src 'self' data:; base-uri 'self'; form-action 'none';">
+<title>ETH-15 Scout V4 | Paper Trading Console</title>
+<link rel="stylesheet" href="./style.css">
+<script src="./sounds.js" defer></script>
+<script src="./stop-postmortem.js" defer></script>
+<script src="./app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to dashboard</a>
+<header class="site-header">
+ <div class="wrap header-inner">
+  <a class="brand" href="#top" aria-label="ETH-15 Scout V4 home">
+   <span class="brand-icon" aria-hidden="true">◇</span>
+   <span><strong>ETH-15 <em>Scout</em></strong><span class="brand-v">V4</span><small>Kalshi 15-minute research</small></span>
+  </a>
+  <nav class="nav" aria-label="Main sections">
+   <a href="#overview" class="active">Overview</a>
+   <a href="#signals">Signals</a>
+   <a href="#activity">Activity</a>
+   <a href="#performance">Performance</a>
+  </nav>
+  <div class="header-side">
+   <span class="paper-pill">● &nbsp;PAPER ONLY</span>
+   <details class="sound-menu" id="sound-menu">
+    <summary id="sound-summary" aria-label="Configure paper-trade sound notifications">♫ Sounds off</summary>
+    <div class="sound-panel">
+     <strong>Paper-trade sound alerts</strong>
+     <p>Two gentle, different signals for newly detected paper buys and sells. Sounds never replay old history.</p>
+     <button type="button" class="sound-toggle" id="sound-toggle" aria-pressed="false">Enable trade sounds</button>
+     <div class="sound-previews"><button type="button" id="preview-buy">↗ Hear buy</button><button type="button" id="preview-sell">↘ Hear sell</button></div>
+     <small>Sound works while this page is open and your browser allows audio.</small>
+    </div>
+   </details>
+   <span id="sync-label" class="sync-label">Not connected</span><button class="icon-btn" id="refresh" type="button" aria-label="Refresh live data" title="Refresh data">↻</button><button id="sign-out" class="sign-out" type="button" hidden>Sign out</button></div>
+ </div>
+</header>
+<div id="top"></div>
+<main id="main" class="wrap">
+ <section class="v4-stage-banner" role="status"><strong>V4 RESEARCH SHADOW</strong> — Simulated orders are hard-disabled. Historical REST quotes and separate direct REST order-book snapshots are labeled with receipt-time provenance; WebSocket data is independently verified. The V4 probability and resale models are not active yet.</section>
+ <div class="intro">
+   <div><p class="eyebrow">ETH-15 SCOUT · PAPER-ONLY RESEARCH</p><h1>Find the edge <span class="muted-normal">/ before it is priced in</span></h1><p class="intro-sub"><strong>Bot philosophy:</strong> Identify promising ETH 15-minute setups early, before Kalshi contracts fully reprice. Balance emerging evidence, affordable entry prices and minutes remaining to pursue better potential returns while controlling reversal, liquidity and settlement risk.</p></div>
+   <div class="intro-right"><span id="mode-badge" class="pill pill-neutral"><span class="dot"></span>Disconnected</span><span id="updated-label" class="micro">No data loaded</span></div>
+ </div>
+ <section id="connect-panel" class="connect-panel" aria-label="Private V4 dashboard sign-in">
+  <div><p class="eyebrow">SECURE V4 ACCESS</p><h2>Welcome back to ETH-15 Scout</h2><p>Sign in with your personal username and password to view your paper trading dashboard. Your login stays the same. The trading bot runs independently and this website cannot place actual orders.</p></div>
+  <form id="connect-form" class="connect-form" autocomplete="on">
+   <label for="login-user">Username</label>
+   <input type="text" id="login-user" name="username" placeholder="Your V4 username" minlength="3" maxlength="128" required autocomplete="username" autocapitalize="none" spellcheck="false">
+   <label for="login-password">Password</label>
+   <input type="password" id="login-password" name="password" placeholder="Your V4 password" minlength="16" maxlength="256" required autocomplete="current-password">
+   <label class="remember-row" for="remember-device"><input id="remember-device" type="checkbox" checked> Remember this device for 30 days</label>
+   <button class="btn btn-primary login-submit" type="submit">Sign in to V4 <span aria-hidden="true">→</span></button>
+   <p id="connect-message" class="micro" role="status" aria-live="polite">Your credentials must be configured in the separate read-only Cloudflare viewer before first sign-in.</p>
+  </form>
+ </section>
+ <section id="live-action" class="live-action" aria-labelledby="live-action-title">
+  <div class="live-action-heading">
+   <div><p class="eyebrow">TOP PRIORITY · LIVE V4 PAPER BOT</p><h2 id="live-action-title">Current bot activity</h2></div>
+   <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span><span id="live-proxy-age" class="micro">Kalshi quote age unavailable</span></div>
+  </div>
+  <div class="contract-box live-contract-board" aria-label="Current Kalshi contract and latest publicly available prices">
+   <div class="board-market"><p class="mini-label">CURRENT KALSHI 15-MINUTE CONTRACT</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
+   <div class="board-target"><span class="mini-label">ETH TARGET / STRIKE</span><strong id="contract-strike">Target unavailable</strong><small>Official contract reference, not Kraken settlement</small></div>
+   <div class="board-price up"><span class="mini-label">UP / YES · BUY PRICE</span><strong id="up-quote">—</strong><small>Best ask · <span id="up-bid">Bid —</span></small></div>
+   <div class="board-price down"><span class="mini-label">DOWN / NO · BUY PRICE</span><strong id="down-quote">—</strong><small>Best ask · <span id="down-bid">Bid —</span></small></div>
+  </div>
+  <div class="live-action-body">
+   <div class="live-action-main">
+    <span class="mini-label">CURRENT STATUS</span>
+    <div class="live-primary-line"><strong id="live-primary">CONNECTING</strong><span id="live-side" class="live-side neutral">—</span></div>
+    <p id="live-decision">Sign in to view the bot's actual paper-trade decisions.</p>
+    <div class="live-contract"><span>Contract</span><strong id="live-contract-id">—</strong></div>
+   </div>
+   <div class="live-position">
+    <div class="live-position-title">OPEN PAPER POSITION</div>
+    <strong id="live-position-state">—</strong>
+    <div id="live-position-detail" class="live-position-detail">No data</div>
+    <div class="live-position-meta"><div><span>Entry / stake</span><strong id="live-entry">—</strong></div><div><span>Est. open P&amp;L</span><strong id="live-mark-pnl">—</strong></div></div>
+   </div>
+   <div class="live-timing">
+    <div class="live-position-title">CONTRACT WINDOW</div>
+    <strong id="live-countdown">—</strong>
+    <div id="live-close-label" class="live-position-detail">End time not available</div>
+    <div class="last-execution"><span>LAST RECORDED PAPER TRADE</span><strong id="live-last-trade">None recorded</strong><small id="live-last-trade-at">—</small></div>
+   </div>
+  </div>
+  <p class="live-action-footnote">This is a <strong>simulated</strong> signal monitor. It never places an actual Kalshi order. Data becomes stale if the engine stops reporting.</p>
+ </section>
+ <section id="performance" class="card account-card" aria-labelledby="account-title">
+  <div class="card-heading"><div><p class="eyebrow">SIMULATED ACCOUNT · V4 ONLY</p><h2 id="account-title">Paper performance</h2></div><span class="badge subtle">Paper only</span></div>
+  <div class="account-summary-body">
+   <div class="balance-main"><span class="mini-label">AVAILABLE PAPER CASH</span><strong id="cash-value">—</strong><span class="fine">Excludes open stake and pending settlements</span></div>
+   <div class="account-summary-stats">
+    <div class="account-row"><span>Starting bankroll</span><strong id="starting-value">—</strong></div>
+    <div class="account-row"><span>Realized paper P&amp;L</span><strong id="realized-value">—</strong></div>
+    <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
+    <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
+    <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
+    <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
+   </div>
+   <div class="open-position"><p class="mini-label">CURRENT OPEN PAPER POSITION</p><div id="open-position-value">No connection</div><p class="fine">Positions awaiting settlement remain separate from active positions.</p></div>
+  </div>
+  <div class="observation-bar" aria-live="polite">
+   <div><span class="mini-label">OBSERVATION BUILD · 50–100 COMPLETED PAPER TRADES</span>
+    <strong id="observation-progress">Release not yet activated</strong></div>
+   <div><span class="mini-label">PRE-RELEASE REFERENCE</span>
+    <strong>Nov 19, 2026 · approx. 11:40 PM CT</strong></div>
+   <div><span class="mini-label">ACTUAL RELEASE REFERENCE</span>
+    <strong id="release-first-tick">Awaiting first updated engine tick</strong></div>
+   <div><span class="mini-label">PRIOR REVISED RULE START (40% STOP)</span><strong id="revised-first-tick">Awaiting updated engine tick</strong></div>
+    <div><span class="mini-label">NEW 8-MIN / HONEY-POT RULE START</span><strong id="latest-first-tick">Awaiting upgraded engine tick</strong></div>
+    <div><span class="mini-label">FEED RELIABILITY PATCH · FIRST ENGINE TICK</span><strong id="feed-first-tick">Awaiting patch marker</strong></div>
+  </div>
+ </section>
+ <section id="overview" class="overview">
+  <div class="metric-grid">
+   <div class="metric"><span class="metric-label">System monitoring</span><span class="metric-value" id="metric-monitor">—</span><span class="metric-hint" id="metric-monitor-note">Waiting for live data</span></div>
+   <div class="metric"><span class="metric-label">Paper simulation</span><span class="metric-value" id="metric-arm">—</span><span class="metric-hint">Never places real orders</span></div>
+   <div class="metric"><span class="metric-label">Current market</span><span class="metric-value compact" id="metric-market">—</span><span class="metric-hint">Kalshi ETH 15-minute</span></div>
+   <div class="metric"><span class="metric-label">Daily risk mode</span><span class="metric-value" id="metric-risk">—</span><span class="metric-hint">12% soft · 20% hard</span></div>
+   <div class="metric"><span class="metric-label">Last engine tick</span><span class="metric-value" id="metric-age">—</span><span class="metric-hint" id="metric-feed">Data freshness unknown</span></div>
+  </div>
+ </section>
+ <div class="main-grid">
+  <section class="card chart-card" aria-labelledby="market-title">
+    <div class="card-heading"><div><p class="eyebrow">MARKET MONITOR</p><h2 id="market-title">ETH / USD <span class="muted-normal">reference</span></h2></div><span class="badge neutral" id="market-feed-status">No data</span></div>
+    <div class="market-top">
+     <div><div class="mini-label">Kraken spot reference</div><div class="spot" id="spot-price">—</div><div class="fine">Not the official Kalshi settlement index</div></div>
+     <div class="time-tabs" role="group" aria-label="Chart timeframe"><button type="button" data-tf="m1">1m</button><button type="button" data-tf="m3">3m</button><button type="button" class="selected" data-tf="m5">5m</button></div>
+    </div>
+    <div class="chart-box"><canvas id="price-chart" role="img" aria-label="Recent Kraken ETH candles with EMA 21 and EMA 50 reference lines"></canvas><div class="chart-empty" id="chart-empty">Connect to display live reference candles</div></div>
+    <div class="chart-legend"><span><i class="key key-up"></i>Positive candle</span><span><i class="key key-down"></i>Negative candle</span><span><i class="key key-ema21"></i>EMA 21</span><span><i class="key key-ema50"></i>EMA 50</span></div>
+
+    <div class="decision-banner chart-decision"><span class="decision-dot">◎</span><div><strong>Bot market note</strong><p id="current-notice">Awaiting V4 engine activity</p></div><span id="notice-time" class="micro">—</span></div>
+  </section>
+  <section id="v4-quote-history" class="card" aria-labelledby="v4-quote-heading">
+  <div class="card-heading"><div><p class="eyebrow">V4 DATA RESEARCH</p><h2 id="v4-quote-heading">Kalshi UP / DOWN bid history</h2></div>
+  <span class="micro" id="v4-quote-source">REST fallback · WebSocket unverified</span></div>
+  <div class="v4-quote-box"><canvas id="v4-quote-chart" role="img" aria-label="V4 recorded Kalshi YES and NO bid observations, if available"></canvas></div>
+  <p class="micro" id="v4-quote-meta">No recorded V4 quotes yet. This is not live exchange history.</p>
+</section>
+<section id="v4-research-history" class="card" aria-labelledby="research-heading">
+  <div class="card-heading">
+    <div><p class="eyebrow">PERSISTENT EVIDENCE · V4 ONLY</p><h2 id="research-heading">Research history &amp; decision diagnostics</h2></div>
+    <span id="research-count" class="badge neutral">Not collecting yet</span>
+  </div>
+  <p class="section-helper">Each engine check is logged with the available prices, Kraken reference, signal context, feed health, timestamps and the reason for watching or not entering. Missing data stays missing. V3 trade, PASS, WATCH and settlement journals are preserved separately.</p>
+  <div class="v4-stream-health" aria-label="V4 Kalshi streaming data health">
+    <span><strong>Streaming connection</strong><small id="v4-stream-state">Inactive · V4 development only</small></span>
+    <span><strong>Recorded book observations</strong><small id="v4-stream-count">—</small></span>
+    <span><strong>Stream sequence gaps</strong><small id="v4-stream-gaps">—</small></span>
+    <span><strong>Last book receipt</strong><small id="v4-stream-received">No authenticated observation</small></span>
+    <span><strong>Official REST depth archive</strong><small id="v4-rest-book-count">Not enabled</small></span>
+    <span><strong>Last REST receipt</strong><small id="v4-rest-book-received">No direct REST depth observation</small></span>
+  </div>
+  <div class="research-grid-head"><span>OBSERVED (CT)</span><span>CONTRACT</span><span>FEEDS / QUOTE</span><span>DECISION EVIDENCE</span></div>
+  <div id="research-list" class="research-list" aria-live="polite">
+    <div class="empty-state">V4 is still in development. Research observations begin only after the separate V4 recorder is deployed and monitoring is enabled.</div>
+  </div>
+  <div class="journal-tools">
+    <div><strong>Append-only Cloudflare history</strong>
+      <p id="research-summary">Historical signal observations unavailable until V4 activation.</p>
+      <small>No browser-only history. Earlier windows remain accessible when the current contract changes.</small>
+    </div>
+    <div class="journal-actions">
+      <button type="button" id="research-older" disabled>Load older observations</button>
+      <button type="button" id="research-export" disabled>Export full research evidence JSON</button>
+    </div>
+  </div>
+  <p id="research-message" class="activity-footnote">Research observations and Kalshi REST quotes are not verified fills or official ETH index values. Streaming history is verified separately; an HTTP REST snapshot never proves WebSocket connectivity or an executable sale.</p>
+  <div class="stop-analysis" aria-labelledby="stop-audit-heading">
+    <div class="stop-analysis-heading">
+      <div><strong id="stop-audit-heading">40% stop-loss postmortem</strong>
+        <p class="micro">Analyze actual recorded stop exits and observed bid paths at +30, +60 and +120 seconds, without assuming fills or recovering missing observations.</p></div>
+      <button type="button" id="stop-audit-run" disabled>Analyze stopped trades</button>
+    </div>
+    <p id="stop-audit-summary" class="micro">Historical stop follow-ups have not been analyzed.</p>
+    <div id="stop-audit-list" class="stop-audit-list"></div>
+  </div>
+</section>
+<section id="signals" class="card signals-card" aria-labelledby="signals-title">
+   <div class="card-heading"><div><p class="eyebrow">WEIGHTED EVIDENCE</p><h2 id="signals-title">Signal hierarchy</h2></div><span class="badge neutral">Reference</span></div>
+   <p class="section-helper">Higher-timeframe structure leads. Short-term oscillators cannot override a primary rejection. These market snapshots are calculated separately from the bot's own decisions.</p>
+   <div class="signal-section"><div class="section-strip"><span>01 · Primary structure</span><small>DECISION FILTERS</small></div>
+    <div class="signal-row"><div><strong>5-minute trend</strong><small>Primary directional filter</small></div><span id="sig-5m" class="value-pill neutral">—</span></div>
+    <div class="signal-row"><div><strong>3-minute structure</strong><small>Completed candles only</small></div><span id="sig-3m" class="value-pill neutral">—</span></div>
+    <div class="signal-row"><div><strong>Support / resistance</strong><small>5-minute confirmed levels</small></div><span id="sig-levels" class="signal-number">—</span></div>
+    <div class="signal-row"><div><strong>EMA 21 / EMA 50</strong><small>5-minute alignment</small></div><span id="sig-emas" class="value-pill neutral">—</span></div>
+    <div class="signal-row"><div><strong>Rolling volume-weighted price</strong><small>Up to 96 completed 5m Kraken candles; not session VWAP</small></div><span id="sig-vwap" class="signal-number">—</span></div>
+   </div>
+   <div class="signal-section"><div class="section-strip secondary"><span>02 · Secondary confirmation</span><small>NEVER LEADS</small></div>
+    <div class="signal-row"><div><strong>RSI 14</strong><small>5-minute strength</small></div><span id="sig-rsi" class="signal-number">—</span></div>
+    <div class="signal-row"><div><strong>Bollinger Bands (20, 2)</strong><small>3-minute position</small></div><span id="sig-bands" class="value-pill neutral">—</span></div>
+    <div class="signal-row"><div><strong>Accumulation / Distribution</strong><small>3-minute volume pressure</small></div><span id="sig-ad" class="value-pill neutral">—</span></div>
+    <div class="signal-row"><div><strong>Daily BTC / ETH regime</strong><small>Bot's last daily context</small></div><span id="sig-regime" class="value-pill neutral">—</span></div>
+   </div>
+   <p class="signal-footer">Computed reference ≠ a recommendation or guaranteed Kalshi outcome. No standalone indicator creates a paper trade.</p>
+  </section>
+  <aside class="right-column">
+   <section class="card risk-card" aria-labelledby="risk-title">
+    <div class="card-heading"><div><p class="eyebrow">RISK ENGINE</p><h2 id="risk-title">Daily safeguards</h2></div><span id="risk-badge" class="badge neutral">—</span></div>
+    <div class="risk-line"><span>Soft risk threshold</span><strong>−12% · −$12</strong></div>
+    <div class="risk-line"><span>Hard risk threshold</span><strong>−20% · −$20</strong></div>
+    <div class="risk-line"><span>Today's risk-adjusted P&amp;L</span><strong id="daily-risk-value">—</strong></div>
+    <div class="risk-meter" aria-label="Daily risk utilization"><span id="risk-fill"></span></div>
+    <div class="risk-line"><span>Maximum next paper entry</span><strong id="max-entry">—</strong></div>
+    <p class="fine risk-note" id="risk-help">Normal: max $3; soft limit: max $1.50 with stricter requirements; hard limit: no new paper entries.</p>
+   </section>
+  </aside>
+ </div>
+ <section id="activity" class="card activity-card" aria-labelledby="activity-title">
+  <div class="card-heading activity-heading"><div><p class="eyebrow">AUDIT TRAIL</p><h2 id="activity-title">Decision feed <span class="muted-normal">/ paper journal</span></h2></div><div class="filters" role="group" aria-label="Filter activity"><button class="selected" type="button" data-filter="ALL">All</button><button type="button" data-filter="WATCH">WATCH</button><button type="button" data-filter="PASS">PASS</button><button type="button" data-filter="PAPER BUY">BUY</button><button type="button" data-filter="PAPER SELL">SELL</button></div></div>
+  <div class="feed-head"><span>TIME (CT)</span><span>EVENT</span><span>CONTRACT</span><span>DETAILS</span></div>
+  <div id="activity-list" class="activity-list"><div class="empty-state">Connect your read-only V4 feed to view actual activity.</div></div>
+  <div class="journal-tools"><div><strong>V4 research journal</strong><p id="journal-summary">Permanent cloud journal: awaiting connection</p><small>Paper entries, exits, WATCH/PASS decisions and unresolved settlements. Records are not erased when this page closes.</small></div>
+   <div class="journal-actions"><button type="button" id="older-events" disabled>Load older events</button><button type="button" id="export-trades" disabled>Export trades CSV</button><button type="button" id="export-journal" disabled>Export full journal JSON</button></div></div>
+  <p class="activity-footnote" id="journal-message">WATCH is not a final PASS. Pending outcomes are never counted as confirmed wins.</p>
+  <section class="outcome-section" aria-labelledby="outcome-title" hidden>
+   <div class="outcome-header"><div><p class="eyebrow">OFFICIAL EXCHANGE RECORD</p>
+    <h3 id="outcome-title">15-minute market outcomes</h3>
+    <p>Every recorded ETH 15m market close — even without a paper bet. UP/DOWN is confirmed only after Kalshi publishes the settled result.</p></div>
+    <span class="badge neutral" id="outcome-count">Not yet available</span></div>
+   <div class="outcome-grid-head"><span>END TIME (CT)</span><span>RESULT</span><span>V4 ACTIVITY</span><span>KALSHI CONTRACT</span></div>
+   <div id="outcome-list" class="outcome-list" aria-live="polite"><div class="empty-state">Historical market outcomes will appear once the V4 exchange-result journal is activated.</div></div>
+   <p id="outcome-status" class="outcome-footnote">Automatic exchange verification stays active in the backend to reconcile paper stakes and never changes early-sale realized P/L.</p>
+  </section>
+ </section>
+ <footer><div class="footer-notice">ⓘ &nbsp;Decision support and simulated fills only. <strong>This website cannot place real-money trades.</strong> The market display uses Kraken reference prices, not official Kalshi settlement values.</div><div>ETH-15 Scout V4 <span>·</span> Private viewer</div></footer>
+</main>
+</body>
+</html>
