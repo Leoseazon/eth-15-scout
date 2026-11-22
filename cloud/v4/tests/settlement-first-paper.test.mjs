@@ -125,3 +125,23 @@ test('a seemingly favorable ask without matching exit-side bid depth must PASS',
  assert.equal(r.status,'WATCH');
  assert.equal(s.open,null);assert.equal(s.cash,100);
 });
+
+test('paper BUY cannot exceed 85c, while 96c BID still triggers SELL',()=>{
+ const asks=[.8501,.86,.90,.95,.99];
+ for(const ask of asks){
+  const s=setup();
+  const result=settlementFirstPaperStep(s,{...args,
+   index:{...index,price:1808},one:{...one,last:1808,e8:1805,e21:1802},
+   market:{...market,close_time:new Date(T+4*60000).toISOString()},
+   book:{...book,yesBid:{price:.83,sizeFp:'20.00'},
+    yesAsk:{price:ask,sizeFp:'20.00'}}});
+  assert.equal(result.status,'WATCH','ask '+ask);
+  assert.equal(s.open,null);assert.equal(s.cash,100);
+  assert.equal(s.blocked.length,0);
+ }
+ const s=setup();
+ assert.equal(settlementFirstPaperStep(s,args).status,'PAPER_BUY');
+ const sold=settlementFirstPaperStep(s,{...args,now:T+150000,
+  book:{...book,receivedAt:T+149000,yesBid:{price:.96,sizeFp:'20.00'}}});
+ assert.equal(sold.status,'PAPER_SELL');
+});
