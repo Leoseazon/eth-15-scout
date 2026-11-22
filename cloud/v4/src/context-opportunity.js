@@ -8,6 +8,8 @@
  * No dependency on future candles/outcomes, external APIs, new services or secrets.
  * The actual official benchmark/target are mandatory and primary.
  */
+import {EXPLORATORY_MIN_CENTRAL_EDGE,EXPLORATORY_MAX_ASK,
+ EXPLORATORY_MAX_SPREAD} from './exploratory-policy.js';
 export const CONTEXT_VALUE_VERSION='V4-CONTEXT-VALUE-PAPER-20261122';
 // At least the first 60 seconds of each 15-minute market are observation-only.
 // New paper entry is eligible from 14m remaining down to >90s remaining.
@@ -90,7 +92,7 @@ export function targetScenarioEnvelope({target,indexValue,one,five,context,remai
  * and conservative transaction fees. Returns metrics, NOT a buy order.
  */
 export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
- budget=3,riskMode='NORMAL'}={}){
+ budget=3,riskMode='NORMAL',mode='CONSERVATIVE'}={}){
  const fail=reason=>({side,status:'REJECT',reason});
  if(!['UP','DOWN'].includes(side)||scenario?.status!=='SCENARIOS_READY')
   return fail('SCENARIO_UNAVAILABLE');
@@ -105,8 +107,10 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
   bid<0||bid>ask||askDepth<1||bidDepth<1||budget<=0)
   return fail('INVALID_OR_EMPTY_BOOK');
  if(ask>.87)return fail('PRICE_ABOVE_87C_HARD_BUY_LIMIT');
+ if(mode==='EXPLORATORY'&&(riskMode!=='NORMAL'||ask>EXPLORATORY_MAX_ASK))
+  return fail('EXPLORATORY_RISK_OR_PREMIUM_RESTRICTION');
  const spread=ask-bid;
- const maxSpread=ask>.85?.03:.05;
+ const maxSpread=mode==='EXPLORATORY'?EXPLORATORY_MAX_SPREAD:ask>.85?.03:.05;
  if(spread<-1e-8||Math.round(spread*10000)>Math.round(maxSpread*10000))
   return fail('SPREAD_TOO_WIDE');
  const cap=ask<.20?.50:3;
@@ -132,11 +136,23 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
  // at least 12 points, on top of tighter liquidity and a reduced stake.
  const edgeHurdle=riskMode==='SOFT'?
    (ask>.85?.10:Math.max(.12,baseEdgeHurdle+.035)):baseEdgeHurdle;
- if(lowerEdge+1e-9<edgeHurdle)return {...fail('CONSERVATIVE_SCENARIO_VALUE_INSUFFICIENT'),
-  ask,bid,spread,quantity:qty,allIn:round(allIn),breakEven:round(allIn/qty),
-  lowerScenario:round(p.lower),centralScenario:round(p.central),
-  conservativeEdge:round(lowerEdge),requiredEdge:edgeHurdle};
- return {side,status:'QUALIFIED',reason:'TARGET_CENTERED_SCENARIO_VALUE_AFTER_FEES',
+ if(mode==='EXPLORATORY'){
+  // Separate paper sample, never a qualified conservative-value trade.
+  // The central edge is UNCALIBRATED and NOT a verified expected return.
+  if(centralEdge+1e-9<EXPLORATORY_MIN_CENTRAL_EDGE)
+   return {...fail('EXPLORATORY_CENTRAL_SCENARIO_VALUE_INSUFFICIENT'),
+    ask,bid,spread,quantity:qty,allIn:round(allIn),
+    centralScenario:round(p.central),centralEdge:round(centralEdge),
+    requiredCentralEdge:EXPLORATORY_MIN_CENTRAL_EDGE};
+ }else if(lowerEdge+1e-9<edgeHurdle){
+  return {...fail('CONSERVATIVE_SCENARIO_VALUE_INSUFFICIENT'),
+   ask,bid,spread,quantity:qty,allIn:round(allIn),breakEven:round(allIn/qty),
+   lowerScenario:round(p.lower),centralScenario:round(p.central),
+   conservativeEdge:round(lowerEdge),requiredEdge:edgeHurdle};
+ }
+ return {side,status:'QUALIFIED',reason:mode==='EXPLORATORY'?
+  'EXPLORATORY_CENTRAL_SCENARIO_PAPER_SAMPLE':'TARGET_CENTERED_SCENARIO_VALUE_AFTER_FEES',
+  researchMode:mode,conservativeValuePassed:mode!=='EXPLORATORY',
   version:CONTEXT_VALUE_VERSION,ask,bid,askDepth,bidDepth,spread,
   qty,allIn:round(allIn),orderFee:round(orderFee),riskMode,
   breakEven:round(allIn/qty),maxLoss:round(allIn),
@@ -146,8 +162,11 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
   upperScenario:round(p.upper),scenarioRange:round(uncertainty),
   lowerScenarioNetProfit:round(lowerScenarioProfit),
   centralScenarioNetProfit:round(centralScenarioProfit),
-  rankUtility:round(lowerScenarioProfit),calibratedProbability:null,
-  note:'Scenario economics are uncalibrated; this is experimental paper-only research.'};
+  rankUtility:round(mode==='EXPLORATORY'?centralScenarioProfit:lowerScenarioProfit),
+  calibratedProbability:null,
+  note:mode==='EXPLORATORY'?
+   'Research-only paper sample. Central scenario is uncalibrated; this failed the conservative lower-bound test.':
+   'Scenario economics are uncalibrated; this is experimental paper-only research.'};
 }
 /** Evaluate BOTH sides at the SAME official target, then take the largest
  * conservative net opportunity (if any). Not a cheap/expensive band vote.
@@ -159,8 +178,21 @@ export function bestContextualOpportunity(args){
  const options=['UP','DOWN'].map(side=>priceAwareOpportunity({...args,side,scenario}));
  const qualified=options.filter(x=>x.status==='QUALIFIED').sort(
   (a,b)=>b.rankUtility-a.rankUtility||b.conservativeEdge-a.conservativeEdge);
- if(!qualified.length)return {status:'WATCH',
-  reason:'NO_RISK_ADJUSTED_VALUE_AT_CURRENT_ASK',scenario,options};
- return {status:'CANDIDATE',reason:'BEST_CONTEXTUAL_TARGET_SIDE_VALUE',
+ if(qualified.length)return {status:'CANDIDATE',
+  reason:'BEST_CONTEXTUAL_TARGET_SIDE_VALUE',researchMode:'CONSERVATIVE',
   selected:qualified[0],scenario,options};
+ if(args?.allowExploration===true){
+  // Original conservative strategy already rejected both sides.
+  // Separate $1-capped research sample tests central-scenario hypotheses.
+  const exploratory=['UP','DOWN'].map(side=>priceAwareOpportunity({
+   ...args,side,scenario,mode:'EXPLORATORY'}));
+  const available=exploratory.filter(x=>x.status==='QUALIFIED').sort(
+   (a,b)=>b.centralScenarioNetProfit-a.centralScenarioNetProfit);
+  if(available.length)return {status:'CANDIDATE',
+   reason:'EXPLORATORY_PAPER_SAMPLE_NOT_CONSERVATIVE_TRADE',
+   researchMode:'EXPLORATORY',selected:available[0],
+   scenario,options,exploratoryOptions:exploratory};
+ }
+ return {status:'WATCH',
+  reason:'NO_RISK_ADJUSTED_VALUE_AT_CURRENT_ASK',scenario,options};
 }
