@@ -109,6 +109,9 @@ export class KalshiResearchSocket {
    return;
   }
   if(p?.type==='cfbenchmarks_value_indexlist'){
+   if(!Number.isSafeInteger(p.sid)||this.sids.get(p.sid)!=='cf'){
+    this.event('CF_SUBSCRIPTION_ERROR');return;
+   }
    this.indexAvailable=Array.isArray(p.msg?.index_ids)&&
     p.msg.index_ids.includes('ETHUSD_RTI')?'AVAILABLE':'NOT_LISTED';
    if(this.indexAvailable!=='AVAILABLE')this.event('CF_SUBSCRIPTION_ERROR');
