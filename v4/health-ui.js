@@ -75,6 +75,11 @@
       'Live Kalshi order book is missing, delayed or reconnecting.',
       'Check authenticated WebSocket, ticker and latest book receipt.',{delay:true}),now);
    }
+   if(!s.armed&&s.dailyRisk?.mode!=='HARD'){
+    add(issues,issue('PAPER_NOT_ARMED','warning',
+     'Paper simulator is configured but not armed.',
+     'Verify V4 monitoring state and paper-only release flags.'),now);
+   }
    const checks=s.feedChecks||{};
    const names=[['kalshi','Kalshi market/target'],
      ['kraken1m','Kraken 1-minute candles'],
@@ -105,6 +110,21 @@
   }
   // Verification/research failures are informative but do not imply a failed
   // BUY/SELL: the actual paper ledger is kept separately.
+  if(running&&paper&&s.dailyRisk?.mode==='HARD'){
+   add(issues,issue('DAILY_RISK_HALT','warning',
+    'Daily paper risk limit reached; new entries are intentionally blocked.',
+    'Review paper P&L and risk controls. Do not override the halt.'),now);
+  }
+  if(running&&paper&&data?.activity?.journalAvailable===false){
+   add(issues,issue('JOURNAL_VIEW','warning',
+    'Recent paper journal could not be read by the dashboard.',
+    'Check the private viewer journal endpoint; paper execution still requires its own ledger.'),now);
+  }
+  if(running&&typeof data?.marketError==='string'&&data.marketError){
+   add(issues,issue('CHART_REFERENCE','warning',
+    'Dashboard chart reference is temporarily unavailable.',
+    'Check Kraken chart requests; verify trading data independently.'),now);
+  }
   if(running&&typeof s.lastResearchError==='string'&&
       s.lastResearchError.length>0&&tickAge!==null&&tickAge<=maxAge){
     add(issues,issue('RESEARCH_JOURNAL','warning',
@@ -112,7 +132,7 @@
       'Check V4 SQLite research journal and Worker logs.'),now);
   }
   if(running&&typeof s.lastWindowScanError==='string'&&
-      s.lastWindowScanError.length>0&&open){
+      s.lastWindowScanError.length>0&&(open||Number(s.pending)>0)){
     add(issues,issue('SETTLEMENT_SCAN','warning',
       'Official outcome verification is temporarily unavailable.',
       'Check Kalshi result endpoint; unsettled paper positions remain pending.'),now);
