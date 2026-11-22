@@ -191,7 +191,8 @@ test('temporary missing ticker before close does NOT record a final ROUND PASS',
  assert.equal(s.decisions.length,0,'a temporary market-data outage is not a final PASS');
  assert.equal(s.window.ticker,ticker,'the same round remains eligible for later entry');
  const returned=settlementFirstPaperStep(s,{...args,
-  now:T+121000,book:{...book,receivedAt:T+120000}});
+  now:T+121000,index:{...index,sourceAt:T+120000},
+  book:{...book,receivedAt:T+120000}});
  assert.equal(returned.status,'PAPER_BUY','bot must retain its same-round opportunity');
  assert.equal(s.decisions.length,0,'a traded round must never count as a PASS');
 });
