@@ -7,6 +7,8 @@
 import {inspectFeedResults} from './feed-health.js';
 
 export const FIVE_CACHE_MAX_AGE_MS=60000;
+// Reuse a confirmed *completed* one-minute candle only within the SAME bar.
+export const ONE_CACHE_MAX_AGE_MS=55000;
 export const FIVE_REFRESH_MIN_GAP_MS=15000;
 export const KRAKEN_OHLC_SPACING_MS=1200;
 export const FIVE_RATE_LIMIT_BACKOFF_MS=120000;
@@ -37,6 +39,18 @@ export function currentClosedFiveMinuteCandle(value,at){
    CANDLE_FIVE_MS-CANDLE_FIVE_MS;
  return opened>=expected;
 }
+// A cached 1m reply may be used only while it contains the latest closed
+// 1m candle for *this* tick. The still-forming last Kraken bar is excluded.
+// Never extend freshness across a new minute boundary or a DO restart.
+export function currentClosedOneMinuteCandle(value,at){
+ if(!success(value)||!Number.isFinite(at))return false;
+ const data=rows(value);
+ if(!Array.isArray(data)||data.length<60)return false;
+ const opened=Number(data[data.length-2]?.[0])*1000;
+ if(!Number.isFinite(opened)||opened<=0||opened>at)return false;
+ const expected=Math.floor(at/60000)*60000-60000;
+ return opened===expected;
+}
 const captured=async task=>{
  try{return {status:'fulfilled',value:await task()}}
  catch(reason){return {status:'rejected',reason}}
@@ -50,12 +64,27 @@ export async function collectThrottledMarketFeeds(fetcher,marketUrl,krakenBase,
   throw TypeError('V4 Kraken source scheduler requires fetcher, state and time');
  const marketTask=captured(()=>fetcher(marketUrl));
  const tickerTask=captured(()=>fetcher(krakenBase+'Ticker?pair=ETHUSD'));
+ let reusedOne=false;
  const oneTask=captured(async()=>{
   if(at<(state.oneBackoffUntil||0))
    throw Error('Kraken 1m rate-limit cooldown; no fresh candle available');
+  const old=state.one;
+  if(old&&Number.isFinite(old.at)&&at>=old.at&&
+     at-old.at<ONE_CACHE_MAX_AGE_MS&&
+     currentClosedOneMinuteCandle(old.value,at)){
+   reusedOne=true;
+   return old.value;
+  }
+  state.one=null;
   try{
    const value=await fetcher(krakenBase+'OHLC?pair=ETHUSD&interval=1');
-   if(rateLimited(value))state.oneBackoffUntil=at+ONE_RATE_LIMIT_BACKOFF_MS;
+   if(rateLimited(value)){
+    state.oneBackoffUntil=at+ONE_RATE_LIMIT_BACKOFF_MS;
+    return value;
+   }
+   if(!currentClosedOneMinuteCandle(value,at))
+    throw Error('Kraken 1m latest closed candle unavailable or invalid');
+   state.one={at,value};
    return value;
   }catch(e){
    if(rateLimited(e))state.oneBackoffUntil=at+ONE_RATE_LIMIT_BACKOFF_MS;
@@ -102,6 +131,10 @@ export async function collectThrottledMarketFeeds(fetcher,marketUrl,krakenBase,
  });
  const results=await Promise.all([marketTask,tickerTask,fiveTask,oneTask]);
  const response=inspectFeedResults(results,at);
+ response.checks.kraken1m.cached=reusedOne;
+ response.checks.kraken1m.sourceRetrievedAt=
+  reusedOne?state.one?.at??null:
+  response.checks.kraken1m.ok?at:null;
  response.checks.kraken5m.cached=reusedFive;
  response.checks.kraken5m.sourceRetrievedAt=
   reusedFive?state.five?.at??null:
