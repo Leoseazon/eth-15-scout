@@ -17,6 +17,7 @@ import {fetchOfficialRestBook,ensureRestBookArchive,appendRestBookSample,
  restBookPage,latestRestBookStatus} from './kalshi-rest-orderbook.js';
 import {KalshiResearchSocket} from './research-socket.js';
 import {checkCFValuesAccess} from './cf-access.js';
+import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {ensureFullBookArchive,appendFullBookFrame,
  fullBookArchiveStatus,fullBookArchivePage} from './full-book-archive.js';
 import {ensureIndependentResearch,appendCFValue,appendPublicTrade,
@@ -651,6 +652,26 @@ export class ScoutEngineV4 extends DurableObject {
           limit:Number(limitRaw),anchor:anchorRaw===null?null:Number(anchorRaw),
           before:beforeRaw===null?null:Number(beforeRaw),ticker}));
       }catch{return json({error:'Invalid stream archive request'},400)}
+    }
+    if(path==='/v1/cf-ws-verify'&&req.method==='GET'){
+      // Called by the authenticated viewer on a SEPARATE named Durable Object,
+      // never the V4 recording/decision instance. Does not record market values.
+      if(this.env.V4_CF_WS_PROBE_ENABLED!=='true')
+        return json({state:'WS_PROBE_DISABLED',websocketVerified:false,archived:false});
+      const now=Date.now(),last=this.ctx.storage.kv.get('cf-ws-verification-last-at')||0;
+      if(now-last<90000)
+        return json({state:'WS_PROBE_COOLDOWN',nextEligibleAt:last+90000,
+          websocketVerified:false,archived:false});
+      this.ctx.storage.kv.put('cf-ws-verification-last-at',now);
+      let result;
+      try{
+        result=await verifyCFWebSocket({
+          keyId:this.env.KALSHI_V4_READ_KEY_ID,
+          privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
+          nowFn:Date.now,timeoutMs:10000
+        });
+      }catch{result={state:'WS_PROBE_ERROR',websocketVerified:false,archived:false}}
+      return json({...result,checkedAt:Date.now(),readOnly:true,paperOnly:true});
     }
     if(path==='/v1/cf-access'&&req.method==='GET'){
       if(this.env.V4_CF_ACCESS_PROBE_ENABLED!=='true')
