@@ -27,6 +27,7 @@ const validObservation=(row,notBefore)=>{
     c.observedAt>row.finishedAt+2000||
     c.observedAt>=row.closeAt||!p||!['UP','DOWN'].includes(p.side)||
     p.threeMinuteTrend!==p.side||!Number.isSafeInteger(p.threeClosedAt)||
+    p.threeClosedAt!==Math.floor(c.observedAt/180000)*180-180||
     !Number.isSafeInteger(p.quantity)||p.quantity<1||
     ![p.ask,p.bid,p.observedSpread,p.entryFee,p.allIn,p.breakEven,
        p.centralEdge,p.lowerEdge,p.centralScenario,p.lowerScenario].every(finite)||
@@ -35,6 +36,8 @@ const validObservation=(row,notBefore)=>{
     p.bid<0||p.bid>p.ask||p.observedSpread>CANDIDATE_C_LIMITS.maxSpread+1e-9||
     Math.abs(p.ask-p.bid-p.observedSpread)>1e-6||
     Math.abs(p.breakEven-p.allIn/p.quantity)>1e-5||
+    Math.abs(p.centralScenario-p.breakEven-p.centralEdge)>1e-5||
+    Math.abs(p.lowerScenario-p.breakEven-p.lowerEdge)>1e-5||
     p.actualFillVerified!==false)return null;
  return {ticker:row.ticker,closeAt:row.closeAt,at:c.observedAt,
   side:p.side,threeMinuteTrend:p.threeMinuteTrend,
