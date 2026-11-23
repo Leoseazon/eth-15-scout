@@ -24,12 +24,14 @@ jobs:
       - name: Parse protected two-Worker deployment runner (Windows PowerShell 5.1)
         shell: powershell
         run: |
-          $tokens = $null
-          $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile('scripts/deploy-v4-two-workers.ps1', [ref]$tokens, [ref]$errors) | Out-Null
-          if ($errors.Count -gt 0) {
-            $errors | ForEach-Object { Write-Error $_.Message }
-            exit 1
+          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/deploy-v4-main-only-opportunistic.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
   cloud-test:
     runs-on: ubuntu-latest
@@ -105,7 +107,7 @@ jobs:
       - name: Parse owner-only physical separation and export deployment scripts
         shell: pwsh
         run: |
-          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/export-v4-controls.ps1')) {
+          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/deploy-v4-main-only-opportunistic.ps1','scripts/export-v4-controls.ps1')) {
             $tokens = $null
             $parseErrors = $null
             [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$parseErrors) | Out-Null
