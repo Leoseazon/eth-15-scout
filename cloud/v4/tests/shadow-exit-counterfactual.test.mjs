@@ -14,7 +14,11 @@ function tick(time,bid,idx=1752,{size=20,validBook=true,
  trend='UP',momentum=1,indexFresh=true}={}){
  return {id:time,source:'V4_ISOLATED_ENGINE_TICK',paperOnly:true,shadowOnly:true,
   observedAt:time,finishedAt:time+300,ticker,closeAt:close,
-  kraken:{one:{sd:1,three:momentum},threeStructure:{trend}},
+  feeds:{kraken1m:{ok:true}},
+  kraken:{one:{sd:1,three:momentum},
+   oneClosedAt:Math.floor(time/60000)*60000-60000,
+   threeStructure:{trend,
+    closedAt:Math.floor(time/180000)*180000-180000}},
   sampledExitBook:{source:'SAME_TICK_AUTHENTICATED_BOOK_SAMPLE',
    readOnly:true,executionAuthorized:false,
    actualFillVerified:false,observedAt:time+300,ticker,
@@ -72,6 +76,16 @@ test('no adaptive exit when price rises and official target gap worsens',()=>{
  const a=tick(entry+15000,.78,1752);
  const b=tick(entry+30000,.85,1751,{trend:'DOWN',momentum:-1});
  assert.equal(variant([a,b],'ADAPTIVE_EXIT').firstObservedExit,null);
+});
+test('old closed Kraken 1m/3m candles cannot justify adaptive SELL',()=>{
+ const a=tick(entry+15000,.82,1752);
+ for(const corruption of ['one','three','feed']){
+  const b=tick(entry+30000,.79,1751,{trend:'DOWN',momentum:-1});
+  if(corruption==='one')b.kraken.oneClosedAt-=60000;
+  if(corruption==='three')b.kraken.threeStructure.closedAt-=180000;
+  if(corruption==='feed')b.feeds.kraken1m.ok=false;
+  assert.equal(variant([a,b],'ADAPTIVE_EXIT').firstObservedExit,null);
+ }
 });
 test('no adaptive exit when 3m is NEUTRAL or 1m momentum supports position',()=>{
  const a=tick(entry+15000,.82,1752);
