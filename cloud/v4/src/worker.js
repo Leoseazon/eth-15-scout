@@ -276,6 +276,21 @@ export class ScoutEngineV4 extends DurableObject {
         // No guessed exit or P&L is written on fast-path error.
       }
     }
+    // Mirror the MAIN fast exit path for the isolated Conservative paper
+    // account. This happens AFTER main protection and never mutates main s.
+    if(controlState?.open?.strategy==='V4_SETTLEMENT_FIRST'){
+      try{
+        const held=controlState.open;
+        const fastBook=this.stream?.status(Date.now())?.quote||null;
+        const x=evaluateConservativePortfolio(controlState,{
+          market:{ticker:held.ticker,close_time:held.closeTime},
+          book:fastBook,now:Date.now()
+        });
+        controlState=x.next;
+        saveConservativePortfolio(this.ctx.storage.kv,controlState);
+        controlStep=x.report;
+      }catch{controlError='CONTROL_FAST_EXIT_UNAVAILABLE';controlState=null;}
+    }
     // The release marker is ONLY the first engine tick under the explicit
     // V4 contextual paper configuration. It is NOT a trade, successful
     // settlement, healthy feed, or evidence that the GitHub website was
@@ -404,12 +419,16 @@ export class ScoutEngineV4 extends DurableObject {
       const entrySourcesReady=s.armed&&!s.open&&marketReady&&
         !!one&&!!m5&&!!context.three&&!!context.five&&
         !s.blocked.includes(market.ticker)&&bookReady;
+      // All control policies see the SAME fresh market snapshot even when
+      // MAIN holds a position. This does not request twice per tick.
+      const independentControlSourcesReady=s.armed&&marketReady&&
+        !!one&&!!m5&&!!context.three&&!!context.five&&bookReady;
       const confidenceSourcesReady=s.open?.strategy==='V4_SETTLEMENT_FIRST'&&
         market?.ticker===s.open.ticker&&!!one&&!!m5&&
         !!context.three&&!!context.five&&bookReady;
       // The latest-value REST request is also a source for live position
       // confidence. It does NOT change the entry or exit decision rules.
-      if(entrySourcesReady||confidenceSourcesReady){
+      if(entrySourcesReady||confidenceSourcesReady||independentControlSourcesReady){
         const verified=await checkCFValuesAccess({
           keyId:this.env.KALSHI_V4_READ_KEY_ID,
           privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
@@ -460,6 +479,8 @@ export class ScoutEngineV4 extends DurableObject {
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book:decisionBook,now:Date.now(),
+          profile:this.mainProfileName,
+          priorOfficialIndex:s.lastVerifiedOfficialForProfile||null,
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         // Fail closed and send a sanitized code to the existing red health strip.
