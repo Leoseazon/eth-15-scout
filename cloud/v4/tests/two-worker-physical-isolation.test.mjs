@@ -3,13 +3,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../../../',import.meta.url));
-const read=p=>fs.readFileSync(root+p,'utf8');
+const read=p=>fs.readFileSync(root+p,'utf8').replace(/\r\n/g,'\n'); // Windows Git checkout can use CRLF
 const main=read('cloud/v4/src/main-only-worker.js');
 const controls=read('cloud/v4/src/controls-only-worker.js');
 const mainCfg=read('cloud/wrangler.v4paper.toml');
 const haltedCfg=read('cloud/wrangler.v4test.toml');
 const researchCfg=read('cloud/wrangler.v4controls.toml');
 const count=(s,re)=>[...s.matchAll(re)].length;
+test('Windows CRLF and Unix LF source files are equivalent for isolation assertions',()=>{
+ const crlf='name = "SCOUT_CONTROLS"\r\nclass_name = "ScoutControlResearchV4"\r\n';
+ const normalized=crlf.replace(/\r\n/g,'\n');
+ assert.match(normalized,/name = "SCOUT_CONTROLS"\nclass_name = "ScoutControlResearchV4"/);
+ assert.match(read('cloud/wrangler.v4controls.toml'),/name = "SCOUT_CONTROLS"\nclass_name = "ScoutControlResearchV4"/);
+});
 test('MAIN existing Worker and DO storage identity are preserved',()=>{
  assert.match(mainCfg,/name = "eth-15-scout-cloud-v4test"/);
  assert.match(mainCfg,/main = "v4\/src\/main-only-worker.js"/);
