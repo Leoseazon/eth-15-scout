@@ -1,0 +1,11 @@
+/* Read-only deployment summary; no animation or layout shift during refresh. */
+.v4-deploy{margin:12px 0 18px;border:1px solid #34465b;border-radius:12px;background:#131d2e;color:#e8eef6;font-size:.83rem}
+.v4-deploy[data-health="warning"]{border-left:3px solid #e5a66b}
+.v4-deploy summary{cursor:pointer;padding:12px 15px;font-weight:700;list-style-position:inside}
+.v4-deploy summary small{display:block;margin:3px 0 0 19px;color:#aab9c9;font-size:.78rem;font-weight:400}
+.v4-deploy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:9px;padding:0 14px 14px}
+.v4-deploy-cell{min-width:0;padding:9px 10px;background:#19263a;border:1px solid #314359;border-radius:8px}
+.v4-deploy-cell span{display:block;color:#aebfd1;font-size:.75rem;margin-bottom:4px}
+.v4-deploy-cell strong{display:block;overflow-wrap:anywhere;font-size:.8rem;line-height:1.45;font-weight:600}
+.v4-deploy-foot{margin:0;padding:0 15px 13px;color:#aab9c9;line-height:1.5;font-size:.75rem}
+@media(max-width:540px){.v4-deploy-grid{grid-template-columns:1fr}.v4-deploy{margin:10px 0 15px}}
