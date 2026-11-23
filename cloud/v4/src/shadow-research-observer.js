@@ -9,6 +9,8 @@ import {evaluateBothShadowPolicies,SHADOW_SPEC_VERSION}
  from './shadow-opportunity-policies.js';
 import {evaluateCandidateCObservation,CANDIDATE_C_SPEC,CANDIDATE_C_POLICY}
  from './candidate-c-observer.js';
+import {observeQualityRevisions,SHADOW_QUALITY_VERSION}
+ from './shadow-quality-revisions.js';
 const ms=n=>Number.isSafeInteger(n)&&n>1000000000000;
 const completed=(startSeconds,periodSeconds,at)=>{
  const expected=Math.floor(at/(periodSeconds*1000))*periodSeconds-periodSeconds;
@@ -70,10 +72,22 @@ export function observeProspectiveShadow({market,report,index,book,one,five,
    status:'NO_C_OBSERVATION',reason:'ISOLATED_C_OBSERVATION_ERROR',
    readOnly:true,executionAuthorized:false,calibratedProbability:null};
  }
+ // Independent second-generation quality hypotheses are computed AFTER
+ // original A/B/C. Failure cannot suppress baseline paper or original shadows.
+ let revised;
+ try{
+  revised=observeQualityRevisions({market,index,one,context,book,
+   sourceWitness:witness,report,originalPolicies:out,riskMode,
+   alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),now});
+ }catch{
+  revised={version:SHADOW_QUALITY_VERSION,readOnly:true,
+   executionAuthorized:false,calibratedProbability:null,
+   status:'ISOLATED_REVISION_OBSERVER_ERROR'};
+ }
  const sourceStates=Object.fromEntries(Object.entries(witness).map(([k,v])=>[k,!!v]));
  return {version:SHADOW_SPEC_VERSION,observedAt:now,
   executionAuthorized:false,readOnly:true,calibratedProbability:null,
   outcomeAvailableAtEvaluation:false,firstPerTickerSelection:'DEFERRED_TO_CHRONOLOGICAL_SCORER',
   baselineStatus:report?.status||'UNAVAILABLE',
-  sourceWitness:sourceStates,policies:out,candidateC};
+  sourceWitness:sourceStates,policies:out,candidateC,revised};
 }
