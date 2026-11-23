@@ -28,9 +28,14 @@ const result=(policy,reason)=>({version:SHADOW_QUALITY_VERSION,policy,
  status:'NO_QUALITY_OBSERVATION',reason,readOnly:true,
  executionAuthorized:false,calibratedProbability:null});
 function halfDollar(ask,depth){
- let q=Math.floor((CONFIRMATION.cPaperCap+1e-9)/ask);
+ // Whole contract sizing must honor BOTH fee-inclusive dollars and
+ // displayed top-of-book depth. If the quoted book holds 2 rather than 3
+ // contracts, reduce to 2; do not call the setup unaffordable.
+ if(!f(ask)||ask<=0||!f(depth)||depth<1)return {
+  affordableAt50c:false,quantityAt50c:0,hypotheticalAllIn50c:null};
+ let q=Math.min(Math.floor((CONFIRMATION.cPaperCap+1e-9)/ask),
+  Math.floor(depth));
  while(q>0&&q*ask+fee(ask,q)>CONFIRMATION.cPaperCap+1e-9)q--;
- if(!f(depth)||q>depth)q=0;
  return {affordableAt50c:q>0,quantityAt50c:q,
   hypotheticalAllIn50c:q>0?money(q*ask+fee(ask,q)):null};
 }
