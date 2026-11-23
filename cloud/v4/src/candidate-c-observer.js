@@ -71,7 +71,7 @@ export function evaluateCandidateCObservation({market,report,book,context,
      Math.abs(q.ask-x.ask)>1e-6||Math.abs(q.bid-x.bid)>1e-6||
      Math.abs((q.ask-q.bid)-x.spread)>1e-6||
      q.ask-q.bid>L.maxSpread+1e-9||
-     x.allIn>x.quantity*x.ask+0.5||
+     Math.abs(x.allIn-(x.quantity*x.ask+fee(x.ask,x.quantity)))>1e-5||
      Math.abs(x.breakEven-x.allIn/x.quantity)>1e-5)continue;
   // Independent fee-aware half-dollar paper *research* size, NOT the
   // original baseline $3 size. Reject a quote that cannot afford 1 contract.
