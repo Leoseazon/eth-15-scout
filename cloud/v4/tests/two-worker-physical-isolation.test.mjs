@@ -94,3 +94,24 @@ test('MAIN and research have distinct journal routing and no shared SQL namespac
  assert.ok(!main.includes('researchWorkerRole'));
  assert.doesNotMatch(mainCfg,/SCOUT_CONTROLS|V4_RESEARCH_CONTROLS_ENABLED/);
 });
+
+test('owner cutover MUST refuse stale Worker2 data and require explicit protected MAIN Cloudflare version',()=>{
+ const runner=read('cloud/scripts/deploy-v4-two-workers.ps1');
+ assert.match(runner,/healthyTicks\.Count -ge 3/);
+ assert.match(runner,/lastResearchTickAt/);
+ assert.match(runner,/\(\$utcNow-\$researchAt\) -le 45000/);
+ assert.match(runner,/officialIndexLastAgeMs -le 15000/);
+ assert.match(runner,/Get-MainActiveVersion/);
+ assert.match(runner,/wrangler deployments status --name eth-15-scout-cloud-v4test --json/);
+ assert.match(runner,/\.percentage -eq 100/);
+ assert.match(runner,/rollback.*\$previousMainVersion/);
+ assert.match(runner,/Read-Host 'Enter the exact EXISTING MAIN Cloudflare version ID/);
+ assert.match(runner,/Read-Host 'After reviewing MAIN dashboard and exporting MAIN evidence, type DEPLOY MAIN OPPORTUNISTIC'/);
+ assert.match(runner,/if\(\(Get-MainActiveVersion\) -ne \$previousMainVersion\)/);
+ assert.match(runner,/Worker2 became unhealthy; MAIN deployment blocked/);
+ const target='wrangler deploy --config wrangler.v4paper.toml';
+ assert.equal(runner.split(target).length,2,'exactly one MAIN deployment call');
+ assert.ok(runner.indexOf('DEPLOY MAIN OPPORTUNISTIC')<runner.indexOf(target));
+ assert.ok(runner.indexOf('Get-MainActiveVersion')<runner.indexOf(target));
+ assert.ok(runner.indexOf('healthyTicks.Count -ge 3')<runner.indexOf(target));
+});
