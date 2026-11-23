@@ -318,6 +318,11 @@ export class ScoutEngineV4 extends DurableObject {
         'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
         RELEASE_TAG,now,'not applicable',
         'V4 target-centered contextual paper model activated; first runtime tick only');
+      if(this.mainProfileConfigured)this.ctx.storage.sql.exec(
+        'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+        'V4-MAIN-PROFILE-'+this.mainProfileName+'-20261123',now,
+        'not applicable','MAIN paper selected '+this.mainProfileName+
+        '; separate Conservative control and research-only shadows');
     }
     const engine=makeV2Engine(s,{softGuardEnabled:true});
     let market=null,one=null,m5=null,error=null,fresh=false;
