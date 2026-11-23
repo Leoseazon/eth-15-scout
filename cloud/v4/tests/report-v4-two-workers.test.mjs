@@ -31,7 +31,7 @@ const account={version:'V4-CONSERVATIVE-INDEPENDENT-20261123-v1',
 const main=()=>({
  format:'ETH-15 Scout V4 complete research evidence',paperOnly:true,
  exportedAt:new Date(start+120000).toISOString(),
- researchTicks:[mainRow(at),mainRow(at+15000)],
+ researchTicks:[{...mainRow(start-1000),closeAt:start},mainRow(at),mainRow(at+15000)],
  journals:{trades:[],windows:[],pending:[],open:null}
 });
 const controls=()=>({
@@ -39,7 +39,7 @@ const controls=()=>({
  workerRole:'CONTROLS_ONLY',engineMainTradingDisabled:true,
  exportedAt:new Date(start+120000).toISOString(),
  snapshot:{status:{armed:false,mainTradingDisabledByCode:true}},
- researchTicks:[controlRow(at+3000),controlRow(at+19000)],
+ researchTicks:[{...controlRow(start-500),closeAt:start},controlRow(at+3000),controlRow(at+19000)],
  journal:{windows:[],trades:[],conservativeControlJournal:account}
 });
 function run(a,b){
