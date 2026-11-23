@@ -132,7 +132,7 @@ try{
   $ignore=Invoke-RestMethod -Uri ($base+'/bootstrap') -Headers $headers -Method GET -TimeoutSec 20
  }catch{throw "Separate research API verification failed: $($_.Exception.Message). MAIN unchanged."}
  Write-Host 'Waiting for controls-only Worker to demonstrate healthy fresh market evidence...' -ForegroundColor Cyan
- # Require multiple DISTINCT, recent healthy Worker2 ticks, not cached status.
+ # Require three DISTINCT fresh Worker2 ticks, never accept old status.
  $healthyTicks=New-Object 'System.Collections.Generic.HashSet[long]'
  $ready=$false
  for($i=0;$i -lt 18;$i++){
@@ -163,48 +163,37 @@ try{
   Start-Sleep -Seconds 10
  }
  if(-not $ready){
-  throw 'RESEARCH Worker did not produce three DISTINCT recent healthy authenticated ticks. MAIN unchanged. Investigate feeds and Kraken 429s.'
+  throw 'Worker2 failed three distinct healthy recent ticks. Existing MAIN unchanged; check Kraken 429s and authenticated feeds.'
  }
- Write-Host 'Worker2 verified: three distinct recent healthy ticks; no MAIN trading. MAIN still UNCHANGED.' -ForegroundColor Green
- # Read the CURRENT Cloudflare version of MAIN for safe rollback. The caller
- # must confirm the exact ID; an automatic cutover is prohibited.
+ Write-Host 'Worker2 passed three fresh, separate healthy observations. MAIN has NOT been changed.' -ForegroundColor Green
+ # Stop a stale, concurrent or accidental MAIN overwrite. Version-locked cutover.
  function Get-MainActiveVersion {
   $lines=@(& npx.cmd --no-install wrangler deployments status --name eth-15-scout-cloud-v4test --json)
-  if($LASTEXITCODE -ne 0){throw 'Could not read MAIN Cloudflare deployment; MAIN unchanged.'}
+  if($LASTEXITCODE -ne 0){throw 'Cannot inspect current MAIN Cloudflare version; MAIN unchanged.'}
   try{$d=($lines -join "`n")|ConvertFrom-Json}
-  catch{throw 'MAIN Cloudflare deployment JSON invalid; MAIN unchanged.'}
+  catch{throw 'MAIN version status is not valid JSON; MAIN unchanged.'}
   $active=@($d.versions|Where-Object { $_.percentage -eq 100 })
   if($active.Count -ne 1 -or
-    [string]$active[0].version_id -notmatch '^[a-f0-9-]{36}
- Write-Host "Source SHA: $expected" -ForegroundColor Green
- Write-Host 'MAIN account preserved under existing ScoutEngineV4.' -ForegroundColor Green
- Write-Host 'CONTROL account created under new ScoutControlResearchV4.' -ForegroundColor Green
- Write-Host 'Keep both Cloudflare Version IDs from the output for the 15-hour audit.' -ForegroundColor Yellow
-}
-finally{
- Remove-Variable token,keyId,pem -ErrorAction SilentlyContinue
- Pop-Location
-}
-){
-   throw 'Expected exactly one 100%-active MAIN version; refuse deployment.'
+     [string]$active[0].version_id -notmatch '^[a-f0-9-]{36}$'){
+   throw 'MAIN must have exactly one known 100%-active version. MAIN unchanged.'
   }
   return [string]$active[0].version_id
  }
  $previousMainVersion=Get-MainActiveVersion
  Write-Host ('EXISTING MAIN CLOUDFLARE VERSION: '+$previousMainVersion) -ForegroundColor Yellow
- Write-Host 'Open the MAIN V4 dashboard: confirm active position, paper trades, and fresh feeds; EXPORT the full MAIN research/journal evidence BEFORE cutover.' -ForegroundColor Yellow
- Write-Host 'If Worker2 added Kraken 429s, stale data or any MAIN degradation, STOP HERE; do not release MAIN.' -ForegroundColor Yellow
- Write-Host ('Emergency rollback reference: npx.cmd --no-install wrangler rollback '+$previousMainVersion+' --name eth-15-scout-cloud-v4test') -ForegroundColor Yellow
- $typed=(Read-Host 'Type the exact EXISTING MAIN Cloudflare version ID shown above').Trim()
+ Write-Host 'Inspect MAIN V4 dashboard health, trades, positions and recent Kraken errors; EXPORT complete MAIN journal BEFORE deployment.' -ForegroundColor Yellow
+ Write-Host 'If Worker2 appears to increase 429s, stale market data or MAIN errors, STOP. Research may be kept separate without changing MAIN.' -ForegroundColor Yellow
+ Write-Host ('Rollback version if required: npx.cmd --no-install wrangler rollback '+$previousMainVersion+' --name eth-15-scout-cloud-v4test') -ForegroundColor Yellow
+ $typed=(Read-Host 'Enter the exact EXISTING MAIN Cloudflare version ID printed above').Trim()
  if($typed -ne $previousMainVersion){
-  throw 'MAIN version confirmation mismatch; existing MAIN unchanged.'
+  throw 'Owner did not verify exact existing MAIN version. MAIN unchanged.'
  }
- $approved=(Read-Host 'After reviewing MAIN dashboard and saved journal, type DEPLOY MAIN OPPORTUNISTIC').Trim()
+ $approved=(Read-Host 'After reviewing MAIN dashboard and exporting MAIN evidence, type DEPLOY MAIN OPPORTUNISTIC').Trim()
  if($approved -cne 'DEPLOY MAIN OPPORTUNISTIC'){
-  throw 'No explicit MAIN cutover approval. Worker2 can remain active; MAIN unchanged.'
+  throw 'MAIN cutover not explicitly approved; Worker2 may continue separately.'
  }
  if((Get-MainActiveVersion) -ne $previousMainVersion){
-  throw 'MAIN Cloudflare version changed during preflight; refuse overwrite.'
+  throw 'MAIN version changed during preflight. MAIN deployment blocked.'
  }
  $lastControls=Invoke-RestMethod -Uri ($base+'/v1/status') -Headers $headers -Method GET -TimeoutSec 15
  $lastNow=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -215,13 +204,13 @@ finally{
     $lastControls.paperFeedHealth.officialIndexLastState -ne 'HTTP_200_VALID_ETH_INDEX' -or
     $lastControls.lastError -or $lastControls.lastResearchError -or
     [long]$lastControls.lastResearchTickAt -lt ($lastNow-45000)){
-  throw 'Worker2 became unhealthy before MAIN release; stop with MAIN unchanged.'
+  throw 'Worker2 became unhealthy; MAIN deployment blocked.'
  }
- Write-Host 'STEP 2/2: Deploying MAIN-only Opportunistic V4 to EXISTING Worker/DO.' -ForegroundColor Cyan
+ Write-Host 'STEP 2/2: Deploy MAIN-only Opportunistic V4 to existing Worker/DO.' -ForegroundColor Cyan
  & npx.cmd --no-install wrangler deploy --config wrangler.v4paper.toml
- if($LASTEXITCODE -ne 0){throw ('MAIN deploy failed. Preserve rollback version '+$previousMainVersion)}
- Write-Host ('PREVIOUS MAIN VERSION FOR RECOVERY: '+$previousMainVersion) -ForegroundColor Yellow
- Write-Host 'SUCCESS: Two Workers deployed. Verify MAIN and CONTROL dashboards immediately.' -ForegroundColor Green
+ if($LASTEXITCODE -ne 0){throw ('MAIN deployment failed. Preserve rollback version '+$previousMainVersion)}
+ Write-Host ('PREVIOUS MAIN VERSION: '+$previousMainVersion) -ForegroundColor Yellow
+ Write-Host 'SUCCESS: Two Workers deployed. VERIFY BOTH actual runtimes immediately.' -ForegroundColor Green
  Write-Host "Source SHA: $expected" -ForegroundColor Green
  Write-Host 'MAIN account preserved under existing ScoutEngineV4.' -ForegroundColor Green
  Write-Host 'CONTROL account created under new ScoutControlResearchV4.' -ForegroundColor Green
