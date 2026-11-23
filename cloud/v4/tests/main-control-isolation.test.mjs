@@ -58,6 +58,9 @@ test('dashboard complete export retains separate control ledger and 60-market co
  assert.match(app,/return \{format:'ETH-15 Scout V4 research journal'/);
  assert.match(w,/conservativeControlJournal:this\.controlSnapshot\(true\)/);
  assert.match(w,/conservativeControl:this\.controlSnapshot\(\)/);
+ assert.match(w,/conservativeControlExport:this\.compactConservativeExport\(\)/);
+ assert.match(w,/journalIndependentOfMain:true/);
+ assert.match(app,/account:lastPayload\?\.status\|\|null/);
  const report=read('cloud/v4/tools/report-v4-profile-comparison.mjs');
  assert.match(report,/completeLedgerExported:controlJournalValid/);
  assert.match(report,/cohortEnd=cohortStart\+15\*60\*60\*1000/);
