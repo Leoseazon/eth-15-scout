@@ -9,6 +9,7 @@
 <title>ETH-15 Scout V4 | Paper Trading Console</title>
 <link rel="stylesheet" href="./style.css">
 <link rel="stylesheet" href="./deployment-status.css">
+<link rel="stylesheet" href="./feed-diagnostics.css">
 <script src="./sounds.js" defer></script>
 <script src="./stop-postmortem.js" defer></script>
 <script src="./app.js" defer></script>
@@ -19,6 +20,7 @@
 <script src="./confidence-ui.js" defer></script>
 <script src="./health-ui.js" defer></script>
 <script src="./deployment-status-ui.js" defer></script>
+<script src="./feed-diagnostics-ui.js" defer></script>
 <script src="./opportunity-review.js" defer></script>
 </head>
 <body>
@@ -95,6 +97,20 @@
   </div>
   <p class="v4-deploy-foot" id="v4-deploy-tick-note">No authenticated engine status loaded</p>
   <p class="v4-deploy-foot">Release IDs and deployment times remain unavailable until verified Cloudflare deployment metadata is supplied. A model-version label or first contextual engine tick is not a deployment timestamp. Read-only; uses existing dashboard updates.</p>
+   <details class="v4-feed-diag" id="v4-feed-diagnostics" aria-label="Feed investigation">
+    <summary>Feed investigation <small>Current Kalshi connection vs. stale prices · Kraken errors · local 45-minute sample</small></summary>
+    <div class="v4-feed-diag-grid">
+     <div><span>Kalshi authenticated book</span><strong id="v4-feed-diag-book">Waiting for data</strong></div>
+     <div><span>Kraken candle checks</span><strong id="v4-feed-diag-kraken">Waiting for data</strong></div>
+     <div><span>Official index eligibility</span><strong id="v4-feed-diag-index">Waiting for data</strong></div>
+     <div><span>Engine / BUY-input status</span><strong id="v4-feed-diag-latest">Waiting for data</strong></div>
+    </div>
+    <div class="v4-feed-diag-footer">
+     <p id="v4-feed-diag-coverage">Waiting for authenticated dashboard data</p>
+     <button id="v4-feed-diag-export" type="button" disabled>Download observed feed diagnostics JSON</button>
+     <p>Read-only. Uses existing 15-second dashboard refreshes; no new market-data requests or Cloudflare writes. Records up to 180 distinct engine ticks while this page stays open (about 45 minutes). Reloading/signing out clears this temporary observation history. A stale book warning is different from a disconnected socket. Observations do not prove a missed executable BUY.</p>
+    </div>
+   </details>
  </details>
  <section id="overview" class="overview">
   <div class="metric-grid">
