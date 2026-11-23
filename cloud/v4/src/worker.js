@@ -22,6 +22,8 @@ import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
 import {observeProspectiveShadow} from './shadow-research-observer.js';
+import {assessMainDecisionCoherence,assessMainHeldExitCoherence}
+ from './main-coherence-research.js';
 import {ensureSettlementPredictions,appendSettlementPrediction,
  reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
 import {SETTLEMENT_FIRST_VERSION,ENTRY_MIN_REMAINING_SECONDS,
@@ -359,6 +361,7 @@ export class ScoutEngineV4 extends DurableObject {
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     // Research-only prospective comparison; never an entry/exit instruction.
     let prospectiveShadow=null;
+    let mainCoherence=null; // post-decision observation ONLY
     // Disarming new entries must NOT switch an existing V4 position to the
     // unrelated V3-derived close/stop policy. Manage it with its original
     // V4 paper exit rules until it is safely settled.
@@ -438,6 +441,25 @@ export class ScoutEngineV4 extends DurableObject {
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
+      // MAIN V4 strategy coherence: named evidence reconciliation recorded
+      // AFTER settlementFirstPaperStep already decided and saved its order
+      // authorization in memory. This diagnostic cannot create a BUY/SELL,
+      // veto an order or change existing risk checks. No network requests.
+      try{
+        const entry=assessMainDecisionCoherence({
+          market,candidate:report?.candidate||null,context,at:Date.now()
+        });
+        const held=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
+          assessMainHeldExitCoherence({position:s.open,index,book:decisionBook,
+            one,five:m5,context,now:Date.now()}):null;
+        mainCoherence={entry,held,
+          readOnly:true,executionAuthorized:false,
+          strategyMutations:0};
+      }catch{
+        mainCoherence={status:'ISOLATED_MAIN_COHERENCE_RESEARCH_ERROR',
+          readOnly:true,executionAuthorized:false,
+          strategyMutations:0};
+      }
       // The baseline paper step has ALREADY decided, including any authorized
       // paper accounting. Alternatives use the SAME tick's previously fetched
       // sources. They cannot alter the baseline result or place a paper BUY.
@@ -494,7 +516,8 @@ export class ScoutEngineV4 extends DurableObject {
         status:report.status||'WATCH',reason:report.notice||'',
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
-        prospectiveShadow,calibratedProbability:null,executableFillVerified:false};
+        prospectiveShadow,mainCoherence,
+        calibratedProbability:null,executableFillVerified:false};
     }else{
       try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
       catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
