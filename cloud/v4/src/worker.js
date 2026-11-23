@@ -609,6 +609,13 @@ export class ScoutEngineV4 extends DurableObject {
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
         prospectiveShadow,mainCoherence,
+        mainStrategyProfile:{version:MAIN_PROFILE_VERSION,
+          active:this.mainProfileName,
+          configurationValid:this.mainProfileConfigured,
+          readOnly:true},
+        conservativeReference,
+        conservativeControl:{...conservativePortfolioSummary(controlState,controlStep),
+          persisted:false,error:controlError},
         calibratedProbability:null,executableFillVerified:false};
     }else{
       try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
@@ -659,6 +666,22 @@ export class ScoutEngineV4 extends DurableObject {
       lastMarket:market?.ticker||null,lastNotice:report.notice||'',
       lastFeedOkay:!!(fresh&&one&&context.three&&market)};
     this.save(s,tickMeta);
+    // MAIN bank/prediction already committed. Control account writes now
+    // occur under a distinct durable KV key, with isolated failure handling.
+    if(controlState){
+      try{
+        saveConservativePortfolio(this.ctx.storage.kv,controlState);
+        controlPersisted=true;
+      }catch{controlError='CONTROL_PORTFOLIO_PERSIST_UNAVAILABLE';}
+    }
+    if(shadowProbe?.conservativeControl){
+      shadowProbe.conservativeControl={
+        ...conservativePortfolioSummary(
+          controlPersisted?controlState:null,controlStep),
+        persisted:controlPersisted,
+        error:controlError||null
+      };
+    }
     // Auxiliary research logs are intentionally NON-CRITICAL. Save the latest
     // research receipt afterward; a failed auxiliary write cannot roll back
     // an already committed paper bankroll and unique forecast.
@@ -693,6 +716,17 @@ export class ScoutEngineV4 extends DurableObject {
     // Only official finalized outcomes resolve paper holdings.
     const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
     if(settled>0)this.save(s,tickMeta);
+    // Control settlement is independent. It reads the same finalized
+    // exchange outcome but does not touch MAIN trades, cash, or forecasts.
+    if(controlState&&controlPersisted){
+      try{
+        const done=settleConservativePortfolio(controlState,
+          this.ctx.storage.sql,Date.now());
+        controlState=done.next;
+        if(done.finalized>0)
+          saveConservativePortfolio(this.ctx.storage.kv,controlState);
+      }catch{controlError='CONTROL_SETTLEMENT_UNAVAILABLE';}
+    }
     try{reconcileSettlementPredictions(this.ctx.storage.sql,Date.now())}
     catch{ /* Official outcome scoring remains unresolved; never assume success. */ }
     // Research stream always follows critical paper accounting and journal IO.
