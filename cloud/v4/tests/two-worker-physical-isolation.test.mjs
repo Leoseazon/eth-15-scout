@@ -110,7 +110,7 @@ test('owner cutover MUST refuse stale Worker2 data and require explicit protecte
  assert.match(runner,/if\(\(Get-MainActiveVersion\) -ne \$previousMainVersion\)/);
  assert.match(runner,/Worker2 became unhealthy; MAIN deployment blocked/);
  const target='wrangler deploy --config wrangler.v4paper.toml';
- const actualMainDeploys=[...runner.matchAll(/wrangler deploy --config wrangler\\.v4paper\\.toml(?=\\r?\\n)/g)];
+ const actualMainDeploys=[...runner.matchAll(/wrangler deploy --config wrangler\.v4paper\.toml(?=\r?\n)/g)];
  assert.equal(actualMainDeploys.length,1,'exactly one LIVE MAIN deploy (excluding dry-run)');
  assert.ok(runner.indexOf('DEPLOY MAIN OPPORTUNISTIC')<runner.indexOf(target));
  assert.ok(runner.indexOf('Get-MainActiveVersion')<runner.indexOf(target));
