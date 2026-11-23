@@ -69,8 +69,7 @@ const mainBuyTicks=current.filter(r=>{
  return d?.status==='PAPER_BUY'&&
   ['UP','DOWN'].includes(d.side)&&ts(d.at)&&
   d.at>=cohortStart&&d.at<cohortEnd&&
-  Math.abs(d.at-r.observedAt)<=30000&&
-  r.ticker===r.decision?.shadowProbe?.conservativeReference?.candidate?.ticker;
+  Math.abs(d.at-r.observedAt)<=30000&&key(r.ticker);
 });
 const firstMainBuys=new Map();
 for(const r of mainBuyTicks)if(!firstMainBuys.has(r.ticker))firstMainBuys.set(r.ticker,{
