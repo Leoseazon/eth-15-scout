@@ -21,6 +21,7 @@ import {checkCFValuesAccess} from './cf-access.js';
 import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
+import {observeProspectiveShadow} from './shadow-research-observer.js';
 import {ensureSettlementPredictions,appendSettlementPrediction,
  reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
 import {SETTLEMENT_FIRST_VERSION,ENTRY_MIN_REMAINING_SECONDS,
@@ -356,6 +357,8 @@ export class ScoutEngineV4 extends DurableObject {
     }
     context.regime=s.dailyRegime?.day===today?s.dailyRegime:null;
     let report={notice:'No new buy; waiting for complete fresh market data.'};
+    // Research-only prospective comparison; never an entry/exit instruction.
+    let prospectiveShadow=null;
     // Disarming new entries must NOT switch an existing V4 position to the
     // unrelated V3-derived close/stop policy. Manage it with its original
     // V4 paper exit rules until it is safely settled.
@@ -435,6 +438,21 @@ export class ScoutEngineV4 extends DurableObject {
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
+      // The baseline paper step has ALREADY decided, including any authorized
+      // paper accounting. Alternatives use the SAME tick's previously fetched
+      // sources. They cannot alter the baseline result or place a paper BUY.
+      try{
+        prospectiveShadow=observeProspectiveShadow({
+          market,report,index,book:decisionBook,one,five:m5,context,feedChecks,
+          streamStatus:this.stream?.status(Date.now())||null,
+          riskMode:s.dailyRisk?.mode||'UNKNOWN',blocked:s.blocked,
+          now:Date.now()
+        });
+      }catch{
+        prospectiveShadow={status:'RESEARCH_UNAVAILABLE',
+          reason:'ISOLATED_SHADOW_EVALUATION_ERROR',
+          executionAuthorized:false,readOnly:true};
+      }
       // Read-only observation: confidence is computed AFTER the normal paper
       // step so it cannot veto buys, override 96c/stop exits or alter cash.
       if(s.open?.strategy==='V4_SETTLEMENT_FIRST'){
@@ -476,7 +494,7 @@ export class ScoutEngineV4 extends DurableObject {
         status:report.status||'WATCH',reason:report.notice||'',
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
-        calibratedProbability:null,executableFillVerified:false};
+        prospectiveShadow,calibratedProbability:null,executableFillVerified:false};
     }else{
       try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
       catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
