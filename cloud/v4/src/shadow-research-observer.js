@@ -7,6 +7,8 @@
  */
 import {evaluateBothShadowPolicies,SHADOW_SPEC_VERSION}
  from './shadow-opportunity-policies.js';
+import {evaluateCandidateCObservation,CANDIDATE_C_SPEC,CANDIDATE_C_POLICY}
+ from './candidate-c-observer.js';
 const ms=n=>Number.isSafeInteger(n)&&n>1000000000000;
 const completed=(startSeconds,periodSeconds,at)=>{
  const expected=Math.floor(at/(periodSeconds*1000))*periodSeconds-periodSeconds;
@@ -55,10 +57,23 @@ export function observeProspectiveShadow({market,report,index,book,one,five,
   alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),
   baselineStatus:report?.status,consideredSideValues:observations
  });
+ // C is a distinct non-executing hypothesis. Isolate it from A/B if its
+ // research calculation fails. Neither module can veto a baseline paper step.
+ let candidateC;
+ try{
+  candidateC=evaluateCandidateCObservation({
+   market,report,book,context,sourceWitness:witness,riskMode,
+   alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),now
+  });
+ }catch{
+  candidateC={version:CANDIDATE_C_SPEC,policy:CANDIDATE_C_POLICY,
+   status:'NO_C_OBSERVATION',reason:'ISOLATED_C_OBSERVATION_ERROR',
+   readOnly:true,executionAuthorized:false,calibratedProbability:null};
+ }
  const sourceStates=Object.fromEntries(Object.entries(witness).map(([k,v])=>[k,!!v]));
  return {version:SHADOW_SPEC_VERSION,observedAt:now,
   executionAuthorized:false,readOnly:true,calibratedProbability:null,
   outcomeAvailableAtEvaluation:false,firstPerTickerSelection:'DEFERRED_TO_CHRONOLOGICAL_SCORER',
   baselineStatus:report?.status||'UNAVAILABLE',
-  sourceWitness:sourceStates,policies:out};
+  sourceWitness:sourceStates,policies:out,candidateC};
 }
