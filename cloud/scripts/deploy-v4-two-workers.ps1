@@ -132,10 +132,15 @@ try{
   $ignore=Invoke-RestMethod -Uri ($base+'/bootstrap') -Headers $headers -Method GET -TimeoutSec 20
  }catch{throw "Separate research API verification failed: $($_.Exception.Message). MAIN unchanged."}
  Write-Host 'Waiting for controls-only Worker to demonstrate healthy fresh market evidence...' -ForegroundColor Cyan
+ # Require multiple DISTINCT, recent healthy Worker2 ticks, not cached status.
+ $healthyTicks=New-Object 'System.Collections.Generic.HashSet[long]'
  $ready=$false
- for($i=0;$i -lt 12;$i++){
+ for($i=0;$i -lt 18;$i++){
   try{
    $status=Invoke-RestMethod -Uri ($base+'/v1/status') -Headers $headers -Method GET -TimeoutSec 15
+   $utcNow=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+   $researchAt=[long]$status.lastResearchTickAt
+   $engineAt=[long]$status.lastTick
    if($status.researchWorkerRole -eq 'CONTROLS_ONLY' -and
       $status.researchControlsAllowed -eq $true -and
       $status.mainTradingDisabledByCode -eq $true -and
@@ -144,20 +149,79 @@ try{
       $status.streamConnection.connected -eq $true -and
       $status.paperFeedHealth.kalshiWsBookFresh -eq $true -and
       $status.paperFeedHealth.officialIndexLastState -eq 'HTTP_200_VALID_ETH_INDEX' -and
-      [long]$status.lastResearchTickAt -gt 1000000000000){
-      $ready=$true;break
+      $status.paperFeedHealth.officialIndexLastAgeMs -ge 0 -and
+      $status.paperFeedHealth.officialIndexLastAgeMs -le 15000 -and
+      $researchAt -gt 1000000000000 -and $researchAt -le $utcNow -and
+      ($utcNow-$researchAt) -le 45000 -and
+      $engineAt -gt 1000000000000 -and $engineAt -le $utcNow -and
+      ($utcNow-$engineAt) -le 45000 -and
+      -not $status.lastError -and -not $status.lastResearchError){
+      [void]$healthyTicks.Add($researchAt)
+      if($healthyTicks.Count -ge 3){$ready=$true;break}
    }
   }catch{}
   Start-Sleep -Seconds 10
  }
  if(-not $ready){
-  throw 'RESEARCH Worker is isolated but its fresh authenticated WS/index data is not yet verified. MAIN deployment blocked. Review Worker2 secrets and feeds.'
+  throw 'RESEARCH Worker did not produce three DISTINCT recent healthy authenticated ticks. MAIN unchanged. Investigate feeds and Kraken 429s.'
  }
- Write-Host 'Worker2 verified: independent account, fresh WebSocket, official index, no MAIN trading.' -ForegroundColor Green
+ Write-Host 'Worker2 verified: three distinct recent healthy ticks; no MAIN trading. MAIN still UNCHANGED.' -ForegroundColor Green
+ # Read the CURRENT Cloudflare version of MAIN for safe rollback. The caller
+ # must confirm the exact ID; an automatic cutover is prohibited.
+ function Get-MainActiveVersion {
+  $lines=@(& npx.cmd --no-install wrangler deployments status --name eth-15-scout-cloud-v4test --json)
+  if($LASTEXITCODE -ne 0){throw 'Could not read MAIN Cloudflare deployment; MAIN unchanged.'}
+  try{$d=($lines -join "`n")|ConvertFrom-Json}
+  catch{throw 'MAIN Cloudflare deployment JSON invalid; MAIN unchanged.'}
+  $active=@($d.versions|Where-Object { $_.percentage -eq 100 })
+  if($active.Count -ne 1 -or
+    [string]$active[0].version_id -notmatch '^[a-f0-9-]{36}
+ Write-Host "Source SHA: $expected" -ForegroundColor Green
+ Write-Host 'MAIN account preserved under existing ScoutEngineV4.' -ForegroundColor Green
+ Write-Host 'CONTROL account created under new ScoutControlResearchV4.' -ForegroundColor Green
+ Write-Host 'Keep both Cloudflare Version IDs from the output for the 15-hour audit.' -ForegroundColor Yellow
+}
+finally{
+ Remove-Variable token,keyId,pem -ErrorAction SilentlyContinue
+ Pop-Location
+}
+){
+   throw 'Expected exactly one 100%-active MAIN version; refuse deployment.'
+  }
+  return [string]$active[0].version_id
+ }
+ $previousMainVersion=Get-MainActiveVersion
+ Write-Host ('EXISTING MAIN CLOUDFLARE VERSION: '+$previousMainVersion) -ForegroundColor Yellow
+ Write-Host 'Open the MAIN V4 dashboard: confirm active position, paper trades, and fresh feeds; EXPORT the full MAIN research/journal evidence BEFORE cutover.' -ForegroundColor Yellow
+ Write-Host 'If Worker2 added Kraken 429s, stale data or any MAIN degradation, STOP HERE; do not release MAIN.' -ForegroundColor Yellow
+ Write-Host ('Emergency rollback reference: npx.cmd --no-install wrangler rollback '+$previousMainVersion+' --name eth-15-scout-cloud-v4test') -ForegroundColor Yellow
+ $typed=(Read-Host 'Type the exact EXISTING MAIN Cloudflare version ID shown above').Trim()
+ if($typed -ne $previousMainVersion){
+  throw 'MAIN version confirmation mismatch; existing MAIN unchanged.'
+ }
+ $approved=(Read-Host 'After reviewing MAIN dashboard and saved journal, type DEPLOY MAIN OPPORTUNISTIC').Trim()
+ if($approved -cne 'DEPLOY MAIN OPPORTUNISTIC'){
+  throw 'No explicit MAIN cutover approval. Worker2 can remain active; MAIN unchanged.'
+ }
+ if((Get-MainActiveVersion) -ne $previousMainVersion){
+  throw 'MAIN Cloudflare version changed during preflight; refuse overwrite.'
+ }
+ $lastControls=Invoke-RestMethod -Uri ($base+'/v1/status') -Headers $headers -Method GET -TimeoutSec 15
+ $lastNow=[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+ if($lastControls.researchControlsAllowed -ne $true -or
+    $lastControls.armed -ne $false -or
+    $lastControls.settlementPaperAllowed -ne $false -or
+    $lastControls.paperFeedHealth.kalshiWsBookFresh -ne $true -or
+    $lastControls.paperFeedHealth.officialIndexLastState -ne 'HTTP_200_VALID_ETH_INDEX' -or
+    $lastControls.lastError -or $lastControls.lastResearchError -or
+    [long]$lastControls.lastResearchTickAt -lt ($lastNow-45000)){
+  throw 'Worker2 became unhealthy before MAIN release; stop with MAIN unchanged.'
+ }
  Write-Host 'STEP 2/2: Deploying MAIN-only Opportunistic V4 to EXISTING Worker/DO.' -ForegroundColor Cyan
  & npx.cmd --no-install wrangler deploy --config wrangler.v4paper.toml
- if($LASTEXITCODE -ne 0){throw 'MAIN deployment failed; inspect Cloudflare output'}
- Write-Host 'SUCCESS: TWO PHYSICALLY SEPARATE V4 ENGINES DEPLOYED' -ForegroundColor Green
+ if($LASTEXITCODE -ne 0){throw ('MAIN deploy failed. Preserve rollback version '+$previousMainVersion)}
+ Write-Host ('PREVIOUS MAIN VERSION FOR RECOVERY: '+$previousMainVersion) -ForegroundColor Yellow
+ Write-Host 'SUCCESS: Two Workers deployed. Verify MAIN and CONTROL dashboards immediately.' -ForegroundColor Green
  Write-Host "Source SHA: $expected" -ForegroundColor Green
  Write-Host 'MAIN account preserved under existing ScoutEngineV4.' -ForegroundColor Green
  Write-Host 'CONTROL account created under new ScoutControlResearchV4.' -ForegroundColor Green
