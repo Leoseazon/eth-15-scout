@@ -26,6 +26,8 @@ jobs:
       - run: node --test tests/viewer.test.mjs
       - run: npx wrangler deploy --config wrangler.viewer.toml --dry-run --outdir .cloudflare-build-viewer
       - run: node --check v4/src/worker.js
+      - run: node --check v4/src/main-only-worker.js
+      - run: node --check v4/src/controls-only-worker.js
       - run: node --check v4/viewer-worker.js
       - run: node --check v4/viewer-auth.js
       - run: node --check v4/src/quote-recorder.js
@@ -63,6 +65,7 @@ jobs:
       - run: node --check ../v4/health-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4paper.toml --dry-run --outdir .cloudflare-build-v4paper
+      - run: npx wrangler deploy --config wrangler.v4controls.toml --dry-run --outdir .cloudflare-build-v4controls
       - name: Parse Windows single-paste V4 deployment runner
         shell: pwsh
         run: |
