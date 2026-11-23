@@ -103,6 +103,36 @@ test('all profiles retain 87c cap, stale book and one-buy-per-contract',()=>{
   assert.equal(s.cash,100);
  }
 });
+test('Opportunistic produces actual separate paper BUYs in some otherwise Conservative PASS cases',()=>{
+ let discovered=null;
+ for(const price of [1799,1799.5,1800,1800.5,1801,1801.5,1802,1803,1804]){
+  for(const ask of [.20,.25,.30,.35,.40,.45,.50,.55,.60,.65,.70,.75,.80]){
+   const q={...book,yesAsk:{price:ask,sizeFp:'50.00'},
+    yesBid:{price:Math.max(.01,Number((ask-.02).toFixed(2))),sizeFp:'50.00'},
+    noAsk:{price:Math.min(.99,Number((1-ask+.02).toFixed(2))),sizeFp:'50.00'},
+    noBid:{price:Number((1-ask).toFixed(2)),sizeFp:'50.00'}};
+   const input={...args,book:q,index:{...index,price},
+    one:{...one,last:price},onPrediction:()=>{}};
+   const conservative=setup(),opportunistic=setup();
+   const baseline=settlementFirstPaperStep(conservative,{
+    ...input,profile:'CONSERVATIVE'});
+   const relaxed=settlementFirstPaperStep(opportunistic,{
+    ...input,profile:'OPPORTUNISTIC'});
+   if(baseline.status==='WATCH'&&relaxed.status==='PAPER_BUY'){
+    discovered={baseline,relaxed,conservative,opportunistic,price,ask};
+    break;
+   }
+  }
+  if(discovered)break;
+ }
+ assert.ok(discovered,'OPPORTUNISTIC must produce at least one true paper BUY that Conservative refuses, or selector is ineffective');
+ assert.equal(discovered.conservative.cash,100);
+ assert.equal(discovered.conservative.open,null);
+ assert.ok(discovered.opportunistic.open.cost<=3);
+ assert.equal(discovered.opportunistic.open.entryStrategyProfile,'OPPORTUNISTIC');
+ assert.ok(discovered.opportunistic.open.entry<=.87);
+ assert.equal(discovered.opportunistic.open.fillVerified,false);
+});
 test('main 96c profit SELL unchanged by selected profile',()=>{
  const s=setup(),buy=settlementFirstPaperStep(s,{
   ...args,profile:'OPPORTUNISTIC'});
