@@ -7,6 +7,32 @@ on:
       - '.github/workflows/cloud-tests.yml'
   workflow_dispatch:
 jobs:
+  windows-compat:
+    name: Windows Git checkout and PowerShell 5.1 compatibility
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Parse protected two-Worker deployment runner (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/deploy-v4-main-only-opportunistic.ps1')) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path, [ref]$tokens, [ref]$errors) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
+          }
   cloud-test:
     runs-on: ubuntu-latest
     defaults:
@@ -26,6 +52,10 @@ jobs:
       - run: node --test tests/viewer.test.mjs
       - run: npx wrangler deploy --config wrangler.viewer.toml --dry-run --outdir .cloudflare-build-viewer
       - run: node --check v4/src/worker.js
+      - run: node --check v4/src/main-only-worker.js
+      - run: node --check v4/src/controls-only-worker.js
+      - run: node --check v4/tools/export-v4-controls.mjs
+      - run: node --check v4/tools/report-v4-two-workers.mjs
       - run: node --check v4/viewer-worker.js
       - run: node --check v4/viewer-auth.js
       - run: node --check v4/src/quote-recorder.js
@@ -63,6 +93,7 @@ jobs:
       - run: node --check ../v4/health-ui.js
       - run: npx wrangler deploy --config wrangler.v4test.toml --dry-run --outdir .cloudflare-build-v4test
       - run: npx wrangler deploy --config wrangler.v4paper.toml --dry-run --outdir .cloudflare-build-v4paper
+      - run: npx wrangler deploy --config wrangler.v4controls.toml --dry-run --outdir .cloudflare-build-v4controls
       - name: Parse Windows single-paste V4 deployment runner
         shell: pwsh
         run: |
@@ -72,6 +103,18 @@ jobs:
           if ($parseErrors.Count -gt 0) {
             $parseErrors | ForEach-Object { Write-Error $_.Message }
             exit 1
+          }
+      - name: Parse owner-only physical separation and export deployment scripts
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/deploy-v4-main-only-opportunistic.ps1','scripts/export-v4-controls.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
       - name: Audit public 90-day KXETH15M round availability (aggregate only)

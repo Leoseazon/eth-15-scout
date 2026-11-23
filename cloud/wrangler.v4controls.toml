@@ -1,0 +1,40 @@
+# PHYSICALLY SEPARATE V4 CONTROLS ENGINE (NOT MAIN, NOT V4 VIEWER).
+# A/B/C/A2/B2/C2 + independent $100 Conservative control ONLY.
+# This Worker has a DIFFERENT Durable Object namespace from MAIN.
+# No remote binding or service access to MAIN. Private routes require
+# the independently provisioned SCOUT_ADMIN_TOKEN bearer secret.
+name = "eth-15-scout-v4-controls"
+main = "v4/src/controls-only-worker.js"
+compatibility_date = "2026-11-18"
+workers_dev = true
+preview_urls = false
+
+[vars]
+MARKET_PROXY = "https://eth-15-scout-api.leoseazon.workers.dev/markets"
+SCOUT_V4_PAPER_MODE = "disabled"
+V4_SETTLEMENT_FIRST_EXPERIMENT = "false"
+V4_PHYSICAL_ISOLATION_ROLE = "CONTROLS_ONLY"
+V4_RESEARCH_CONTROLS_ENABLED = "true"
+V4_STREAM_CAPTURE_ENABLED = "true"
+V4_REST_BOOK_CAPTURE_ENABLED = "false"
+V4_DATA_RESEARCH_AUTHORIZED = "false"
+V4_RESEARCH_STREAM_ENABLED = "false"
+V4_FULL_BOOK_ARCHIVE_ENABLED = "false"
+V4_CF_ACCESS_PROBE_ENABLED = "false"
+V4_CF_WS_PROBE_ENABLED = "false"
+
+[observability.logs]
+enabled = true
+[observability.issues]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "SCOUT_CONTROLS"
+class_name = "ScoutControlResearchV4"
+
+[[migrations]]
+tag = "v4-controls-isolated-class-v1"
+new_sqlite_classes = ["ScoutControlResearchV4"]
+
+[triggers]
+crons = ["* * * * *"]

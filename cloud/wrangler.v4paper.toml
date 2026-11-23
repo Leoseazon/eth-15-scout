@@ -5,7 +5,7 @@
 
 # Separate, authorized V4 experimental PAPER simulator; read-only market APIs; NO real orders.
 name = "eth-15-scout-cloud-v4test"
-main = "v4/src/worker.js"
+main = "v4/src/main-only-worker.js"
 compatibility_date = "2026-11-18"
 # Preserve V4-only dashboard variables, including the user-enabled streaming flag.
 # Newly created Workers remain disabled unless the flag is explicitly set.
