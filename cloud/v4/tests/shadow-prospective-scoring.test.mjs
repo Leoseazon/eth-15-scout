@@ -39,7 +39,7 @@ test('policy A and B each get at most one independent first signal per ticker',(
 });
 test('new market receives its own first-signal slot',()=>{
  const second='KXETH15M-26NOV222015-15';
- const other=tick(at+20000,'A_STRESS_RELAXED',{ticker:second,closeAt:closeAt+900000});
+ const other=tick(at+920000,'A_STRESS_RELAXED',{ticker:second,closeAt:closeAt+900000});
  other.decision.shadowProbe.prospectiveShadow.policies.A_STRESS_RELAXED.ticker=second;
  const first=selectFirstShadowSignals([tick(),other]);
  assert.equal(first.length,2);
