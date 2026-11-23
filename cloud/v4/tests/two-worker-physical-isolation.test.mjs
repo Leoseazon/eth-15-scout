@@ -112,7 +112,9 @@ test('owner cutover MUST refuse stale Worker2 data and require explicit protecte
  const target='wrangler deploy --config wrangler.v4paper.toml';
  const actualMainDeploys=[...runner.matchAll(/wrangler deploy --config wrangler\.v4paper\.toml(?=\r?\n)/g)];
  assert.equal(actualMainDeploys.length,1,'exactly one LIVE MAIN deploy (excluding dry-run)');
- assert.ok(runner.indexOf('DEPLOY MAIN OPPORTUNISTIC')<runner.indexOf(target));
- assert.ok(runner.indexOf('Get-MainActiveVersion')<runner.indexOf(target));
- assert.ok(runner.indexOf('healthyTicks.Count -ge 3')<runner.indexOf(target));
+ const liveIndex=runner.lastIndexOf(target);
+ assert.ok(liveIndex>0);
+ assert.ok(runner.indexOf('DEPLOY MAIN OPPORTUNISTIC')<liveIndex);
+ assert.ok(runner.indexOf('Get-MainActiveVersion')<liveIndex);
+ assert.ok(runner.indexOf('healthyTicks.Count -ge 3')<liveIndex);
 });
