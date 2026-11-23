@@ -33,7 +33,7 @@
  const verifiedRelease=(record)=>{
   if(!record||record.source!=='cloudflare_deployments_api'||record.verified!==true)
    return null;
-  if(typeof record.id!=='string'||!/^[a-f0-9]{8}-[a-f0-9-]{28,36}$/i.test(record.id))
+  if(typeof record.id!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(record.id))
    return null;
   const deployedAt=safeMs(record.deployedAt);
   return deployedAt?{id:record.id,deployedAt}:null;
