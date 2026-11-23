@@ -7,6 +7,30 @@ on:
       - '.github/workflows/cloud-tests.yml'
   workflow_dispatch:
 jobs:
+  windows-compat:
+    name: Windows Git checkout and PowerShell 5.1 compatibility
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: cloud
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Parse protected two-Worker deployment runner (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts/deploy-v4-two-workers.ps1', [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            exit 1
+          }
   cloud-test:
     runs-on: ubuntu-latest
     defaults:
