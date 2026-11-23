@@ -124,3 +124,32 @@ test('owner cutover MUST refuse stale Worker2 data and require explicit protecte
  assert.ok(runner.indexOf('Get-MainActiveVersion')<liveIndex);
  assert.ok(runner.indexOf('healthyTicks.Count -ge 3')<liveIndex);
 });
+
+test('MAIN-only deployment is version locked and cannot redeploy Worker2, viewer, V3 or proxy',()=>{
+ const runner=read('cloud/scripts/deploy-v4-main-only-opportunistic.ps1');
+ assert.match(runner,/ExpectedMainVersion/);
+ assert.match(runner,/ExpectedCommit/);
+ assert.match(runner,/MAIN active version drifted/);
+ assert.match(runner,/V4_MAIN_PROFILE = "OPPORTUNISTIC"/);
+ assert.match(runner,/getByName\('v4-single-paper-scout'\)/);
+ assert.match(runner,/SCOUT_V4/);
+ assert.match(runner,/wrangler deployments status --name eth-15-scout-cloud-v4test --json/);
+ assert.match(runner,/Read-ControlsHealth/);
+ assert.match(runner,/Assert-ControlsHealthy/);
+ assert.match(runner,/ConvertTo-SecureString -String \$raw/);
+ assert.match(runner,/lastResearchTickAt/);
+ assert.match(runner,/MAIN DASHBOARD VERIFIED/);
+ assert.match(runner,/DEPLOY MAIN OPPORTUNISTIC/);
+ assert.match(runner,/Read-ActiveMainVersion\) -ne \$ExpectedMainVersion/);
+ assert.match(runner,/ETH-15-Scout-V4-Research-/);
+ assert.match(runner,/ETH15-Backups/);
+ assert.match(runner,/These exports are evidence, NOT a complete Durable Object database snapshot/);
+ const liveDeploys=[...runner.matchAll(/& npx\.cmd --no-install wrangler deploy --config ([\w.-]+)\r?\n/g)];
+ assert.equal(liveDeploys.length,1,'exactly one live deploy');
+ assert.equal(liveDeploys[0][1],'wrangler.v4paper.toml');
+ const i=runner.lastIndexOf('& npx.cmd --no-install wrangler deploy --config wrangler.v4paper.toml');
+ assert.ok(runner.indexOf("Read-Host 'To deploy ONLY eth-15-scout-cloud-v4test")<i);
+ assert.ok(runner.indexOf('Assert-ControlsHealthy (Read-ControlsHealth)',runner.indexOf('$approval='))<i);
+ assert.doesNotMatch(runner,/& npx\.cmd --no-install wrangler deploy --config wrangler\.v4controls\.toml(?:\s|$)/);
+ assert.doesNotMatch(runner,/& npx\.cmd --no-install wrangler deploy --config wrangler\.v4viewer\.toml(?:\s|$)/);
+});
