@@ -64,3 +64,14 @@ Interpretation: The connection and latest authenticated book were healthy at the
 - Around 23.25 s the next dashboard update clears the warning, and the panel returns green.
 - The earlier statement that diagnosis was never expanded was wrong, caused by stopping review at ~8.5 s; this corrected log supersedes it.
 - This confirms UI `KALSHI_BOOK` branch but cannot discriminate `connected=false`, mismatched ticker, `quote.valid=false`, `quote.fresh=false`, or old `quote.receivedAt` without status metadata.
+
+
+## Second owner video — IMG_4164.mp4 (8.867 seconds, 30 fps)
+**Source:** directly examined original uploaded video on November 22, 2026. Video was reviewed across full duration at 0.25–0.5s intervals, and the original frames were enlarged in a diagnostic timeline. This is a screen recording filmed by phone; playback seconds are *not* necessarily the duration of the underlying service incident.
+- At source 0.0s red status: `ENGINE ERROR` reports **Kraken 5-minute candles was rate-limited or is cooling down**; `FEED kraken5m` fails validation. The dashboard paper engine is online.
+- At ~1.5s, still red but updated status: `ENGINE ERROR` reports **Kraken 1-minute candles was rate-limited or is cooling down**; `FEED kraken1m` fails validation. This is a separate source from 5-minute requests.
+- At ~6.5s, red with `+2 more`: same `ENGINE ERROR` (Kraken 1m) and `FEED kraken1m`, plus third **`KALSHI BOOK`: `Live Kalshi order book is missing, delayed or reconnecting. Check authenticated WebSocket, ticker and latest book receipt.`**
+- By source ~7.5s, health returns green `No detected system issues`, paper simulation still enabled, system monitoring `Online`, engine tick ~7 seconds old.
+- **Major diagnostic implication:** Multiple independent feed-health warnings can overlap, so a red system bar should not be attributed only to 5m Kraken, or only to Kalshi WS; exact `feedChecks` + `streamConnection` transitions are necessary. The movie shows no uncaught decision-processing exception or documented actual trade execution.
+- The red-to-green transition is most consistent with new valid feed inputs arriving before the next authenticated status refresh; this remains a hypothesis. Warning clearing does not retroactively verify any skipped BUY.
+- A 4× slowed diagnostic version and four-frame evidence montage were generated in the conversation sandbox; the raw video is still the primary evidence, not committed to GitHub.
