@@ -433,6 +433,11 @@ export class ScoutEngineV4 extends DurableObject {
         officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
         liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
       };
+      // Preserve a READ-ONLY pointer to the position that was held
+      // before this paper decision. If a 96c/40% SELL closes it, the
+      // contemporaneous exit evidence still appears in the research journal.
+      const positionBeforePaperStep=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
+        {...s.open}:null;
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book:decisionBook,now:Date.now(),
@@ -452,8 +457,8 @@ export class ScoutEngineV4 extends DurableObject {
         const entry=assessMainDecisionCoherence({
           market,candidate:report?.candidate||null,context,at:Date.now()
         });
-        const held=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
-          assessMainHeldExitCoherence({position:s.open,index,book:decisionBook,
+        const held=positionBeforePaperStep?
+          assessMainHeldExitCoherence({position:positionBeforePaperStep,index,book:decisionBook,
             one,five:m5,context,now:Date.now()}):null;
         mainCoherence={entry,held,
           readOnly:true,executionAuthorized:false,
