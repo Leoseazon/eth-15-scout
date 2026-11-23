@@ -56,6 +56,8 @@ test('control entry is only enabled with explicit research role and disabled pap
  assert.match(researchCfg,/V4_RESEARCH_CONTROLS_ENABLED = "true"/);
  assert.match(controls,/enabled:this\.controlsResearchAllowed/);
  assert.match(controls,/const independentControlSourcesReady=this\.controlsResearchAllowed&&marketReady/);
+ assert.match(controls,/if\(!independentControlSourcesReady&&!s\.open\)/);
+ assert.doesNotMatch(controls,/if\(!entrySourcesReady&&!s\.open\)/);
  assert.equal(count(controls,/if\(this\.controlsResearchAllowed\)/g),3); // release marker plus 2 protected paths
 });
 test('original A/B/C/A2/B2/C2 remain on controls Worker, not MAIN',()=>{
