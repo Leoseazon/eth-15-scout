@@ -62,9 +62,16 @@ const rounds=Array.from({length:60},(_,i)=>{
   officialOutcome:result?.closeAt===closeAt?result.outcome:null,
   finalized:result?.closeAt===closeAt};
 });
-const mainBuyTicks=current.filter(r=>
- r.decision?.shadowProbe?.decision?.status==='PAPER_BUY'&&
- ['UP','DOWN'].includes(r.decision.shadowProbe.decision.side));
+const mainBuyTicks=current.filter(r=>{
+ const d=r.decision?.shadowProbe?.decision;
+ // A lastDecision is sticky while holding. A stale displayed PAPER_BUY
+ // is NOT a new entry. This cohort counts only same-tick authorizations.
+ return d?.status==='PAPER_BUY'&&
+  ['UP','DOWN'].includes(d.side)&&ts(d.at)&&
+  d.at>=cohortStart&&d.at<cohortEnd&&
+  Math.abs(d.at-r.observedAt)<=30000&&
+  r.ticker===r.decision?.shadowProbe?.conservativeReference?.candidate?.ticker;
+});
 const firstMainBuys=new Map();
 for(const r of mainBuyTicks)if(!firstMainBuys.has(r.ticker))firstMainBuys.set(r.ticker,{
  ticker:r.ticker,at:r.observedAt,side:r.decision.shadowProbe.decision.side,
