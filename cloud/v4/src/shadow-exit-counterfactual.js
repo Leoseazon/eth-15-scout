@@ -31,7 +31,8 @@ function look(row,signal){
     row.closeAt!==signal.closeAt||row.observedAt<=signal.firstObservedAt||
     row.observedAt>=signal.closeAt)return null;
  const b=row.sampledExitBook;
- if(b?.readOnly!==true||b.executionAuthorized!==false||
+ if(b?.source!=='SAME_TICK_AUTHENTICATED_BOOK_SAMPLE'||
+    b?.readOnly!==true||b.executionAuthorized!==false||
    b.actualFillVerified!==false||b.ticker!==signal.ticker||
    !ms(b.observedAt)||Math.abs(b.observedAt-row.finishedAt)>2000||
    b.bookState!=='FRESH_SAME_TICK'||!ms(b.bookReceivedAt)||
@@ -46,10 +47,21 @@ function look(row,signal){
    (b.indexPrice-b.officialTarget)*resultSign(signal.side):null;
  const trend=row.kraken?.threeStructure?.trend;
  const one=row.kraken?.one;
+ // An old 1m/3m candle must never be compared to a current BID as if
+ // it described a contemporaneous two-tick technical reversal.
+ const oneClosedAt=row.kraken?.oneClosedAt;
+ const threeClosedAt=row.kraken?.threeStructure?.closedAt;
+ const oneExpected=Math.floor(row.observedAt/60000)*60000-60000;
+ const threeExpected=Math.floor(row.observedAt/180000)*180000-180000;
+ const candleVerified=row.feeds?.kraken1m?.ok===true&&
+  Number.isSafeInteger(oneClosedAt)&&oneClosedAt===oneExpected&&
+  Number.isSafeInteger(threeClosedAt)&&threeClosedAt===threeExpected;
  return {time:row.observedAt,bid:q.price,
-  targetGap:ix,trend:['UP','DOWN','NEUTRAL'].includes(trend)?trend:null,
-  momentum:valid(one?.three)?one.three*resultSign(signal.side):null,
-  sigma:valid(one?.sd)&&one.sd>0?one.sd:null,
+  targetGap:ix,
+  trend:candleVerified&&['UP','DOWN','NEUTRAL'].includes(trend)?trend:null,
+  momentum:candleVerified&&valid(one?.three)?
+   one.three*resultSign(signal.side):null,
+  sigma:candleVerified&&valid(one?.sd)&&one.sd>0?one.sd:null,
   bookTime:b.bookReceivedAt};
 }
 function evaluateExit({signal,mark,previous,variant}){
