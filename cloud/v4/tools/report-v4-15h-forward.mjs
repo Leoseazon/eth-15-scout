@@ -161,6 +161,45 @@ for(const policy of Object.keys(REVISED_POLICY)){
   qualityObservationTicks:q.filter(x=>x.status==='QUALIFYING_QUALITY_OBSERVATION').length,
   affordableAt50cTicks:q.filter(x=>x.proposed?.affordableAt50c===true).length};
 }
+// Positive evidence funnel. One row is one SIDE of one research tick,
+// NOT an independent trade. Select a contract's nearest conservative
+// margin without ever consulting the later official settlement.
+const valueSides=[];
+for(const row of aligned){
+ const e=row.decision.shadowProbe.mainCoherence.entry;
+ if(e?.status!=='EVIDENCE_RECONCILED')continue;
+ for(const side of ['UP','DOWN']){
+  const s=e.value?.sides?.[side];
+  if(!s||![s.ask,s.breakEven,s.centralEdge,s.lowerEdge,
+    s.requiredEdge].every(f))continue;
+  valueSides.push({ticker:row.ticker,at:row.observedAt,
+   remainingSeconds:row.secondsRemaining,side,ask:s.ask,
+   centralMarginPp:Number(((s.centralEdge-s.requiredEdge)*100).toFixed(2)),
+   stressMarginPp:Number(((s.lowerEdge-s.requiredEdge)*100).toFixed(2)),
+   modelStatus:s.status});
+ }
+}
+const funnel={
+ sideEvaluationTicks:valueSides.length,
+ distinctMarketsWithComparableSides:new Set(valueSides.map(x=>x.ticker)).size,
+ askWithin87c:valueSides.filter(x=>x.ask<=.87).length,
+ centralValueAboveRequiredHurdle:valueSides.filter(x=>
+  x.centralMarginPp>=0&&x.ask<=.87).length,
+ stressValueAboveRequiredHurdle:valueSides.filter(x=>
+  x.stressMarginPp>=0&&x.ask<=.87).length,
+ nearMissWithin2ppOfStressHurdle:valueSides.filter(x=>
+  x.stressMarginPp<0&&x.stressMarginPp>=-2&&x.ask<=.87).length,
+ observedAskBands:freq(valueSides,x=>priceBand(x.ask)),
+ observedTimeBands:freq(valueSides,x=>remainingBand(x.remainingSeconds)),
+ closestConservativeValueByMarket:[...valueSides.reduce((m,x)=>{
+  const p=m.get(x.ticker);
+  if(!p||x.stressMarginPp>p.stressMarginPp||
+   (x.stressMarginPp===p.stressMarginPp&&x.at<p.at))m.set(x.ticker,x);
+  return m;
+ },new Map()).values()].sort((a,b)=>a.at-b.at)
+ .map(x=>({...x,at:dt(x.at),
+  officialSettlementNotUsedForSelection:true}))
+};
 const baselineReasons=recordedAlignment.map(x=>x.reason).filter(Boolean);
 const mainRealNet=paperOnlyMain.filter(x=>f(x.pnl))
  .reduce((a,b)=>a+b.pnl,0);
@@ -197,6 +236,7 @@ const result={
   originalPaperResults:freq(paperOnlyMain,x=>x.status),
   realizedPaperNet:Math.round(mainRealNet*100)/100,
   watchReasons:freq(baselineReasons,x=>x),
+  opportunityFunnel:funnel,
   directionalConcordance:{
    tickCount:recordedAlignment.length,
    groups:freq(recordedAlignment,x=>x.classification),
