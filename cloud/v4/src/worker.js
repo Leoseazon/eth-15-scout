@@ -164,6 +164,24 @@ export class ScoutEngineV4 extends DurableObject {
       });
     }
   }
+  controlSnapshot(includeJournal=false){
+    try{
+      const state=loadConservativePortfolio(this.ctx.storage.kv);
+      const summary=conservativePortfolioSummary(state);
+      return includeJournal?{...summary,
+        trades:state.trades,
+        pendingPositions:state.pending,
+        finalRoundPasses:state.decisions,
+        lastWindow:state.window,
+        recentEvents:state.events.slice(0,100),
+        journalIndependentOfMain:true}:summary;
+    }catch{
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+        status:'CONTROL_STATE_UNAVAILABLE',
+        researchControl:true,executionAuthorized:false,
+        journalIndependentOfMain:true};
+    }
+  }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
     // Deployment-controlled activation. No public arm endpoint is needed.
@@ -880,6 +898,12 @@ export class ScoutEngineV4 extends DurableObject {
         continuingPreDisarmV4Position:s.open?.strategy==='V4_SETTLEMENT_FIRST'&&!this.paperExperimentAllowed,
         settlementPaperAllowed:this.paperExperimentAllowed,
         settlementModelVersion:SETTLEMENT_FIRST_VERSION,
+        mainStrategyProfile:{version:MAIN_PROFILE_VERSION,
+          active:this.mainProfileName,
+          available:['CONSERVATIVE','BALANCED','OPPORTUNISTIC'],
+          configurationValid:this.mainProfileConfigured,
+          configuredBy:'Cloudflare paper-only Worker environment'},
+        conservativeControl:this.controlSnapshot(),
         latestSettlementDecision:s.lastV4SettlementDecision||null,
         settlementPredictionStats:settlementPredictionStats(this.ctx.storage.sql),
         initial:s.initial,cash:s.cash,
@@ -970,6 +994,7 @@ export class ScoutEngineV4 extends DurableObject {
         totals:{...counts,paperResults:paperResults(sql,RELEASE_TAG),
           officialWindows:sql.exec("SELECT count(*) n FROM window_outcomes WHERE status='OFFICIAL_RESULT'").toArray()[0].n},
         events,trades,decisions,windows,
+        conservativeControlJournal:this.controlSnapshot(true),
         releaseMarkers:sql.exec(
          'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),
