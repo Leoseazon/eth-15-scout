@@ -501,7 +501,7 @@ export class ScoutControlResearchV4 extends DurableObject {
           Date.now()-decisionBook.receivedAt:null,
         officialIndexLastState:s.lastOfficialIndexCheck?.state||'NOT_CHECKED',
         officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
-        liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
+        liveSourcesReady:independentControlSourcesReady&&decisionBookFresh&&index!==null
       };
       const decisionAt=Date.now();
       // Control policy evaluation does NOT evaluate or debit the MAIN account.
@@ -536,6 +536,21 @@ export class ScoutControlResearchV4 extends DurableObject {
       exitBookSample=decisionBook;
       exitIndexSample=index;
       exitSocketSample=this.stream?.status(Date.now())||null;
+      // All six frozen A/B/C and A2/B2/C2 research policies run only
+      // HERE, in the controls Worker with its own independently verified
+      // same-tick authenticated market sources. A failure cannot change
+      // this Worker's Conservative control accounting or MAIN Worker1.
+      try{
+        prospectiveShadow=observeProspectiveShadow({
+          market,report:conservativeReference,index,book:decisionBook,
+          one,five:m5,context,feedChecks,
+          streamStatus:this.stream?.status(Date.now())||null,
+          riskMode:'NORMAL',blocked:[],now:Date.now()
+        });
+      }catch{
+        prospectiveShadow={status:'ISOLATED_SHADOW_EVALUATION_ERROR',
+          readOnly:true,executionAuthorized:false};
+      }
     }else{
       report={status:'WATCH',notice:'RESEARCH_CONTROLS_DISABLED'};
     }
@@ -553,9 +568,9 @@ export class ScoutControlResearchV4 extends DurableObject {
           persisted:false,error:controlError},
         calibratedProbability:null,executableFillVerified:false};
     }else{
-      try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
-      catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
-        candidate:null,calibratedProbability:null,executableFillVerified:false}}
+      shadowProbe={status:'CONTROLS_DISABLED',readOnly:true,
+        executionAuthorized:false,calibratedProbability:null,
+        reason:'NO_RESEARCH_CONTROL_ARMING'};
     }
     // Never block decisions on Kalshi settlement-data availability.
     // Run AFTER step() to ensure the bot handles the current market first.
