@@ -63,7 +63,7 @@ test('against-target recovery needs current 1m momentum and 3m structure',()=>{
  assert.equal(assess('OPPORTUNISTIC',{contextEvidence:{
   ...base,context:{three:{trend:'DOWN'}}}}).reason,
   'PROFILE_REVERSAL_DIRECTION_NOT_CONFIRMED');
- assert.equal(assess('BALANCED',{contextEvidence:{
+ assert.equal(assess('BALANCED',{lowerEdge:-.02,contextEvidence:{
   ...base,context:{three:{trend:'NEUTRAL'}}}}).reason,
   'PROFILE_REVERSAL_DIRECTION_NOT_CONFIRMED');
 });
