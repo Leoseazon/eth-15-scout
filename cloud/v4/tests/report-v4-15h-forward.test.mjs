@@ -12,7 +12,7 @@ const ticker='KXETH15M-26NOV222130-30';
 const round=()=>({
  id:1,source:'V4_ISOLATED_ENGINE_TICK',paperOnly:true,shadowOnly:true,
  observedAt:at+8*60000,finishedAt:at+8*60000+120,processingMs:120,
- closeAt:close,ticker,secondsRemaining:close-at-8*60000,
+ closeAt:close,ticker,secondsRemaining:(close-at-8*60000)/1000,
  dataStatus:'READY_FOR_HEURISTIC_EVALUATION',lastError:null,
  sampledExitBook:{source:'SAME_TICK_AUTHENTICATED_BOOK_SAMPLE',
   readOnly:true,executionAuthorized:false,
