@@ -1,0 +1,13 @@
+/* Lightweight V4 client-side diagnosis. Inside the existing Deployment Status panel. */
+.v4-feed-diag{margin:4px 14px 13px;border:1px solid #3b5369;border-radius:9px;background:#101b2e}
+.v4-feed-diag summary{padding:10px 12px;font-size:.8rem;font-weight:650;cursor:pointer}
+.v4-feed-diag summary small{display:block;font-weight:400;color:#aebfd1;line-height:1.45;padding-top:3px}
+.v4-feed-diag-grid{padding:2px 11px 10px;display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}
+.v4-feed-diag-grid>div{border:1px solid #32465b;border-radius:7px;background:#17273c;padding:9px;min-width:0}
+.v4-feed-diag-grid span{display:block;font-size:.72rem;color:#abc0d6;margin-bottom:4px}
+.v4-feed-diag-grid strong{display:block;font-size:.78rem;font-weight:600;overflow-wrap:anywhere;line-height:1.4}
+.v4-feed-diag-footer{padding:0 12px 12px;color:#aebfd1;font-size:.75rem;line-height:1.5}
+.v4-feed-diag-footer button{margin:10px 0 3px;padding:7px 11px;border:1px solid #6b88a2;border-radius:7px;background:#22364e;color:#f0f5fb;cursor:pointer;font:inherit}
+.v4-feed-diag-footer button:disabled{opacity:.55;cursor:not-allowed}
+.v4-feed-diag-footer p{margin:5px 0}
+@media(max-width:540px){.v4-feed-diag-grid{grid-template-columns:1fr}}
