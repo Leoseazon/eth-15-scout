@@ -88,10 +88,50 @@ export function ensureResearchJournal(sql){
   'source TEXT NOT NULL,stream_seq INTEGER,valid INTEGER NOT NULL,payload TEXT NOT NULL);'+
   'CREATE INDEX IF NOT EXISTS idx_v4_research_books_ticker_id ON research_book_samples(ticker,id DESC);');
 }
+// Sparse, per-engine-tick quote witness for hypothetical exit STUDY ONLY.
+ // This records at most the TOP bid on each side, not raw WebSocket frames
+ // or a full order book. No quote is relabeled as an executable fill.
+export function sampledExitWitness({market,book,index,streamStatus,observedAt}={}){
+ const ticker=SERIES.test(market?.ticker||'')?market.ticker:null;
+ // A cached quote cannot be called authenticated+live after its socket
+ // disconnected, even if its receivedAt timestamp is less than five seconds old.
+ const socketReady=streamStatus?.connected===true&&
+  streamStatus.targetTicker===ticker;
+ const bookReady=socketReady&&!!ticker&&book?.ticker===ticker&&
+  book.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&book.valid===true&&
+  book.fresh===true&&book.crossed!==true&&millis(book.receivedAt)!==null&&
+  Number.isSafeInteger(observedAt)&&book.receivedAt<=observedAt&&
+  observedAt-book.receivedAt<=5000;
+ const sourceIndexReady=index?.indexId==='ETHUSD_RTI'&&
+  index.validValuesVerified===true&&millis(index.sourceAt)!==null&&
+  Number.isSafeInteger(observedAt)&&index.sourceAt<=observedAt+3000&&
+  observedAt-index.sourceAt<=15000&&
+  num(index.price)!==null&&index.price>0;
+ const bd=side=>{
+  const q=side==='UP'?book?.yesBid:book?.noBid;
+  const p=providerNum(q?.price,1),depth=providerNum(q?.sizeFp,100000000);
+  return p!==null&&p>0&&p<1&&depth!==null?
+   {price:p,depth}:null;
+ };
+ return {source:'SAME_TICK_AUTHENTICATED_BOOK_SAMPLE',
+  readOnly:true,executionAuthorized:false,
+  actualFillVerified:false,observedAt:millis(observedAt),
+  ticker,bookState:bookReady?'FRESH_SAME_TICK':
+   socketReady?'NOT_VERIFIED':'SOCKET_NOT_VERIFIED',
+  bookReceivedAt:bookReady?book.receivedAt:null,
+  upBid:bookReady?bd('UP'):null,
+  downBid:bookReady?bd('DOWN'):null,
+  indexState:sourceIndexReady?'OFFICIAL_FRESH':'NOT_VERIFIED',
+  indexSourceAt:sourceIndexReady?index.sourceAt:null,
+  indexPrice:sourceIndexReady?num(index.price):null,
+  officialTarget:providerNum(market?.floor_strike,10000000),
+  warning:'Sampled top bid once per 15-second engine tick, not raw stream or verified fill.'};
+}
+
 export function buildResearchTick({startedAt,finishedAt,market=null,
  quoteRetrievedAt=null,quoteObservedAt=null,spot=null,one=null,five=null,context=null,
  feedChecks=null,feedIssues=[],report=null,shadowProbe=null,engineState=null,
- lastError=null}){
+ bookSample=null,indexSample=null,streamStatusSample=null,lastError=null}){
  if(!millis(startedAt)||!millis(finishedAt)||finishedAt<startedAt)
   throw new TypeError('Invalid tick chronology');
  const ticker=SERIES.test(market?.ticker||'')?market.ticker:null;
@@ -130,6 +170,9 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
   dailyRegime:{status:str(context?.regime?.status,30),
    regime:str(context?.regime?.regime,30),
    eventRisk:str(context?.regime?.eventRisk,30)},
+  sampledExitBook:sampledExitWitness({
+   market,book:bookSample,index:indexSample,
+   streamStatus:streamStatusSample,observedAt:finishedAt}),
   decision:{classification:'UNVALIDATED_V3_BASELINE_SHADOW',
    notice:str(report?.notice,280),observedEvents,
    calibratedProbability:null,settlementVerified:false,exitFillVerified:false,

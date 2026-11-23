@@ -22,6 +22,8 @@ import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
 import {observeProspectiveShadow} from './shadow-research-observer.js';
+import {assessMainDecisionCoherence,assessMainHeldExitCoherence}
+ from './main-coherence-research.js';
 import {ensureSettlementPredictions,appendSettlementPrediction,
  reconcileSettlementPredictions,settlementPredictionStats} from './settlement-predictions.js';
 import {SETTLEMENT_FIRST_VERSION,ENTRY_MIN_REMAINING_SECONDS,
@@ -359,6 +361,8 @@ export class ScoutEngineV4 extends DurableObject {
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     // Research-only prospective comparison; never an entry/exit instruction.
     let prospectiveShadow=null;
+    let mainCoherence=null; // post-decision observation ONLY
+    let exitBookSample=null,exitIndexSample=null,exitSocketSample=null;
     // Disarming new entries must NOT switch an existing V4 position to the
     // unrelated V3-derived close/stop policy. Manage it with its original
     // V4 paper exit rules until it is safely settled.
@@ -429,6 +433,11 @@ export class ScoutEngineV4 extends DurableObject {
         officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
         liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
       };
+      // Preserve a READ-ONLY pointer to the position that was held
+      // before this paper decision. If a 96c/40% SELL closes it, the
+      // contemporaneous exit evidence still appears in the research journal.
+      const positionBeforePaperStep=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
+        {...s.open}:null;
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book:decisionBook,now:Date.now(),
@@ -437,6 +446,28 @@ export class ScoutEngineV4 extends DurableObject {
         // Fail closed and send a sanitized code to the existing red health strip.
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+      exitBookSample=decisionBook;
+      exitIndexSample=index;
+      exitSocketSample=this.stream?.status(Date.now())||null;
+      // MAIN V4 strategy coherence: named evidence reconciliation recorded
+      // AFTER settlementFirstPaperStep already decided and saved its order
+      // authorization in memory. This diagnostic cannot create a BUY/SELL,
+      // veto an order or change existing risk checks. No network requests.
+      try{
+        const entry=assessMainDecisionCoherence({
+          market,candidate:report?.candidate||null,context,at:Date.now()
+        });
+        const held=positionBeforePaperStep?
+          assessMainHeldExitCoherence({position:positionBeforePaperStep,index,book:decisionBook,
+            one,five:m5,context,now:Date.now()}):null;
+        mainCoherence={entry,held,
+          readOnly:true,executionAuthorized:false,
+          strategyMutations:0};
+      }catch{
+        mainCoherence={status:'ISOLATED_MAIN_COHERENCE_RESEARCH_ERROR',
+          readOnly:true,executionAuthorized:false,
+          strategyMutations:0};
       }
       // The baseline paper step has ALREADY decided, including any authorized
       // paper accounting. Alternatives use the SAME tick's previously fetched
@@ -494,7 +525,8 @@ export class ScoutEngineV4 extends DurableObject {
         status:report.status||'WATCH',reason:report.notice||'',
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
-        prospectiveShadow,calibratedProbability:null,executableFillVerified:false};
+        prospectiveShadow,mainCoherence,
+        calibratedProbability:null,executableFillVerified:false};
     }else{
       try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
       catch{shadowProbe={status:'UNAVAILABLE',reason:'Baseline shadow probe unavailable',
@@ -552,7 +584,9 @@ export class ScoutEngineV4 extends DurableObject {
         startedAt:now,finishedAt:Date.now(),market,
         quoteRetrievedAt:s.lastQuoteRetrievedAt,quoteObservedAt,spot:tickerSpot,
         one,five:m5,context,feedChecks,feedIssues,report,
-        shadowProbe,engineState:s,lastError:error
+        shadowProbe,bookSample:exitBookSample,indexSample:exitIndexSample,
+        streamStatusSample:exitSocketSample,
+        engineState:s,lastError:error
       });
       s.lastResearchTickAt=research.observedAt;
       s.lastResearchError=null;
