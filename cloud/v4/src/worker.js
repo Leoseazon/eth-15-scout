@@ -395,6 +395,7 @@ export class ScoutEngineV4 extends DurableObject {
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     // Research-only prospective comparison; never an entry/exit instruction.
     let prospectiveShadow=null;
+    let conservativeReference=null;
     let mainCoherence=null; // post-decision observation ONLY
     let exitBookSample=null,exitIndexSample=null,exitSocketSample=null;
     // Disarming new entries must NOT switch an existing V4 position to the
@@ -476,9 +477,10 @@ export class ScoutEngineV4 extends DurableObject {
       // contemporaneous exit evidence still appears in the research journal.
       const positionBeforePaperStep=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
         {...s.open}:null;
+      const decisionAt=Date.now();
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
-          book:decisionBook,now:Date.now(),
+          book:decisionBook,now:decisionAt,
           profile:this.mainProfileName,
           priorOfficialIndex:s.lastVerifiedOfficialForProfile||null,
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
@@ -486,6 +488,46 @@ export class ScoutEngineV4 extends DurableObject {
         // Fail closed and send a sanitized code to the existing red health strip.
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+      // Separate CONSERVATIVE reference: same source observations, but no
+      // MAIN cash, MAIN position, MAIN risk latch or MAIN blocked contracts.
+      // Original A/B/C and A2/B2/C2 consume this reference only.
+      try{
+        const plain=evaluateSettlementFirst({
+          market,index,one,five:m5,context,book:decisionBook,
+          now:decisionAt,budget:3,riskMode:'NORMAL',
+          profile:'CONSERVATIVE',priorOfficialIndex:null
+        });
+        conservativeReference={status:plain.status,candidate:plain,
+          reason:plain.reason,readOnly:true,executionAuthorized:false};
+      }catch{
+        conservativeReference={status:'WATCH',candidate:null,
+          reason:'ISOLATED_CONSERVATIVE_REFERENCE_ERROR',
+          readOnly:true,executionAuthorized:false};
+      }
+      // A separately persisted control account may make a different BUY
+      // in the same market. Never reuse s.cash, s.blocked or main onPrediction.
+      if(controlState){
+        try{
+          const simulated=evaluateConservativePortfolio(controlState,{
+            market,index,one,five:m5,context,book:decisionBook,
+            now:decisionAt
+          });
+          controlState=simulated.next;controlStep=simulated.report;
+        }catch{controlError='CONTROL_EVALUATION_ERROR';controlState=null;}
+      }
+      // Store only official-index observations verified in THIS tick.
+      // A different ticker/source time cannot satisfy a future reversal.
+      if(market&&index?.indexId==='ETHUSD_RTI'&&
+         index.validValuesVerified===true&&
+         Number.isFinite(index.price)&&index.price>0&&
+         Number.isSafeInteger(index.sourceAt)&&
+         decisionAt-index.sourceAt>=0&&decisionAt-index.sourceAt<=15000){
+        s.lastVerifiedOfficialForProfile={
+          ticker:market.ticker,target:Number(market.floor_strike),
+          indexValue:index.price,sourceAt:index.sourceAt,
+          observedAt:decisionAt
+        };
       }
       exitBookSample=decisionBook;
       exitIndexSample=index;
@@ -514,9 +556,10 @@ export class ScoutEngineV4 extends DurableObject {
       // sources. They cannot alter the baseline result or place a paper BUY.
       try{
         prospectiveShadow=observeProspectiveShadow({
-          market,report,index,book:decisionBook,one,five:m5,context,feedChecks,
+          market,report:conservativeReference,index,book:decisionBook,
+          one,five:m5,context,feedChecks,
           streamStatus:this.stream?.status(Date.now())||null,
-          riskMode:s.dailyRisk?.mode||'UNKNOWN',blocked:s.blocked,
+          riskMode:'NORMAL',blocked:[],
           now:Date.now()
         });
       }catch{
