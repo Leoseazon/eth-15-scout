@@ -79,7 +79,8 @@ for(const r of mainBuyTicks)if(!firstMainBuys.has(r.ticker))firstMainBuys.set(r.
 const mainTrades=journal.trades.filter(t=>
  ts(t?.time)&&t.time>=cohortStart&&t.time<cohortEnd&&
  t.strategy==='V4_SETTLEMENT_FIRST'&&t.confirmed===true);
-const control=journal.conservativeControlJournal;
+const control=journal.conservativeControlJournal||
+ journal.account?.conservativeControlExport||null;
 const controlJournalValid=!!control&&
  control.version==='V4-CONSERVATIVE-INDEPENDENT-20261123-v1'&&
  control.journalIndependentOfMain===true&&Array.isArray(control.trades)&&
