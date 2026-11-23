@@ -103,11 +103,34 @@ const revised=joinRevisedOfficialOutcomes(
 const paperOnlyMain=data.journal.trades.filter(t=>
  t.strategy==='V4_SETTLEMENT_FIRST'&&ts(t.time)&&
  t.time>=cohortStart&&t.time<cohortEnd);
-const mainForReplay=paperOnlyMain.map(t=>({
+// Completed paper positions live in the trade ledger; recently entered
+// positions can still be OPEN or PENDING and do not yet appear in that ledger.
+// Recover only positively documented original PAPER_BUY decisions, never a
+// WATCH candidate or the shadow research itself, to avoid survivorship bias.
+const originalMainBuyEvidence=aligned.map(row=>{
+ const probe=row.decision?.shadowProbe,decision=probe?.decision;
+ if(probe?.status!=='PAPER_BUY'||decision?.status!=='PAPER_BUY'||
+  !['UP','DOWN'].includes(decision.side)||
+  !ts(decision.at)||Math.abs(decision.at-row.observedAt)>30000||
+  !Number.isSafeInteger(decision.qty)||decision.qty<1||
+  !f(decision.entry)||decision.entry<=0||decision.entry>.87||
+  !f(decision.cost)||decision.cost<=0||decision.cost>3.00001||
+  decision.cost+1e-9<decision.qty*decision.entry||
+  !ticker.test(row.ticker||'')||!ts(row.closeAt))return null;
+ return {policy:'MAIN_ACTUAL_PAPER_ENTRY',ticker:row.ticker,
+  closeAt:row.closeAt,side:decision.side,
+  firstObservedAt:decision.at,ask:decision.entry,
+  quantity:decision.qty,allIn:decision.cost,actualFillVerified:false,
+  originalPaperBuyRecorded:true};
+}).filter(Boolean);
+const mainForReplay=[...originalMainBuyEvidence,
+ ...paperOnlyMain.map(t=>({
+
  policy:'MAIN_ACTUAL_PAPER_ENTRY',ticker:t.ticker,closeAt:Date.parse(t.closeTime),
  side:t.side,firstObservedAt:t.time,ask:t.entry,quantity:t.qty,
- allIn:t.cost,actualFillVerified:false
-})).filter(t=>ticker.test(t.ticker||'')&&ts(t.closeAt)&&
+ allIn:t.cost,actualFillVerified:false,
+ originalPaperBuyRecorded:true
+}))].filter(t=>ticker.test(t.ticker||'')&&ts(t.closeAt)&&
  ['UP','DOWN'].includes(t.side)&&f(t.ask)&&f(t.allIn)&&
  Number.isSafeInteger(t.quantity)&&t.quantity>0);
 const combined=[...originalAB,...originalC,...revised,...mainForReplay];
@@ -231,8 +254,12 @@ const result={
   sourceReadiness:Object.fromEntries(Object.keys(sourceWitness[0]||{}).map(k=>
    [k,{ready:sourceWitness.filter(s=>s[k]===true).length,total:sourceWitness.length}]))},
  mainBot:{
-  paperBuys:paperOnlyMain.length,
+  paperBuys:[...new Set(mainForReplay.map(x=>x.ticker))].length,
+  confirmedOriginalPaperBuyTicks:originalMainBuyEvidence.length,
   completedRecordedPaperTrades:paperOnlyMain.length,
+  openOrPendingEntryCohortNotInTradeLedger:[...new Set(
+   mainForReplay.map(x=>x.ticker))].filter(t=>
+   !paperOnlyMain.some(x=>x.ticker===t)).length,
   originalPaperResults:freq(paperOnlyMain,x=>x.status),
   realizedPaperNet:Math.round(mainRealNet*100)/100,
   watchReasons:freq(baselineReasons,x=>x),
