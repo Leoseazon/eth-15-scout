@@ -503,6 +503,7 @@ export class ScoutControlResearchV4 extends DurableObject {
         officialIndexLastAgeMs:s.lastOfficialIndexCheck?.sourceAgeMs??null,
         liveSourcesReady:entrySourcesReady&&decisionBookFresh&&index!==null
       };
+      const decisionAt=Date.now();
       // Control policy evaluation does NOT evaluate or debit the MAIN account.
       report={status:'WATCH',notice:'MAIN_ACCOUNT_HARD_DISARMED'};
       // Separate CONSERVATIVE reference: same source observations, but no
