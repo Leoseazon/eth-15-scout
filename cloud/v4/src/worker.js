@@ -21,6 +21,13 @@ import {checkCFValuesAccess} from './cf-access.js';
 import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
+import {evaluateSettlementFirst} from './settlement-first.js';
+import {MAIN_PROFILE_VERSION,selectMainProfile,mainProfileIsSupported}
+ from './main-strategy-profiles.js';
+import {CONSERVATIVE_CONTROL_VERSION,loadConservativePortfolio,
+ prepareConservativePortfolio,evaluateConservativePortfolio,
+ settleConservativePortfolio,saveConservativePortfolio,
+ conservativePortfolioSummary} from './conservative-control.js';
 import {observeProspectiveShadow} from './shadow-research-observer.js';
 import {assessMainDecisionCoherence,assessMainHeldExitCoherence}
  from './main-coherence-research.js';
@@ -117,6 +124,9 @@ export class ScoutEngineV4 extends DurableObject {
     // Two explicit deployment switches; no code path contains a real order API.
     this.paperExperimentAllowed=env.SCOUT_V4_PAPER_MODE==='enabled' &&
       env.V4_SETTLEMENT_FIRST_EXPERIMENT==='true';
+    this.mainProfileName=mainProfileIsSupported(env.V4_MAIN_PROFILE)?
+      env.V4_MAIN_PROFILE:'CONSERVATIVE';
+    this.mainProfileConfigured=mainProfileIsSupported(env.V4_MAIN_PROFILE);
     this.researchStream=null;
     // Formal permission gate is separate from each capture switch. Rest/pass-through
     // and WebSocket entitlement alone do NOT permit bulk retention/model training.
@@ -234,6 +244,15 @@ export class ScoutEngineV4 extends DurableObject {
   }
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
+    // Independent conservative account; invalid control state is never reset
+    // automatically or allowed to affect MAIN paper decisions.
+    let controlState=null,controlError=null,controlStep=null,
+      controlPersisted=false;
+    try{
+      controlState=prepareConservativePortfolio(
+        loadConservativePortfolio(this.ctx.storage.kv),{
+         monitoring:s.monitoring,enabled:this.paperExperimentAllowed});
+    }catch{controlError='CONTROL_PORTFOLIO_LOAD_INVALID';}
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
     // FAST PAPER EXIT PATH (BEFORE Kraken/market-proxy requests).
     // A delayed Kraken candle or nonessential regime fetch must NOT delay
