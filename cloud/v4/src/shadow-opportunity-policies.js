@@ -1,6 +1,8 @@
 /* ETH-15 V4 prospective research only. This file has NO Worker integration,
  * storage writes, market fetches, order submission, or paper-account mutations.
  * FROZEN before acquiring the prospective evaluation cohort.
+ * The isolated observation bridge may call these rules AFTER the baseline
+ * paper decision. No additional market data is fetched and no orders occur.
  * All candidate probabilities are scenario sensitivities, not calibrated odds.
  */
 export const SHADOW_SPEC_VERSION='V4-SHADOW-PREREG-20261122-v1';
@@ -31,7 +33,8 @@ const nonqualifying=(policy,reason)=>({
 const priceEdge=(s,key)=>s[key]-s.breakEven;
 /** No decision to trade. A source witness must be supplied by an isolated,
  * side-effect-free reader of the SAME eligible tick, never reconstructed by
- * joining unsynchronized archives. The live V4 bot must not import this file.
+ * joining unsynchronized archives. Observational import must remain after
+ * the baseline decision and must never enter the trading-decision pathway.
  */
 export function evaluateShadowPolicy({policy,ticker,remainingSeconds,
  sourceWitness,riskMode='NORMAL',alreadyTraded=false,
