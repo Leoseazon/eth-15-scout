@@ -71,23 +71,3 @@
   finally{button.disabled=false}
  });
 })();
-+
-      (Number.isFinite(control.realized)?control.realized.toFixed(2):'n/a');
-    detail.append(controlLine);
-   }
-   const item=document.createElement('p');
-   const rate=verified?((Number(a.correct)||0)/verified*100).toFixed(1)+'%':'not yet available';
-   item.textContent='Correct official settlement side: '+rate+
-    ' · verified '+verified+' / '+total+' predictions · correct '+(Number(a.correct)||0)+
-    ' · incorrect '+(Number(a.incorrect)||0)+
-    '. Open/early-sold paper returns are NOT counted as correct unless official settlement agrees.';
-   detail.append(item);
-   const info=document.createElement('p');
-   info.textContent='Current model: '+String(s.settlementModelVersion||'unknown')+
-    ' · last research decision: '+String(s.latestSettlementDecision?.status||'none')+
-    ' · explanation: '+String(s.latestSettlementDecision?.reason||'n/a');
-   detail.append(info);
-  }catch(error){line.textContent='Read-only paper score unavailable: '+String(error?.message||error)}
-  finally{button.disabled=false}
- });
-})();
