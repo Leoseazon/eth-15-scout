@@ -33,3 +33,16 @@
 6. Publish the dashboard distinction only after automated tests verify existing BUY/SELL safety invariants and truthful warning states.
 
 **Root-cause status:** The 5sec freshness/UI threshold is CONFIRMED, and genuine momentary unusability is evidenced by historical REST fallbacks. Whether the reported flashes are only benign quiet-book expiration or actual socket/sequence failures remains UNRESOLVED without live WS status transition evidence.
+
+
+## Additional owner screenshot — later green immediately after transient yellow
+The owner uploaded `image(20261123-010316).png` showing the V4 research panel after a yellow Kalshi warning had just appeared and disappeared. This is a **green-state screenshot**, not an image of the warning itself. Reported values:
+- `Streaming connection: Connected · fresh snapshot`
+- `Recorded book observations: 668,497`
+- `Stream sequence gaps: 0 this connection`
+- `Last book receipt: 2s ago · KXETH15M-26NOV222015-15`
+- `Official REST depth archive: 962 stored · REST only`
+- `Last REST receipt: 2m ago`
+- `Official ETHUSD_RTI stream: Disabled — pending entitlement and source retention review`
+- `Full book-frame archive: Disabled pending cost and rights approval`
+Interpretation: The connection and latest authenticated book were healthy at the screenshot moment, but the latest fallback REST snapshot two minutes earlier shows at least one recently observed unusable WS book in the engine's fallback logic. Zero sequence gaps are counted **only in the current connection**; an earlier reconnect could have reset that counter. No claim that earlier yellow flashes were solely cosmetic or that BUY freshness safeguards should be loosened. Recommended next capture: current `streamConnection.connected, quote.fresh, quote.valid, quote.reason, quote.receivedAt, lastFailure, attempts, retryAfter, sequenceGaps, needResync, targetTicker` during yellow, with no secret/token fields.
