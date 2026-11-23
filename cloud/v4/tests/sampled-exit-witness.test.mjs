@@ -10,8 +10,9 @@ const book={ticker,source:'KALSHI_WEBSOCKET_ORDERBOOK',
  yesAsk:{price:.60,sizeFp:20},noAsk:{price:.43,sizeFp:17}};
 const index={indexId:'ETHUSD_RTI',validValuesVerified:true,
  sourceAt:at-1500,price:1752};
+const streamStatus={connected:true,targetTicker:ticker};
 const observation=(changes={})=>sampledExitWitness({market,book,index,
- observedAt:at,...changes});
+ streamStatus,observedAt:at,...changes});
 test('record two bid prices only, NOT raw book frames or ask/depth ladders',()=>{
  const o=observation();
  assert.equal(o.bookState,'FRESH_SAME_TICK');
@@ -36,6 +37,16 @@ test('a 7s stale or crossed book has ZERO bid witness, not a sell',()=>{
   assert.equal(o.downBid,null);
  }
 });
+test('disconnected or wrong ticker socket invalidates quote even if book is recent',()=>{
+ for(const status of [
+  {connected:false,targetTicker:ticker},
+  {connected:true,targetTicker:'KXETH15M-OTHER'}]){
+  const observed=observation({streamStatus:status});
+  assert.equal(observed.bookState,'SOCKET_NOT_VERIFIED');
+  assert.equal(observed.upBid,null);
+  assert.equal(observed.downBid,null);
+ }
+});
 test('stale/invalid official index is not fabricated by Kraken spot',()=>{
  for(const bad of [
  {...index,sourceAt:at-18000},
@@ -54,7 +65,8 @@ test('insufficient or corrupt displayed BID depth is null, no imagined size',()=
 });
 test('existing research record keeps original settlement decision provenance',()=>{
  const record=buildResearchTick({startedAt:at-100,finishedAt:at,
-  market,bookSample:book,indexSample:index,spot:1751,one:{sd:1},
+  market,bookSample:book,indexSample:index,
+  streamStatusSample:streamStatus,spot:1751,one:{sd:1},
   five:{rsi:50},context:{three:{trend:'UP',closedAt:1795410480},
    five:{trend:'UP',closedAt:1795410300}},feedChecks:{},
   report:{status:'WATCH',notice:'Insufficient value'},shadowProbe:{
