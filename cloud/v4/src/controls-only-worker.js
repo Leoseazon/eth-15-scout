@@ -484,7 +484,7 @@ export class ScoutControlResearchV4 extends DurableObject {
         decisionBook.valid===true&&decisionBook.fresh===true&&
         Number.isSafeInteger(decisionBook.receivedAt)&&
         Date.now()-decisionBook.receivedAt<=5000;
-      if(!entrySourcesReady&&!s.open){
+      if(!independentControlSourcesReady&&!s.open){
         s.lastOfficialIndexCheck={at:Date.now(),
           state:bookReady?'SKIPPED_OTHER_ENTRY_PREREQUISITE':'SKIPPED_NO_FRESH_WS_BOOK',
           fresh:false,sourceAgeMs:null};
