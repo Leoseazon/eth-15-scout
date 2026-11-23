@@ -182,6 +182,37 @@ export class ScoutEngineV4 extends DurableObject {
         journalIndependentOfMain:true};
     }
   }
+  // Compact Conservative ledger rides in existing authenticated status.
+  // The previously deployed viewer already exports full status as
+  // journals.account: no frontend code rollout is needed for this evidence.
+  compactConservativeExport(){
+    try{
+      const x=loadConservativePortfolio(this.ctx.storage.kv);
+      const compact=t=>({
+        ticker:t.ticker,side:t.side,time:t.time,
+        entry:t.entry,qty:t.qty,cost:t.cost,status:t.status,
+        confirmed:t.confirmed===true,exitAt:t.exitAt??null,
+        exitType:t.exitType??null,pnl:t.pnl??null,
+        officialOutcome:t.officialOutcome??null,fillVerified:false
+      });
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+       paperOnly:true,readOnly:true,journalIndependentOfMain:true,
+       initial:x.initial,createdAt:x.createdAt,
+       trades:x.trades.map(compact),
+       pendingPositions:x.pending.map(compact),
+       finalRoundPasses:x.decisions.map(d=>({
+         ticker:d.ticker,time:d.time,status:d.status,reason:d.reason
+       })),
+       open:x.open?compact(x.open):null,
+       entries:x.entries,exits:x.exits,
+       officialSettlements:x.officialSettlements,
+       realized:x.realized,cash:x.cash};
+    }catch{
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+       journalIndependentOfMain:true,paperOnly:true,readOnly:true,
+       status:'CONTROL_EXPORT_UNAVAILABLE',trades:null};
+    }
+  }
   record(){
     const s=normalize(this.ctx.storage.kv.get('runtime'));
     // Deployment-controlled activation. No public arm endpoint is needed.
@@ -918,6 +949,7 @@ export class ScoutEngineV4 extends DurableObject {
           configurationValid:this.mainProfileConfigured,
           configuredBy:'Cloudflare paper-only Worker environment'},
         conservativeControl:this.controlSnapshot(),
+        conservativeControlExport:this.compactConservativeExport(),
         latestSettlementDecision:s.lastV4SettlementDecision||null,
         settlementPredictionStats:settlementPredictionStats(this.ctx.storage.sql),
         initial:s.initial,cash:s.cash,
