@@ -31,15 +31,18 @@ test('new paper engine uses official RTI input and immutable prediction journal,
  assert.doesNotMatch(paper,/create_order|POST \/trade|\/portfolio\/orders/);
 });
 
-test('opt-in V4 paper release differs from default only in two explicit paper flags',()=>{
+test('paper release adds profile selection but preserves all other switches except approved paper flags',()=>{
  const defaultText=readFileSync(root+'cloud/wrangler.v4test.toml','utf8');
  const paperText=readFileSync(root+'cloud/wrangler.v4paper.toml','utf8');
  const normalize=t=>t.split(String.fromCharCode(10)).filter(x=>!/^ *#/.test(x)&&x.trim()!=='')
+  .filter(x=>!/^V4_MAIN_PROFILE = /.test(x))
   .map(x=>x.replace(/SCOUT_V4_PAPER_MODE = "(enabled|disabled)"/,
     'SCOUT_V4_PAPER_MODE = "PAPER_SWITCH"')
    .replace(/V4_SETTLEMENT_FIRST_EXPERIMENT = "(true|false)"/,
      'V4_SETTLEMENT_FIRST_EXPERIMENT = "EXPERIMENT_SWITCH"')).join(String.fromCharCode(10));
  assert.equal(normalize(defaultText),normalize(paperText));
+ assert.match(paperText,/V4_MAIN_PROFILE = "OPPORTUNISTIC"/);
+ assert.doesNotMatch(defaultText,/V4_MAIN_PROFILE =/);
  assert.match(paperText,/SCOUT_V4_PAPER_MODE = "enabled"/);
  assert.match(paperText,/V4_SETTLEMENT_FIRST_EXPERIMENT = "true"/);
  for(const [flag,value] of [
@@ -109,8 +112,10 @@ test('signed index HTTP latency cannot reuse a pre-REST stale Kalshi entry book'
  const worker=readFileSync(root+'cloud/v4/src/worker.js','utf8');
  const check=worker.indexOf('const verified=await checkCFValuesAccess');
  const refetch=worker.indexOf('const decisionBook=this.stream?.status(Date.now())?.quote',check);
- const decision=worker.indexOf('book:decisionBook,now:Date.now()',refetch);
+ const decision=worker.indexOf('book:decisionBook,now:decisionAt',refetch);
  assert.ok(check>0&&refetch>check&&decision>refetch);
+ const decisionTimestamp=worker.indexOf('const decisionAt=Date.now()',refetch);
+ assert.ok(decisionTimestamp>refetch&&decision>decisionTimestamp);
  assert.match(worker,/decisionBookFresh&&index!==null/);
 });
 test('reference REST quote source timestamp is forwarded, not replaced by the latest tick time',()=>{

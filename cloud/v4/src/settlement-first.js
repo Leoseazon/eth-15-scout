@@ -78,7 +78,8 @@ export function calculateSettlementEvidence({target,indexValue,one,five,context,
   contextBias,combined,side,contradictions,families};
 }
 export function evaluateSettlementFirst({market,index,one,five,context,book,
- now=Date.now(),budget=3,riskMode='NORMAL'}={}){
+ now=Date.now(),budget=3,riskMode='NORMAL',profile='CONSERVATIVE',
+ priorOfficialIndex=null}={}){
  if(!market||!tickerOk(market.ticker))return watch('ACTUAL_KALSHI_MARKET_MISSING');
  const closeAt=Date.parse(market.close_time),target=numeric(market.floor_strike);
  if(!Number.isFinite(closeAt)||target===null||target<=0)
@@ -115,7 +116,9 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
  // No indicator vote can independently create a trade.
  const opportunity=bestContextualOpportunity({
   target,indexValue:index.price,one,five,context,remainingSeconds,book,
-  budget,riskMode});
+  budget,riskMode,profile,
+  contextEvidence:{target,indexValue:index.price,one,context,now,
+   ticker:market.ticker,sourceAt:index.sourceAt,priorOfficialIndex}});
  const choice=opportunity.selected||null;
  const side=choice?.side||(combined>0?'UP':'DOWN');
  const direction=side==='UP'?1:-1;
@@ -142,6 +145,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   spread:priceSpread,bookReceiptAt:book.receivedAt,
   contextualOpportunity:choice,
   valueScenario:opportunity.scenario,
+  activeStrategyProfile:profile,
   consideredSideValues:opportunity.options};
  if(opportunity.status!=='CANDIDATE'){
   // Preserve clear absolute-ceiling diagnostics instead of masking them
@@ -159,7 +163,7 @@ export function evaluateSettlementFirst({market,index,one,five,context,book,
   return watch('PREMIUM_85_TO_87_VALUE_EXCEPTION_NOT_MET',{
    ...insight,candidateSide:side});
  return {version:SETTLEMENT_FIRST_VERSION,status:'CANDIDATE',side,reason:
-  'Target-centered scenario analysis chooses best fee-inclusive side under conservative uncertainty',
+  'Target-centered fee-aware scenario; entry requirements selected by named main strategy profile',
   ...insight,calibratedProbability:null,settlementPredictionVerified:false,
   executionVerified:false,entryBudgetIncludesFees:true};
 }

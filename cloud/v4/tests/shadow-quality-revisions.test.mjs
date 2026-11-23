@@ -67,6 +67,14 @@ test('frozen research limits cannot mutate',()=>{
  assert.ok(Object.isFrozen(REVISED_POLICY));
  assert.ok(Object.isFrozen(REVISED_POLICY.A2_RECOVERY));
 });
+test('A2/B2/C2 isolated evaluations are EXACTLY equal to frozen combined evaluation',()=>{
+ const input=fixture(),all=observe(input);
+ for(const policy of Object.keys(REVISED_POLICY)){
+  const alone=observe({...input,onlyPolicy:policy});
+  assert.deepEqual(alone.policies[policy],all.policies[policy],policy);
+  assert.deepEqual(Object.keys(alone.policies),[policy]);
+ }
+});
 test('same-tick valid behind-target UP can qualify all three research observations',()=>{
  const r=observe(fixture());
  assert.equal(r.version,SHADOW_QUALITY_VERSION);

@@ -51,7 +51,8 @@ test('worker recomputes held score only as display-only evidence, after original
  const saved=w.indexOf('this.save(s,tickMeta)',held);
  assert.ok(step>0&&held>step&&saved>held);
  assert.match(w,/const confidenceSourcesReady=s.open\?\.strategy==='V4_SETTLEMENT_FIRST'/);
- assert.match(w,/if\(entrySourcesReady\|\|confidenceSourcesReady\)/);
+ assert.ok(w.includes('if(entrySourcesReady||confidenceSourcesReady||independentControlSourcesReady)'));
+ assert.ok(w.includes('const independentControlSourcesReady=s.armed&&marketReady'));
  assert.match(w,/pos\.confidenceHistory=pos\.confidenceHistory\.slice\(-60\)/);
  assert.match(w,/status:'UNAVAILABLE',reason:'CONFIDENCE_EVALUATION_ERROR'/);
  const code=readFileSync(root+'cloud/v4/src/buy-confidence.js','utf8');

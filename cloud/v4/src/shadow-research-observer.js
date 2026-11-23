@@ -5,11 +5,11 @@
  * IMPORTANT: Presence of a research candidate is NOT permission to BUY.
  * It is not a calibrated probability or a verified executable fill.
  */
-import {evaluateBothShadowPolicies,SHADOW_SPEC_VERSION}
+import {evaluateShadowPolicy,SHADOW_POLICIES,SHADOW_SPEC_VERSION}
  from './shadow-opportunity-policies.js';
 import {evaluateCandidateCObservation,CANDIDATE_C_SPEC,CANDIDATE_C_POLICY}
  from './candidate-c-observer.js';
-import {observeQualityRevisions,SHADOW_QUALITY_VERSION}
+import {observeQualityRevisions,SHADOW_QUALITY_VERSION,REVISED_POLICY}
  from './shadow-quality-revisions.js';
 const ms=n=>Number.isSafeInteger(n)&&n>1000000000000;
 const completed=(startSeconds,periodSeconds,at)=>{
@@ -53,12 +53,22 @@ export function observeProspectiveShadow({market,report,index,book,one,five,
    completed(context?.five?.closedAt,300,now),
   baselineSpreadDepthAndFeeChecksPassed:hasConservativeRejection
  };
- const out=evaluateBothShadowPolicies({
+ const common={
   ticker:market?.ticker,remainingSeconds:remainingSeconds/1000,
   sourceWitness:witness,riskMode,
   alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),
   baselineStatus:report?.status,consideredSideValues:observations
- });
+ };
+ // Same frozen A/B rules but independent error boundaries per policy.
+ const out={};
+ for(const policy of Object.keys(SHADOW_POLICIES)){
+  try{out[policy]=evaluateShadowPolicy({...common,policy})}
+  catch{
+   out[policy]={version:SHADOW_SPEC_VERSION,policy,
+    status:'NO_SHADOW_SIGNAL',reason:'ISOLATED_SHADOW_POLICY_ERROR',
+    executionAuthorized:false,calibratedProbability:null};
+  }
+ }
  // C is a distinct non-executing hypothesis. Isolate it from A/B if its
  // research calculation fails. Neither module can veto a baseline paper step.
  let candidateC;
@@ -74,16 +84,24 @@ export function observeProspectiveShadow({market,report,index,book,one,five,
  }
  // Independent second-generation quality hypotheses are computed AFTER
  // original A/B/C. Failure cannot suppress baseline paper or original shadows.
- let revised;
- try{
-  revised=observeQualityRevisions({market,index,one,context,book,
-   sourceWitness:witness,report,originalPolicies:out,riskMode,
-   alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),now});
- }catch{
-  revised={version:SHADOW_QUALITY_VERSION,readOnly:true,
-   executionAuthorized:false,calibratedProbability:null,
-   status:'ISOLATED_REVISION_OBSERVER_ERROR'};
+ const qualityPolicies={};
+ for(const policy of Object.keys(REVISED_POLICY)){
+  try{
+   const a=observeQualityRevisions({market,index,one,context,book,
+    sourceWitness:witness,report,originalPolicies:out,riskMode,
+    alreadyTraded:Array.isArray(blocked)&&blocked.includes(market?.ticker),
+    now,onlyPolicy:policy});
+   qualityPolicies[policy]=a.policies[policy];
+  }catch{
+   qualityPolicies[policy]={version:SHADOW_QUALITY_VERSION,policy,
+    status:'NO_QUALITY_OBSERVATION',
+    reason:'ISOLATED_REVISED_POLICY_ERROR',
+    readOnly:true,executionAuthorized:false,calibratedProbability:null};
+  }
  }
+ const revised={version:SHADOW_QUALITY_VERSION,readOnly:true,
+  executionAuthorized:false,calibratedProbability:null,
+  policies:qualityPolicies};
  const sourceStates=Object.fromEntries(Object.entries(witness).map(([k,v])=>[k,!!v]));
  return {version:SHADOW_SPEC_VERSION,observedAt:now,
   executionAuthorized:false,readOnly:true,calibratedProbability:null,

@@ -21,6 +21,13 @@ import {checkCFValuesAccess} from './cf-access.js';
 import {verifyCFWebSocket} from './cf-ws-probe.js';
 import {getV4StorageInventory} from './storage-inventory.js';
 import {settlementFirstPaperStep} from './settlement-first-paper.js';
+import {evaluateSettlementFirst} from './settlement-first.js';
+import {MAIN_PROFILE_VERSION,selectMainProfile,mainProfileIsSupported}
+ from './main-strategy-profiles.js';
+import {CONSERVATIVE_CONTROL_VERSION,loadConservativePortfolio,
+ prepareConservativePortfolio,evaluateConservativePortfolio,
+ settleConservativePortfolio,saveConservativePortfolio,
+ conservativePortfolioSummary} from './conservative-control.js';
 import {observeProspectiveShadow} from './shadow-research-observer.js';
 import {assessMainDecisionCoherence,assessMainHeldExitCoherence}
  from './main-coherence-research.js';
@@ -117,6 +124,9 @@ export class ScoutEngineV4 extends DurableObject {
     // Two explicit deployment switches; no code path contains a real order API.
     this.paperExperimentAllowed=env.SCOUT_V4_PAPER_MODE==='enabled' &&
       env.V4_SETTLEMENT_FIRST_EXPERIMENT==='true';
+    this.mainProfileName=mainProfileIsSupported(env.V4_MAIN_PROFILE)?
+      env.V4_MAIN_PROFILE:'CONSERVATIVE';
+    this.mainProfileConfigured=mainProfileIsSupported(env.V4_MAIN_PROFILE);
     this.researchStream=null;
     // Formal permission gate is separate from each capture switch. Rest/pass-through
     // and WebSocket entitlement alone do NOT permit bulk retention/model training.
@@ -152,6 +162,55 @@ export class ScoutEngineV4 extends DurableObject {
           }
         }
       });
+    }
+  }
+  controlSnapshot(includeJournal=false){
+    try{
+      const state=loadConservativePortfolio(this.ctx.storage.kv);
+      const summary=conservativePortfolioSummary(state);
+      return includeJournal?{...summary,
+        trades:state.trades,
+        pendingPositions:state.pending,
+        finalRoundPasses:state.decisions,
+        lastWindow:state.window,
+        recentEvents:state.events.slice(0,100),
+        journalIndependentOfMain:true}:summary;
+    }catch{
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+        status:'CONTROL_STATE_UNAVAILABLE',
+        researchControl:true,executionAuthorized:false,
+        journalIndependentOfMain:true};
+    }
+  }
+  // Compact Conservative ledger rides in existing authenticated status.
+  // The previously deployed viewer already exports full status as
+  // journals.account: no frontend code rollout is needed for this evidence.
+  compactConservativeExport(){
+    try{
+      const x=loadConservativePortfolio(this.ctx.storage.kv);
+      const compact=t=>({
+        ticker:t.ticker,side:t.side,time:t.time,
+        entry:t.entry,qty:t.qty,cost:t.cost,status:t.status,
+        confirmed:t.confirmed===true,exitAt:t.exitAt??null,
+        exitType:t.exitType??null,pnl:t.pnl??null,
+        officialOutcome:t.officialOutcome??null,fillVerified:false
+      });
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+       paperOnly:true,readOnly:true,journalIndependentOfMain:true,
+       initial:x.initial,createdAt:x.createdAt,
+       trades:x.trades.map(compact),
+       pendingPositions:x.pending.map(compact),
+       finalRoundPasses:x.decisions.map(d=>({
+         ticker:d.ticker,time:d.time,status:d.status,reason:d.reason
+       })),
+       open:x.open?compact(x.open):null,
+       entries:x.entries,exits:x.exits,
+       officialSettlements:x.officialSettlements,
+       realized:x.realized,cash:x.cash};
+    }catch{
+      return {version:CONSERVATIVE_CONTROL_VERSION,
+       journalIndependentOfMain:true,paperOnly:true,readOnly:true,
+       status:'CONTROL_EXPORT_UNAVAILABLE',trades:null};
     }
   }
   record(){
@@ -234,6 +293,15 @@ export class ScoutEngineV4 extends DurableObject {
   }
   async tick(){
     const s=this.record(); if(!s.monitoring)return;
+    // Independent conservative account; invalid control state is never reset
+    // automatically or allowed to affect MAIN paper decisions.
+    let controlState=null,controlError=null,controlStep=null,
+      controlPersisted=false;
+    try{
+      controlState=prepareConservativePortfolio(
+        loadConservativePortfolio(this.ctx.storage.kv),{
+         monitoring:s.monitoring,enabled:this.paperExperimentAllowed});
+    }catch{controlError='CONTROL_PORTFOLIO_LOAD_INVALID';}
     const now=Date.now(),mUrl=this.env.MARKET_PROXY;
     // FAST PAPER EXIT PATH (BEFORE Kraken/market-proxy requests).
     // A delayed Kraken candle or nonessential regime fetch must NOT delay
@@ -257,6 +325,21 @@ export class ScoutEngineV4 extends DurableObject {
         // No guessed exit or P&L is written on fast-path error.
       }
     }
+    // Mirror the MAIN fast exit path for the isolated Conservative paper
+    // account. This happens AFTER main protection and never mutates main s.
+    if(controlState?.open?.strategy==='V4_SETTLEMENT_FIRST'){
+      try{
+        const held=controlState.open;
+        const fastBook=this.stream?.status(Date.now())?.quote||null;
+        const x=evaluateConservativePortfolio(controlState,{
+          market:{ticker:held.ticker,close_time:held.closeTime},
+          book:fastBook,now:Date.now()
+        });
+        controlState=x.next;
+        saveConservativePortfolio(this.ctx.storage.kv,controlState);
+        controlStep=x.report;
+      }catch{controlError='CONTROL_FAST_EXIT_UNAVAILABLE';controlState=null;}
+    }
     // The release marker is ONLY the first engine tick under the explicit
     // V4 contextual paper configuration. It is NOT a trade, successful
     // settlement, healthy feed, or evidence that the GitHub website was
@@ -266,6 +349,11 @@ export class ScoutEngineV4 extends DurableObject {
         'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
         RELEASE_TAG,now,'not applicable',
         'V4 target-centered contextual paper model activated; first runtime tick only');
+      if(this.mainProfileConfigured)this.ctx.storage.sql.exec(
+        'INSERT OR IGNORE INTO release_markers(tag,first_engine_tick_at,pre_release_reference_at,description) VALUES(?,?,?,?)',
+        'V4-MAIN-PROFILE-'+this.mainProfileName+'-20261123',now,
+        'not applicable','MAIN paper selected '+this.mainProfileName+
+        '; separate Conservative control and research-only shadows');
     }
     const engine=makeV2Engine(s,{softGuardEnabled:true});
     let market=null,one=null,m5=null,error=null,fresh=false;
@@ -361,6 +449,7 @@ export class ScoutEngineV4 extends DurableObject {
     let report={notice:'No new buy; waiting for complete fresh market data.'};
     // Research-only prospective comparison; never an entry/exit instruction.
     let prospectiveShadow=null;
+    let conservativeReference=null;
     let mainCoherence=null; // post-decision observation ONLY
     let exitBookSample=null,exitIndexSample=null,exitSocketSample=null;
     // Disarming new entries must NOT switch an existing V4 position to the
@@ -385,12 +474,16 @@ export class ScoutEngineV4 extends DurableObject {
       const entrySourcesReady=s.armed&&!s.open&&marketReady&&
         !!one&&!!m5&&!!context.three&&!!context.five&&
         !s.blocked.includes(market.ticker)&&bookReady;
+      // All control policies see the SAME fresh market snapshot even when
+      // MAIN holds a position. This does not request twice per tick.
+      const independentControlSourcesReady=s.armed&&marketReady&&
+        !!one&&!!m5&&!!context.three&&!!context.five&&bookReady;
       const confidenceSourcesReady=s.open?.strategy==='V4_SETTLEMENT_FIRST'&&
         market?.ticker===s.open.ticker&&!!one&&!!m5&&
         !!context.three&&!!context.five&&bookReady;
       // The latest-value REST request is also a source for live position
       // confidence. It does NOT change the entry or exit decision rules.
-      if(entrySourcesReady||confidenceSourcesReady){
+      if(entrySourcesReady||confidenceSourcesReady||independentControlSourcesReady){
         const verified=await checkCFValuesAccess({
           keyId:this.env.KALSHI_V4_READ_KEY_ID,
           privatePem:this.env.KALSHI_V4_READ_PRIVATE_KEY,
@@ -438,14 +531,66 @@ export class ScoutEngineV4 extends DurableObject {
       // contemporaneous exit evidence still appears in the research journal.
       const positionBeforePaperStep=s.open?.strategy==='V4_SETTLEMENT_FIRST'?
         {...s.open}:null;
+      const decisionAt=Date.now();
       try{
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
-          book:decisionBook,now:Date.now(),
+          book:decisionBook,now:decisionAt,
+          profile:this.mainProfileName,
+          priorOfficialIndex:s.lastVerifiedOfficialForProfile||null,
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
         // Fail closed and send a sanitized code to the existing red health strip.
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
+      }
+      // CRITICAL COMMIT BARRIER: a MAIN paper BUY/SELL is saved (including
+      // the unique official forecast and debit in ONE transaction) BEFORE
+      // executing ANY Conservative control or A/B/C research logic.
+      // Additional writes occur only for actual position-changing events,
+      // not every 15s PASS, to keep Cloudflare storage overhead low.
+      if(report.status==='PAPER_BUY'||report.status==='PAPER_SELL'){
+        this.save(s,{lastTick:Date.now(),lastMarket:market?.ticker||null,
+          lastNotice:report.notice||'',lastError:error});
+      }
+      // Separate CONSERVATIVE reference: same source observations, but no
+      // MAIN cash, MAIN position, MAIN risk latch or MAIN blocked contracts.
+      // Original A/B/C and A2/B2/C2 consume this reference only.
+      try{
+        const plain=evaluateSettlementFirst({
+          market,index,one,five:m5,context,book:decisionBook,
+          now:decisionAt,budget:3,riskMode:'NORMAL',
+          profile:'CONSERVATIVE',priorOfficialIndex:null
+        });
+        conservativeReference={status:plain.status,candidate:plain,
+          reason:plain.reason,readOnly:true,executionAuthorized:false};
+      }catch{
+        conservativeReference={status:'WATCH',candidate:null,
+          reason:'ISOLATED_CONSERVATIVE_REFERENCE_ERROR',
+          readOnly:true,executionAuthorized:false};
+      }
+      // A separately persisted control account may make a different BUY
+      // in the same market. Never reuse s.cash, s.blocked or main onPrediction.
+      if(controlState){
+        try{
+          const simulated=evaluateConservativePortfolio(controlState,{
+            market,index,one,five:m5,context,book:decisionBook,
+            now:decisionAt
+          });
+          controlState=simulated.next;controlStep=simulated.report;
+        }catch{controlError='CONTROL_EVALUATION_ERROR';controlState=null;}
+      }
+      // Store only official-index observations verified in THIS tick.
+      // A different ticker/source time cannot satisfy a future reversal.
+      if(market&&index?.indexId==='ETHUSD_RTI'&&
+         index.validValuesVerified===true&&
+         Number.isFinite(index.price)&&index.price>0&&
+         Number.isSafeInteger(index.sourceAt)&&
+         decisionAt-index.sourceAt>=0&&decisionAt-index.sourceAt<=15000){
+        s.lastVerifiedOfficialForProfile={
+          ticker:market.ticker,target:Number(market.floor_strike),
+          indexValue:index.price,sourceAt:index.sourceAt,
+          observedAt:decisionAt
+        };
       }
       exitBookSample=decisionBook;
       exitIndexSample=index;
@@ -474,9 +619,10 @@ export class ScoutEngineV4 extends DurableObject {
       // sources. They cannot alter the baseline result or place a paper BUY.
       try{
         prospectiveShadow=observeProspectiveShadow({
-          market,report,index,book:decisionBook,one,five:m5,context,feedChecks,
+          market,report:conservativeReference,index,book:decisionBook,
+          one,five:m5,context,feedChecks,
           streamStatus:this.stream?.status(Date.now())||null,
-          riskMode:s.dailyRisk?.mode||'UNKNOWN',blocked:s.blocked,
+          riskMode:'NORMAL',blocked:[],
           now:Date.now()
         });
       }catch{
@@ -526,6 +672,13 @@ export class ScoutEngineV4 extends DurableObject {
         candidate:report.candidate||null,
         decision:s.lastV4SettlementDecision||null,
         prospectiveShadow,mainCoherence,
+        mainStrategyProfile:{version:MAIN_PROFILE_VERSION,
+          active:this.mainProfileName,
+          configurationValid:this.mainProfileConfigured,
+          readOnly:true},
+        conservativeReference,
+        conservativeControl:{...conservativePortfolioSummary(controlState,controlStep),
+          persisted:false,error:controlError},
         calibratedProbability:null,executableFillVerified:false};
     }else{
       try{shadowProbe=engine.probe(market,one,m5,{fresh,context,at:Date.now()})}
@@ -576,6 +729,22 @@ export class ScoutEngineV4 extends DurableObject {
       lastMarket:market?.ticker||null,lastNotice:report.notice||'',
       lastFeedOkay:!!(fresh&&one&&context.three&&market)};
     this.save(s,tickMeta);
+    // MAIN bank/prediction already committed. Control account writes now
+    // occur under a distinct durable KV key, with isolated failure handling.
+    if(controlState){
+      try{
+        saveConservativePortfolio(this.ctx.storage.kv,controlState);
+        controlPersisted=true;
+      }catch{controlError='CONTROL_PORTFOLIO_PERSIST_UNAVAILABLE';}
+    }
+    if(shadowProbe?.conservativeControl){
+      shadowProbe.conservativeControl={
+        ...conservativePortfolioSummary(
+          controlPersisted?controlState:null,controlStep),
+        persisted:controlPersisted,
+        error:controlError||null
+      };
+    }
     // Auxiliary research logs are intentionally NON-CRITICAL. Save the latest
     // research receipt afterward; a failed auxiliary write cannot roll back
     // an already committed paper bankroll and unique forecast.
@@ -610,6 +779,17 @@ export class ScoutEngineV4 extends DurableObject {
     // Only official finalized outcomes resolve paper holdings.
     const settled=reconcilePending(s,this.ctx.storage.sql,Date.now());
     if(settled>0)this.save(s,tickMeta);
+    // Control settlement is independent. It reads the same finalized
+    // exchange outcome but does not touch MAIN trades, cash, or forecasts.
+    if(controlState&&controlPersisted){
+      try{
+        const done=settleConservativePortfolio(controlState,
+          this.ctx.storage.sql,Date.now());
+        controlState=done.next;
+        if(done.finalized>0)
+          saveConservativePortfolio(this.ctx.storage.kv,controlState);
+      }catch{controlError='CONTROL_SETTLEMENT_UNAVAILABLE';}
+    }
     try{reconcileSettlementPredictions(this.ctx.storage.sql,Date.now())}
     catch{ /* Official outcome scoring remains unresolved; never assume success. */ }
     // Research stream always follows critical paper accounting and journal IO.
@@ -763,6 +943,13 @@ export class ScoutEngineV4 extends DurableObject {
         continuingPreDisarmV4Position:s.open?.strategy==='V4_SETTLEMENT_FIRST'&&!this.paperExperimentAllowed,
         settlementPaperAllowed:this.paperExperimentAllowed,
         settlementModelVersion:SETTLEMENT_FIRST_VERSION,
+        mainStrategyProfile:{version:MAIN_PROFILE_VERSION,
+          active:this.mainProfileName,
+          available:['CONSERVATIVE','BALANCED','OPPORTUNISTIC'],
+          configurationValid:this.mainProfileConfigured,
+          configuredBy:'Cloudflare paper-only Worker environment'},
+        conservativeControl:this.controlSnapshot(),
+        conservativeControlExport:this.compactConservativeExport(),
         latestSettlementDecision:s.lastV4SettlementDecision||null,
         settlementPredictionStats:settlementPredictionStats(this.ctx.storage.sql),
         initial:s.initial,cash:s.cash,
@@ -853,6 +1040,7 @@ export class ScoutEngineV4 extends DurableObject {
         totals:{...counts,paperResults:paperResults(sql,RELEASE_TAG),
           officialWindows:sql.exec("SELECT count(*) n FROM window_outcomes WHERE status='OFFICIAL_RESULT'").toArray()[0].n},
         events,trades,decisions,windows,
+        conservativeControlJournal:this.controlSnapshot(true),
         releaseMarkers:sql.exec(
          'SELECT tag,first_engine_tick_at,pre_release_reference_at,description FROM release_markers ORDER BY first_engine_tick_at DESC LIMIT 5'
         ).toArray(),

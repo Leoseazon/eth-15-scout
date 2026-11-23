@@ -37,6 +37,24 @@
      'Experimental V4 paper simulation enabled. No real orders.':
      'Experimental V4 paper simulation disabled. No real orders.';
    detail.replaceChildren();
+   const profile=document.createElement('p');
+   profile.textContent='MAIN paper strategy: '+
+    String(s.mainStrategyProfile?.active||'UNREPORTED')+
+    ' (choices: Conservative, Balanced, Opportunistic). '+
+    'Selection requires a controlled paper-only Cloudflare deployment; no trading action is available from this viewer.';
+   detail.append(profile);
+   const control=s.conservativeControl;
+   if(control?.researchControl===true){
+    const controlLine=document.createElement('p');
+    const earned=Number.isFinite(control.realized)?
+      control.realized.toFixed(2):'unavailable';
+    controlLine.textContent='Independent Conservative control: '+
+     String(control.status||'UNKNOWN')+
+     ', entries '+String(control.entries??'n/a')+
+     ', completed '+String(control.completed??'n/a')+
+     ', simulated realized net USD '+earned;
+    detail.append(controlLine);
+   }
    const item=document.createElement('p');
    const rate=verified?((Number(a.correct)||0)/verified*100).toFixed(1)+'%':'not yet available';
    item.textContent='Correct official settlement side: '+rate+

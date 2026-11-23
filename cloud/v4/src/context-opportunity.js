@@ -8,6 +8,7 @@
  * No dependency on future candles/outcomes, external APIs, new services or secrets.
  * The actual official benchmark/target are mandatory and primary.
  */
+import {assessProfileEntry,selectMainProfile} from './main-strategy-profiles.js';
 export const CONTEXT_VALUE_VERSION='V4-CONTEXT-VALUE-PAPER-20261122';
 // At least the first 60 seconds of each 15-minute market are observation-only.
 // New paper entry is eligible from 14m remaining down to >90s remaining.
@@ -90,7 +91,7 @@ export function targetScenarioEnvelope({target,indexValue,one,five,context,remai
  * and conservative transaction fees. Returns metrics, NOT a buy order.
  */
 export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
- budget=3,riskMode='NORMAL'}={}){
+ budget=3,riskMode='NORMAL',profile='CONSERVATIVE',contextEvidence=null}={}){
  const fail=reason=>({side,status:'REJECT',reason});
  if(!['UP','DOWN'].includes(side)||scenario?.status!=='SCENARIOS_READY')
   return fail('SCENARIO_UNAVAILABLE');
@@ -132,12 +133,18 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
  // at least 12 points, on top of tighter liquidity and a reduced stake.
  const edgeHurdle=riskMode==='SOFT'?
    (ask>.85?.10:Math.max(.12,baseEdgeHurdle+.035)):baseEdgeHurdle;
- if(lowerEdge+1e-9<edgeHurdle)return {...fail('CONSERVATIVE_SCENARIO_VALUE_INSUFFICIENT'),
+ const profileAssessment=assessProfileEntry({
+  profile,riskMode,side,ask,lowerEdge,centralEdge,
+  legacyRequiredEdge:edgeHurdle,contextEvidence
+ });
+ if(!profileAssessment.ok)return {...fail(profileAssessment.reason),
   ask,bid,spread,quantity:qty,allIn:round(allIn),breakEven:round(allIn/qty),
   lowerScenario:round(p.lower),centralScenario:round(p.central),
-  conservativeEdge:round(lowerEdge),requiredEdge:edgeHurdle};
+  conservativeEdge:round(lowerEdge),requiredEdge:edgeHurdle,
+  profileAssessment};
  return {side,status:'QUALIFIED',reason:'TARGET_CENTERED_SCENARIO_VALUE_AFTER_FEES',
   version:CONTEXT_VALUE_VERSION,ask,bid,askDepth,bidDepth,spread,
+  mainProfile:selectMainProfile(profile).id,profileAssessment,
   qty,allIn:round(allIn),orderFee:round(orderFee),riskMode,
   breakEven:round(allIn/qty),maxLoss:round(allIn),
   profitIfSettlesCorrect:round(qty-allIn),requiredEdge:edgeHurdle,
@@ -146,7 +153,12 @@ export function priceAwareOpportunity({side,book,scenario,remainingSeconds,
   upperScenario:round(p.upper),scenarioRange:round(uncertainty),
   lowerScenarioNetProfit:round(lowerScenarioProfit),
   centralScenarioNetProfit:round(centralScenarioProfit),
-  rankUtility:round(lowerScenarioProfit),calibratedProbability:null,
+  // Preserve conservative rankings exactly. Relaxed profiles rank
+  // qualifying alternatives using the CENTRAL expected payout proxy,
+  // never count an unqualified WATCH as a paper BUY.
+  rankUtility:round(profileAssessment.effectiveProfile==='CONSERVATIVE'?
+   lowerScenarioProfit:centralScenarioProfit),
+  calibratedProbability:null,
   note:'Scenario economics are uncalibrated; this is experimental paper-only research.'};
 }
 /** Evaluate BOTH sides at the SAME official target, then take the largest
