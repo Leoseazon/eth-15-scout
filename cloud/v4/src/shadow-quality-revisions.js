@@ -45,7 +45,7 @@ function halfDollar(ask,depth){
  */
 export function observeQualityRevisions({market,index,one,context,book,
  sourceWitness,report,originalPolicies,riskMode='UNKNOWN',
- alreadyTraded=false,now}={}){
+ alreadyTraded=false,now,onlyPolicy=null}={}){
  const output={};
  const target=Number(market?.floor_strike),indexPrice=index?.price;
  const close=Date.parse(market?.close_time||'');
@@ -62,7 +62,12 @@ export function observeQualityRevisions({market,index,one,context,book,
   book?.ticker===market.ticker&&book?.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&
   book?.valid===true&&book?.fresh===true&&book?.crossed!==true&&
   ms(book.receivedAt)&&book.receivedAt<=now&&now-book.receivedAt<=5000;
- for(const [policy,L] of Object.entries(REVISED_POLICY)){
+ // Optional isolation mode changes orchestration, NEVER policy rules.
+ // A damaged A2 evaluation cannot suppress a valid B2 or C2 observation.
+ const policies=onlyPolicy===null?Object.keys(REVISED_POLICY):
+  Object.hasOwn(REVISED_POLICY,onlyPolicy)?[onlyPolicy]:[];
+ for(const policy of policies){
+  const L=REVISED_POLICY[policy];
   if(!allowed){output[policy]=result(policy,'SAME_TICK_INPUTS_UNVERIFIED');continue;}
   const remaining=(close-now)/1000;
   if(remaining<=L.minTime||remaining>840){
