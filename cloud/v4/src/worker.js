@@ -512,6 +512,15 @@ export class ScoutEngineV4 extends DurableObject {
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
+      // CRITICAL COMMIT BARRIER: a MAIN paper BUY/SELL is saved (including
+      // the unique official forecast and debit in ONE transaction) BEFORE
+      // executing ANY Conservative control or A/B/C research logic.
+      // Additional writes occur only for actual position-changing events,
+      // not every 15s PASS, to keep Cloudflare storage overhead low.
+      if(report.status==='PAPER_BUY'||report.status==='PAPER_SELL'){
+        this.save(s,{lastTick:Date.now(),lastMarket:market?.ticker||null,
+          lastNotice:report.notice||'',lastError:error});
+      }
       // Separate CONSERVATIVE reference: same source observations, but no
       // MAIN cash, MAIN position, MAIN risk latch or MAIN blocked contracts.
       // Original A/B/C and A2/B2/C2 consume this reference only.
