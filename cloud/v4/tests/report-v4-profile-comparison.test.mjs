@@ -59,6 +59,15 @@ test('exactly 60 windows and no repeated sticky PAPER_BUY inflation',()=>{
  assert.equal(r.realFillsVerified,false);
  assert.equal(r.allExecutionsSimulated,true);
 });
+test('existing GitHub Pages export retains Conservative ledger through journals.account status',()=>{
+ const x=fixture();
+ x.journals.account={conservativeControlExport:x.journals.conservativeControlJournal};
+ delete x.journals.conservativeControlJournal;
+ const r=run(x);assert.equal(r.status,0,r.stderr);
+ const v=JSON.parse(r.stdout);
+ assert.equal(v.independentMainConservative.completeLedgerExported,true);
+ assert.equal(v.independentMainConservative.completedPaperTrades.completed,0);
+});
 test('absent Conservative journal is explicitly INCOMPLETE, never zero-dollar success',()=>{
  const x=fixture();
  delete x.journals.conservativeControlJournal;
