@@ -28,6 +28,8 @@ jobs:
       - run: node --check v4/src/worker.js
       - run: node --check v4/src/main-only-worker.js
       - run: node --check v4/src/controls-only-worker.js
+      - run: node --check v4/tools/export-v4-controls.mjs
+      - run: node --check v4/tools/report-v4-two-workers.mjs
       - run: node --check v4/viewer-worker.js
       - run: node --check v4/viewer-auth.js
       - run: node --check v4/src/quote-recorder.js
@@ -75,6 +77,18 @@ jobs:
           if ($parseErrors.Count -gt 0) {
             $parseErrors | ForEach-Object { Write-Error $_.Message }
             exit 1
+          }
+      - name: Parse owner-only physical separation and export deployment scripts
+        shell: pwsh
+        run: |
+          foreach ($path in @('scripts/deploy-v4-two-workers.ps1','scripts/export-v4-controls.ps1')) {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($path,[ref]$tokens,[ref]$parseErrors) | Out-Null
+            if ($parseErrors.Count -gt 0) {
+              $parseErrors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+            }
           }
       - run: npx wrangler deploy --config wrangler.v4viewer.toml --dry-run --outdir .cloudflare-build-v4viewer
       - name: Audit public 90-day KXETH15M round availability (aggregate only)
