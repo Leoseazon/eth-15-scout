@@ -53,14 +53,38 @@ Requires central scenario to clear fee-inclusive break-even + baseline edge +
 enforces tighter 2-cent spread, no sub-20-cent asks and more than 150 seconds
 remaining. This was NOT selected by matching past winning outcomes.
 
-### First-per-ticker and outcome protocol (still to be implemented and verified)
-The observer emits raw *per-tick research proposals*, not an actual proposed
-order log. A **separate chronology-first scorer** must choose the earliest
-qualified signal per ticker AND policy, before joining settlement labels.
-A "candidate" is NOT a fill. Any hypothetical P&L must include all fees,
-latency, depth, slippage assumptions and exits. Report forecast accuracy,
-calibration where applicable and net outcome separately. A single 45-minute
-test is a functionality/reliability sample, not a statistical guarantee.
+### First-per-ticker and outcome protocol (implemented OFFLINE; not deployed)
+The worker emits raw *per-tick research proposals*, not a paper order log.
+`shadow-prospective-scoring.js` first processes research ticks in ascending
+observation-time order, **before accessing** the finalized official outcomes.
+For each ticker AND policy it selects only the **earliest** qualifying
+signal; additional 15-second repeat signals from the same market are excluded
+from independent win/loss counts. The scorer then joins the **genuine
+finalized** Kalshi outcome by ticker and verified close time. Pending,
+unmatched, unfinalized or pre-signal outcomes stay UNRESOLVED.
+
+`cloud/v4/tools/report-shadow-prospective.mjs` is a standalone read-only
+offline scorer of a saved Decision Audit JSON file, NOT a server endpoint.
+The old already-inspected 7,670-tick export contains zero
+`prospectiveShadow` observations, correctly producing no new shadow trades.
+The observer and scorer remain non-trading until separately deployed.
+
+**Critical economics:** A recorded Kalshi ASK is **not a verified fill**,
+so `hypotheticalHoldToSettlementNet` is displayed-quote, fee-inclusive,
+hold-to-official-settlement hypothetical P&L ONLY. It does not measure actual
+fills, ability to early-exit, missed-book updates, latency, slippage, or
+drawdowns of a replicable portfolio. Do not report the figure as actual or
+proven profitability. The scenario probabilities are uncalibrated, and
+must NOT be assigned Brier/log-loss calibration scores as if real odds.
+A single 45-minute sample is only a functionality/reliability diagnostic.
+
+**Decision standard:** Freeze the thresholds and measure prospective first
+signals across new contracts, across time and volatility regimes. Prefer a
+meaningful independently resolved cohort (100+ markets is an initial
+diagnostic, not statistical proof), and require favorable net economics after
+credible fees, slippage and liquidity sensitivity before suggesting ANY
+actual paper-entry rule change. Keep 5s book validity, 87c ceiling, $3
+per-entry all-in cap, one BUY per contract, and exit safeguards until then.
 
 ## Validation so far
 - 10 original preregistered shadow policy unit tests **pass**.
@@ -68,7 +92,7 @@ test is a functionality/reliability sample, not a statistical guarantee.
   WebSocket books, Kraken 1m/5m failures, incomplete 3m/5m structure, invalid
   official index, outside-clock situations, SOFT/HARD risk, duplicate ticker,
   zero execution authorization and immutable source inputs.
-- **24/24 relevant source-based tests pass in isolated JS.**
+- 12 additional offline first-signal scoring tests **pass**, including chronology,\n  separate policy/market cohorts, fees, future outcome holdout and invalid evidence.\n- **36/36 relevant source-based tests pass in isolated JS.**
 - Full repository CI, Cloudflare dry-run, independent runtime behavior and
   paper accounting/settlement regression: **not yet verified for this branch**.
 - NO new paper trading rules and NO shadow code deployed to the live Worker.
