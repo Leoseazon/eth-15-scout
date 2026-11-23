@@ -702,13 +702,17 @@ async function olderEvents(){
 async function fullJournal(){
  if(!token||!journalState.ready)throw new Error('V4 journal is not connected');
  let offset=0,anchor=journalState.anchor,totals=null,
-  events=[],trades=[],decisions=[],windows=[],pending=[];
+  events=[],trades=[],decisions=[],windows=[],pending=[],
+  conservativeControlJournal=null;
  do{
   const page=await journalPage(offset,anchor);
   anchor=page.anchor;totals=page.totals||{events:0,trades:0,decisions:0,windows:0};
   events.push(...page.events);trades.push(...page.trades);
   decisions.push(...page.decisions);windows.push(...page.windows);
-  if(!offset)pending=Array.isArray(page.pending)?page.pending:[];
+  if(!offset){
+   pending=Array.isArray(page.pending)?page.pending:[];
+   conservativeControlJournal=page.conservativeControlJournal||null;
+  }
   offset+=100;
   if(offset%1000===0)journalStatus('Exporting historical journal… '+offset+' records scanned per category.');
  }while(offset<Math.max(Number(totals.events)||0,Number(totals.trades)||0,
@@ -717,6 +721,7 @@ async function fullJournal(){
   createdAt:new Date().toISOString(),anchor,
   note:'Simulated fills and fees. Kalshi settled outcome separate from simulated P&L.',
   totals,events,trades,decisions,windows,pending,
+  conservativeControlJournal,
   releaseMarkers:lastPayload?.activity?.releaseMarkers||[],
   open:lastPayload?.status?.open||null,
   account:lastPayload?.status||null};
