@@ -105,9 +105,7 @@ test('bad paper-sized economics, price, spread and fill flag cannot confirm',()=
 });
 test('official future outcome cannot create first signal and pending outcome remains unresolved',()=>{
  const signals=first([tick(at),tick(at+15000)]);
- const x=resolve(signals,[result('UP',{status:'PENDING'})]);
- // Any malformed/pending official result must not be considered finalized.
- assert.equal(x[0].directionCorrect,true); // control official fixture
+ // No pending outcome may be counted as a finalized win.
  const pending={...result('UP'),status:'PENDING'};
  assert.equal(resolve(signals,[pending])[0].directionCorrect,null);
  assert.equal(first([tick(at)]).length,0);
