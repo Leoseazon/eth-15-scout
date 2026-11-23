@@ -34,6 +34,8 @@ function evidence(row,policy,notBefore){
    Math.abs((p.indexValue-p.target)*(p.side==='UP'?1:-1)-
      p.targetGapSigned)>1e-4||
    p.oneMinuteSigma<=0||p.actualFillVerified!==false||
+   !Number.isSafeInteger(p.threeClosedAt)||
+   p.threeClosedAt!==Math.floor(r.observedAt/180000)*180-180||
    p.bid<0||p.bid>p.ask||p.observedSpread<0||
    Math.abs(p.ask-p.bid-p.observedSpread)>1e-5)return null;
  return {policy,ticker:row.ticker,closeAt:row.closeAt,
@@ -42,6 +44,7 @@ function evidence(row,policy,notBefore){
   targetGapSigned:p.targetGapSigned,
   oneMinuteSigma:p.oneMinuteSigma,
   threeMinuteTrend:p.threeMinuteTrend,
+  threeClosedAt:p.threeClosedAt,
   affordableAt50c:p.affordableAt50c===true,
   quantityAt50c:p.quantityAt50c,
   hypotheticalAllIn50c:p.hypotheticalAllIn50c,
@@ -62,7 +65,8 @@ export function selectRevisedFirstConfirmed(researchTicks,{notBefore=0}={}){
     next.at-p.at>=CONFIRMATION.minGapMs&&
     next.at-p.at<=CONFIRMATION.maxGapMs&&
     next.ticker===p.ticker&&next.closeAt===p.closeAt&&
-    next.side===p.side;
+    next.side===p.side&&
+    next.threeClosedAt===p.threeClosedAt;
    const improvement=contiguous?
     next.targetGapSigned-p.targetGapSigned:null;
    const recovery=contiguous&&(p.targetGapSigned<0||
