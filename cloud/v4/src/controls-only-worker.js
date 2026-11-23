@@ -816,7 +816,9 @@ export class ScoutControlResearchV4 extends DurableObject {
     if(path==='/bootstrap'){
       const s=this.record();
       if(s.monitoring && await this.ctx.storage.getAlarm()===null)
-        await this.ctx.storage.setAlarm(Date.now()+1000);
+        // Offset the controls-only loop to avoid same-second external
+        // market-data bursts with MAIN. No calls or timers on Worker1.
+        await this.ctx.storage.setAlarm(Date.now()+7500);
       return json({ok:true,monitoring:s.monitoring});
     }
     if(path==='/v1/status'&&req.method==='GET'){
