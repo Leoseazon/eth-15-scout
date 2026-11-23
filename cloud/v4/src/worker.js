@@ -362,6 +362,7 @@ export class ScoutEngineV4 extends DurableObject {
     // Research-only prospective comparison; never an entry/exit instruction.
     let prospectiveShadow=null;
     let mainCoherence=null; // post-decision observation ONLY
+    let exitBookSample=null,exitIndexSample=null;
     // Disarming new entries must NOT switch an existing V4 position to the
     // unrelated V3-derived close/stop policy. Manage it with its original
     // V4 paper exit rules until it is safely settled.
@@ -441,6 +442,8 @@ export class ScoutEngineV4 extends DurableObject {
         error=[error,'V4_DECISION_PROCESSING_ERROR'].filter(Boolean).join('; ').slice(0,200);
         report={status:'WATCH',notice:'Settlement-first paper evaluation failed safely; no unverified result claimed'};
       }
+      exitBookSample=decisionBook;
+      exitIndexSample=index;
       // MAIN V4 strategy coherence: named evidence reconciliation recorded
       // AFTER settlementFirstPaperStep already decided and saved its order
       // authorization in memory. This diagnostic cannot create a BUY/SELL,
@@ -575,7 +578,8 @@ export class ScoutEngineV4 extends DurableObject {
         startedAt:now,finishedAt:Date.now(),market,
         quoteRetrievedAt:s.lastQuoteRetrievedAt,quoteObservedAt,spot:tickerSpot,
         one,five:m5,context,feedChecks,feedIssues,report,
-        shadowProbe,engineState:s,lastError:error
+        shadowProbe,bookSample:exitBookSample,indexSample:exitIndexSample,
+        engineState:s,lastError:error
       });
       s.lastResearchTickAt=research.observedAt;
       s.lastResearchError=null;
