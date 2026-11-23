@@ -127,6 +127,22 @@ test('premium above 50c can qualify C2 quality but is NOT a 50c sized hypothetic
  assert.equal(r.policies.C2_EVIDENCE.proposed.quantityAt50c,0);
  assert.equal(r.policies.C2_EVIDENCE.proposed.hypotheticalAllIn50c,null);
 });
+test('C2 half-dollar hypothesis reduces quantity to book depth instead of falsely rejecting',()=>{
+ const x=fixture({a:.15,b:.14,qty:18,central:.42,lower:.28});
+ x.book.yesAsk.sizeFp=2;
+ x.book.yesBid.sizeFp=2;
+ const r=observe(x);
+ const candidate=r.policies.C2_EVIDENCE;
+ assert.equal(candidate.status,'QUALIFYING_QUALITY_OBSERVATION');
+ assert.equal(candidate.proposed.affordableAt50c,true);
+ assert.equal(candidate.proposed.quantityAt50c,2);
+ assert.ok(candidate.proposed.hypotheticalAllIn50c<=.50);
+});
+test('A2/B2/C2 confirmation must not straddle different completed three-minute candles',()=>{
+ const before=Date.parse('2026-11-23T03:11:50Z');
+ const after=before+15000;
+ assert.equal(first([pair(before,1749),pair(after,1749.5)]).length,0);
+});
 test('only two consecutive observations with actual official target progress confirm an against-target recovery',()=>{
  const a=pair(at,1749);
  assert.equal(first([a]).length,0);
