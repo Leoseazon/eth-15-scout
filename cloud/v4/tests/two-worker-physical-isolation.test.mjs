@@ -80,6 +80,8 @@ test('control network is independent, authenticated, not service-bound to MAIN',
  assert.match(controls,/collectThrottledMarketFeeds\(remote,mUrl,API,now/);
  assert.match(controls,/checkCFValuesAccess\(\{/);
  assert.match(controls,/this\.stream\.ensure\(market\.ticker,/);
+ assert.match(controls,/await this\.ctx\.storage\.setAlarm\(Date\.now\(\)\+7500\)/);
+ assert.match(main,/await this\.ctx\.storage\.setAlarm\(Date\.now\(\)\+1000\)/);
  assert.doesNotMatch(researchCfg,/SCOUT_V4.*script_name|script_name.*eth-15-scout-cloud-v4test/);
 });
 test('MAIN and research have distinct journal routing and no shared SQL namespaces',()=>{
