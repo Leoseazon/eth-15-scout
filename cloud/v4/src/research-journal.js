@@ -91,9 +91,13 @@ export function ensureResearchJournal(sql){
 // Sparse, per-engine-tick quote witness for hypothetical exit STUDY ONLY.
  // This records at most the TOP bid on each side, not raw WebSocket frames
  // or a full order book. No quote is relabeled as an executable fill.
-export function sampledExitWitness({market,book,index,observedAt}={}){
+export function sampledExitWitness({market,book,index,streamStatus,observedAt}={}){
  const ticker=SERIES.test(market?.ticker||'')?market.ticker:null;
- const bookReady=!!ticker&&book?.ticker===ticker&&
+ // A cached quote cannot be called authenticated+live after its socket
+ // disconnected, even if its receivedAt timestamp is less than five seconds old.
+ const socketReady=streamStatus?.connected===true&&
+  streamStatus.targetTicker===ticker;
+ const bookReady=socketReady&&!!ticker&&book?.ticker===ticker&&
   book.source==='KALSHI_WEBSOCKET_ORDERBOOK'&&book.valid===true&&
   book.fresh===true&&book.crossed!==true&&millis(book.receivedAt)!==null&&
   Number.isSafeInteger(observedAt)&&book.receivedAt<=observedAt&&
@@ -112,7 +116,8 @@ export function sampledExitWitness({market,book,index,observedAt}={}){
  return {source:'SAME_TICK_AUTHENTICATED_BOOK_SAMPLE',
   readOnly:true,executionAuthorized:false,
   actualFillVerified:false,observedAt:millis(observedAt),
-  ticker,bookState:bookReady?'FRESH_SAME_TICK':'NOT_VERIFIED',
+  ticker,bookState:bookReady?'FRESH_SAME_TICK':
+   socketReady?'NOT_VERIFIED':'SOCKET_NOT_VERIFIED',
   bookReceivedAt:bookReady?book.receivedAt:null,
   upBid:bookReady?bd('UP'):null,
   downBid:bookReady?bd('DOWN'):null,
@@ -126,7 +131,7 @@ export function sampledExitWitness({market,book,index,observedAt}={}){
 export function buildResearchTick({startedAt,finishedAt,market=null,
  quoteRetrievedAt=null,quoteObservedAt=null,spot=null,one=null,five=null,context=null,
  feedChecks=null,feedIssues=[],report=null,shadowProbe=null,engineState=null,
- bookSample=null,indexSample=null,lastError=null}){
+ bookSample=null,indexSample=null,streamStatusSample=null,lastError=null}){
  if(!millis(startedAt)||!millis(finishedAt)||finishedAt<startedAt)
   throw new TypeError('Invalid tick chronology');
  const ticker=SERIES.test(market?.ticker||'')?market.ticker:null;
@@ -166,7 +171,8 @@ export function buildResearchTick({startedAt,finishedAt,market=null,
    regime:str(context?.regime?.regime,30),
    eventRisk:str(context?.regime?.eventRisk,30)},
   sampledExitBook:sampledExitWitness({
-   market,book:bookSample,index:indexSample,observedAt:finishedAt}),
+   market,book:bookSample,index:indexSample,
+   streamStatus:streamStatusSample,observedAt:finishedAt}),
   decision:{classification:'UNVALIDATED_V3_BASELINE_SHADOW',
    notice:str(report?.notice,280),observedEvents,
    calibratedProbability:null,settlementVerified:false,exitFillVerified:false,
