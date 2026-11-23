@@ -58,7 +58,8 @@ function closeEarly(s,pos,book,bid,why,now){
  return true;
 }
 export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
- now=Date.now(),onPrediction=null}={}){
+ now=Date.now(),onPrediction=null,profile='CONSERVATIVE',
+ priorOfficialIndex=null}={}){
  if(!s||typeof s!=='object')throw TypeError('Missing paper state');
  s.blocked??=[];s.pending??=[];s.trades??=[];s.decisions??=[];s.events??=[];
  const active=market&&/^KXETH15M-/.test(market.ticker||'')?market:null;
@@ -113,11 +114,12 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   notice:'One-entry-per-market enforced',ticker:active.ticker};
  const entryRoom=entryBudget(s.cash,s.risk,3);
  const d=evaluateSettlementFirst({market:active,index,one,five,context,book,now,
-  budget:entryRoom,riskMode:r.mode});
+  budget:entryRoom,riskMode:r.mode,profile,priorOfficialIndex});
  s.lastV4SettlementDecision={at:now,status:d.status,side:d.side,reason:d.reason,
   target:d.target??null,indexValue:d.indexValue??null,
   normalizedDistance:d.normalizedDistance??null,nonCalibratedScore:d.score??null,
   contradictions:d.contradictionReasons??[],modelVersion:SETTLEMENT_FIRST_VERSION,
+  entryProfile:profile,
   contextualValue:d.contextualOpportunity?{
    lowerScenario:d.contextualOpportunity.lowerScenario,
    breakEven:d.contextualOpportunity.breakEven,
@@ -162,10 +164,20 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  // Prevents a stale/synthetic candidate from debiting paper cash or bypassing
  // the conservative fee-inclusive risk/reward hurdle.
  const checked=priceAwareOpportunity({side:d.side,book,scenario:d.valueScenario,
-  remainingSeconds:d.remainingSeconds,budget,riskMode:r.mode});
+  remainingSeconds:d.remainingSeconds,budget,riskMode:r.mode,
+  profile,contextEvidence:{
+   target:d.target,indexValue:d.indexValue,one,context,now,
+   ticker:active.ticker,sourceAt:d.indexSourceAt,priorOfficialIndex
+  }});
  if(checked.status!=='QUALIFIED'||checked.qty!==qty||
-    checked.ask!==d.ask||!valid(checked.lowerScenarioNetProfit)||
-    checked.lowerScenarioNetProfit<=0){
+    checked.ask!==d.ask||!checked.profileAssessment?.ok||
+    // Both the candidate and the independent debit guard use the SAME
+    // profile. A relaxed profile intentionally does not demand positive
+    // LOWER-scenario profit; Conservative still does.
+    checked.mainProfile!==profile||
+    !valid(checked.lowerScenarioNetProfit)||
+    (checked.profileAssessment.effectiveProfile==='CONSERVATIVE'&&
+     checked.lowerScenarioNetProfit<=0)){
   const reason='Contextual opportunity no longer supports risk-adjusted BUY';
   if(s.window)s.window.reason=reason;
   return {status:'WATCH',notice:reason,candidate:d};
@@ -187,6 +199,7 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
   cost,time:now,target:d.target,indexValue:d.indexValue,
   indexSourceAt:d.indexSourceAt,closeTime:active.close_time,
   strategy:'V4_SETTLEMENT_FIRST',strategyVersion:SETTLEMENT_FIRST_VERSION,
+  entryStrategyProfile:profile,
   modelEvidence:{normalizedDistance:d.normalizedDistance,
    geometry:d.geometry,momentum:d.momentum,structure:d.structure,
    heuristicScore:d.score,contradictionReasons:d.contradictionReasons,
@@ -224,7 +237,8 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
    conservativeEdge:checked.conservativeEdge,
    lowerScenarioNetProfit:checked.lowerScenarioNetProfit,
    breakEven:checked.breakEven,calibratedProbability:null},
-  confidenceVersion:entryConfidence.version};
+  confidenceVersion:entryConfidence.version,
+  entryStrategyProfile:profile};
  risk(s,now);
  return {status:'PAPER_BUY',notice:'Experimental settlement-first paper '+d.side+
   ' × '+qty+' @ '+d.ask.toFixed(4)+'; $'+cost.toFixed(2)+' with fees; '+
