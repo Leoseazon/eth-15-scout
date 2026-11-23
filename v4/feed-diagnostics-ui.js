@@ -72,7 +72,30 @@
    engineBuyDataReady:s.paperFeedHealth?.liveSourcesReady===true,
    indexNote:'SKIPPED_* is a prerequisite gate, not proof of index outage'};
  }
- function count(key,value){return samples.reduce((n,s)=>n+(key==='book'?s.book.code===value:s[key]===value?1:0),0)}
+ function count(key,value){
+  return samples.reduce((n,s)=>n+((key==='book'?s.book.code:s[key])===value?1:0),0);
+ }
+ // Start/end are OBSERVATION bounds from sampled dashboard ticks, not
+ // exact exchange outage times. A 45s observation gap begins a new episode.
+ function episodes(key){
+  const out=[];let run=null,lastAt=0;
+  const ignore=new Set(['READY','NO_ACTIVE_MARKET','STREAM_DISABLED',
+    'CHECK_UNAVAILABLE','CHECK_UNVERIFIED','NOT_VERIFIED_RECENTLY']);
+  for(const s of samples){
+   const code=key==='book'?s.book.code:s[key];
+   const bad=!ignore.has(code);
+   if(!bad){if(run){run.recovered=true;out.push(run);run=null}lastAt=s.at;continue}
+   if(!run||run.reason!==code||s.at-lastAt>45000){
+    if(run)out.push(run);
+    run={reason:code,firstObservedAt:s.at,lastObservedAt:s.at,
+     observedBadTicks:0,recovered:false};
+   }
+   run.lastObservedAt=s.at;run.observedBadTicks++;lastAt=s.at;
+  }
+  if(run)out.push(run);
+  return out.slice(-100).map(e=>({...e,
+   observedSpanMs:e.lastObservedAt-e.firstObservedAt}));
+ }
  function show(row){
   put('book',row.book.code.replaceAll('_',' ')+
    (row.book.ageSec!==null?' · last update ~'+row.book.ageSec+'s ago':'')+
@@ -100,7 +123,10 @@
    sources:'Existing authenticated dashboard refresh only; no additional market requests',
    retention:'Last 180 distinct observed engine ticks while this page remained open; not continuous server history',
    timestamps:'observedAt is browser clock; engineTickAt is server clock; neither proves exchange event time',
-   sampleCount:samples.length,observations:samples};
+   sampleCount:samples.length,
+   observedIssueEpisodes:{kalshiBook:episodes('book'),kraken1m:episodes('kraken1m'),kraken5m:episodes('kraken5m')},
+   episodeNote:'Start/end timestamps bound observations only; do not assume exact outage duration or missed fills',
+   observations:samples};
   const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
   const u=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=u;a.download='ETH15-V4-Feed-Diagnostics-'+
