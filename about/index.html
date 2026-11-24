@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<meta name="description" content="ETH-15 Scout: independent, paper-only research into short-duration Ethereum prediction markets. Explore the research mission, process, and safeguards.">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none';">
+<title>ETH-15 Scout | Research the signal, not the noise</title>
+<link rel="stylesheet" href="./style.css">
+<script src="./app.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="ambient ambient-one" aria-hidden="true"></div>
+<div class="ambient ambient-two" aria-hidden="true"></div>
+<header class="site-header">
+ <div class="container header-content">
+  <a class="brand" href="#top" aria-label="ETH-15 Scout introduction home">
+   <span class="brand-mark" aria-hidden="true"><span class="brand-diamond"></span><span class="brand-core"></span></span>
+   <span class="brand-wordmark">ETH-15 <strong>SCOUT</strong><small>INDEPENDENT RESEARCH</small></span>
+  </a>
+  <nav aria-label="Page navigation" class="site-nav">
+   <a href="#method">The method</a>
+   <a href="#architecture">Our system</a>
+   <a href="#questions">FAQ</a>
+  </nav>
+  <span class="header-proof"><span class="proof-dot" aria-hidden="true"></span>PAPER RESEARCH</span>
+ </div>
+</header>
+<main id="main">
+<section id="top" class="hero container">
+ <div class="hero-copy">
+  <div class="eyebrow"><span class="eyebrow-line"></span> THE ETHEREUM 15-MINUTE RESEARCH LAB</div>
+  <h1>Read the move.<br><em>Not the noise.</em></h1>
+  <p class="hero-lead">ETH-15 Scout studies fast-moving Ethereum UP/DOWN prediction markets, looking for moments when the market's price and the underlying evidence may not yet agree.</p>
+  <p class="hero-secondary">A private research engine, a paper-trading strategy, and an independent comparison lab. Built to measure decisions—not pretend every signal is right.</p>
+  <div class="hero-actions">
+   <a class="button primary-button" href="#method">Explore how it works <span aria-hidden="true">↗</span></a>
+   <a class="button outline-button" href="#architecture">Meet the two engines <span aria-hidden="true">↓</span></a>
+  </div>
+  <div class="hero-disclaimer"><span class="disclaimer-icon" aria-hidden="true">◇</span><span>No real-money orders. No public trading access. Research and simulated results only.</span></div>
+ </div>
+ <div class="hero-visual" aria-label="Decorative illustration of research signals. Not live price data.">
+  <div class="visual-top"><span><span class="live-dot" aria-hidden="true"></span> SIGNAL EXPLORER</span><span>CONCEPT VISUAL</span></div>
+  <div class="signal-stage" aria-hidden="true">
+   <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div>
+   <div class="radar-line radar-line-a"></div><div class="radar-line radar-line-b"></div>
+   <div class="scout-emblem"><div class="emblem-inner"><span></span></div></div>
+   <span class="signal-node node-one"></span><span class="signal-node node-two"></span><span class="signal-node node-three"></span>
+   <span class="signal-label label-one">PRICE CONTEXT</span>
+   <span class="signal-label label-two">TIMING</span>
+   <span class="signal-label label-three">RISK</span>
+  </div>
+  <div class="visual-bottom">
+   <div><small>INPUT</small><strong>Market evidence</strong></div>
+   <span class="flow-chevron" aria-hidden="true">→</span>
+   <div><small>PROCESS</small><strong>Decision research</strong></div>
+   <span class="flow-chevron" aria-hidden="true">→</span>
+   <div><small>OUTPUT</small><strong>Paper outcome</strong></div>
+  </div>
+  <div class="visual-footnote">Illustrative motion only · No connected feeds or live market prices</div>
+ </div>
+</section>
+<section class="section-band">
+ <div class="container research-anchors">
+  <div><span class="anchor-symbol">01</span><strong>Observe</strong><span>Watch price and market structure</span></div>
+  <div><span class="anchor-symbol">02</span><strong>Interpret</strong><span>Separate evidence from movement</span></div>
+  <div><span class="anchor-symbol">03</span><strong>Paper-test</strong><span>Simulate decisions with safeguards</span></div>
+  <div><span class="anchor-symbol">04</span><strong>Learn</strong><span>Audit outcomes and missed chances</span></div>
+ </div>
+</section>
+<section id="method" class="section container">
+ <div class="section-heading">
+  <div class="eyebrow">01 / THE METHOD</div>
+  <h2>A research process, not a crystal ball.</h2>
+  <p>Scout doesn't just ask which direction Ethereum might go. It studies whether the available contract price is worth taking, and when standing aside is the smarter decision.</p>
+ </div>
+ <div class="method-layout">
+  <div class="method-selector" role="tablist" aria-label="Explore the research process">
+   <button type="button" id="tab-observe" class="method-tab is-active" role="tab" aria-selected="true" aria-controls="panel-observe" data-step="observe">
+    <span class="method-index">01</span><span><strong>Observe the market</strong><small>Find the setup before the quote adjusts</small></span><span class="method-arrow" aria-hidden="true">↗</span>
+   </button>
+   <button type="button" id="tab-evaluate" class="method-tab" role="tab" aria-selected="false" aria-controls="panel-evaluate" data-step="evaluate" tabindex="-1">
+    <span class="method-index">02</span><span><strong>Evaluate the evidence</strong><small>Ask whether the risk is justified</small></span><span class="method-arrow" aria-hidden="true">↗</span>
+   </button>
+   <button type="button" id="tab-learn" class="method-tab" role="tab" aria-selected="false" aria-controls="panel-learn" data-step="learn" tabindex="-1">
+    <span class="method-index">03</span><span><strong>Learn from outcomes</strong><small>Compare wins, losses and skipped rounds</small></span><span class="method-arrow" aria-hidden="true">↗</span>
+   </button>
+  </div>
+  <div class="method-display">
+   <div class="display-header"><span>INSIDE THE RESEARCH LOOP</span><span class="status-light"><span></span> EXPLAINER</span></div>
+   <section class="method-panel" id="panel-observe" role="tabpanel" aria-labelledby="tab-observe">
+    <div class="process-illustration" aria-hidden="true"><div class="chart-bars"><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div><div class="study-crosshair"></div><span class="panel-illustration-label">PRICE + TIME + STRUCTURE</span></div>
+    <span class="mini-overline">STEP 01</span><h3>Catch the moment worth studying.</h3>
+    <p>Scout watches Kalshi's 15-minute ETH contracts alongside Kraken market context. It considers price movement, trend, momentum and how far the underlying price is from the market's strike.</p>
+    <div class="signal-tags"><span>Kalshi UP/DOWN quotes</span><span>1m / 3m / 5m candles</span><span>EMA · RSI · MACD</span></div>
+   </section>
+   <section class="method-panel" id="panel-evaluate" role="tabpanel" aria-labelledby="tab-evaluate" hidden>
+    <div class="process-illustration evaluation-illustration" aria-hidden="true"><div class="evidence-ring"><div class="evidence-center">?</div></div><span class="evidence-dot dot-a"></span><span class="evidence-dot dot-b"></span><span class="evidence-dot dot-c"></span><span class="panel-illustration-label">COST + CONFIRMATION + RISK</span></div>
+    <span class="mini-overline">STEP 02</span><h3>Price matters as much as direction.</h3>
+    <p>The Opportunistic strategy evaluates affordability, fresh order-book evidence, directional context, time remaining and risk limits. It can buy a low-priced contract or pass the round entirely.</p>
+    <div class="signal-tags"><span>Discount awareness</span><span>Fresh-feed checks</span><span>PASS is allowed</span></div>
+   </section>
+   <section class="method-panel" id="panel-learn" role="tabpanel" aria-labelledby="tab-learn" hidden>
+    <div class="process-illustration learning-illustration" aria-hidden="true"><div class="learning-lines"><span></span><span></span><span></span><span></span><span></span></div><div class="learning-focus"></div><span class="panel-illustration-label">EVIDENCE BEFORE CONCLUSIONS</span></div>
+    <span class="mini-overline">STEP 03</span><h3>Every decision is research evidence.</h3>
+    <p>Paper buys, sales, official results and skipped opportunities are recorded separately. The goal is to test whether decisions improve over time, without treating hindsight or a displayed quote as a verified live fill.</p>
+    <div class="signal-tags"><span>Paper journal</span><span>Outcome review</span><span>Independent controls</span></div>
+   </section>
+   <div class="method-pagination" aria-hidden="true"><span class="is-on"></span><span></span><span></span></div>
+  </div>
+ </div>
+</section>
+<section id="architecture" class="section architecture-section">
+ <div class="container">
+  <div class="section-heading"><div class="eyebrow">02 / HOW IT IS BUILT</div><h2>Two engines. Different jobs.<br><span class="subtle-heading">One research mission.</span></h2><p>The trading hypothesis and the comparison experiments are separated to reduce interference and make results easier to interpret.</p></div>
+  <div class="architecture-grid">
+   <article class="engine-card main-engine">
+    <div class="engine-top"><span class="engine-no">ENGINE 01</span><span class="chip chip-mint">PAPER MAIN</span></div>
+    <div class="engine-symbol" aria-hidden="true">↗</div>
+    <h3>Opportunistic</h3><p class="engine-subtitle">The primary paper decision engine</p>
+    <p>Looks for early, affordable directional opportunities in Ethereum's 15-minute UP/DOWN markets. Evaluates when to buy, when to pass, and when its existing profit-taking or emergency exit criteria are reached.</p>
+    <div class="engine-points"><span>Context-aware entry</span><span>Simulated BUY / SELL</span><span>Separate paper bankroll</span></div>
+   </article>
+   <article class="engine-card comparison-engine">
+    <div class="engine-top"><span class="engine-no">ENGINE 02</span><span class="chip chip-blue">RESEARCH ONLY</span></div>
+    <div class="engine-symbol" aria-hidden="true">≋</div>
+    <h3>Comparison lab</h3><p class="engine-subtitle">Independent strategy research</p>
+    <p>Runs Conservative alongside six alternative research controls. These experiments help compare different selection rules without controlling or interrupting the main paper strategy.</p>
+    <div class="engine-points"><span>Conservative control</span><span>Six A/B/C research variants</span><span>No MAIN trade authority</span></div>
+   </article>
+  </div>
+  <div class="architecture-note"><span class="note-icon" aria-hidden="true">◎</span><span>These are independent Cloudflare processing roles, not public services. This page offers no route to the private research console, credentials or market-data endpoints.</span></div>
+ </div>
+</section>
+<section class="section container" id="principles">
+ <div class="section-heading"><div class="eyebrow">03 / THE PRINCIPLES</div><h2>Ambitious research.<br><span class="subtle-heading">Careful claims.</span></h2><p>Prediction markets can reprice quickly. Scout's value will be determined by repeatable evidence—not an exciting single trade.</p></div>
+ <div class="principles-grid">
+  <article><span class="principle-icon" aria-hidden="true">◇</span><h3>Find the price discrepancy</h3><p>Study contracts that may be priced differently from the developing underlying move, without assuming a discount is automatically a bargain.</p></article>
+  <article><span class="principle-icon" aria-hidden="true">⌁</span><h3>Respect the market data</h3><p>Kalshi quotes and official settlement are distinct from Kraken spot and technical signals. Incomplete or stale information should not be turned into certainty.</p></article>
+  <article><span class="principle-icon" aria-hidden="true">◷</span><h3>Allow a deliberate PASS</h3><p>Not every contract deserves an entry. Skipping poor-quality opportunities is part of the methodology, not a missed obligation.</p></article>
+  <article><span class="principle-icon" aria-hidden="true">↺</span><h3>Let the evidence refine the system</h3><p>Review both strong winners and painful reversals before changing exit rules. A backtest is a hypothesis, not a guarantee of future performance.</p></article>
+ </div>
+</section>
+<section class="quote-strip">
+ <div class="container"><div class="quote-decor">“</div><blockquote>The mission isn't to predict every 15-minute move. It's to understand when the evidence, the price, and the timing finally make sense together.</blockquote><span>ETH-15 SCOUT · RESEARCH PHILOSOPHY</span></div>
+</section>
+<section class="section container" id="questions">
+ <div class="section-heading"><div class="eyebrow">04 / QUESTIONS</div><h2>Curious about Scout?</h2><p>A quick introduction for anyone following the experiment.</p></div>
+ <div class="faq">
+  <details><summary>Does Scout trade real money? <span aria-hidden="true">+</span></summary><p>No. The version described here is a paper-only research and simulated trading system. Dashboard quotes and simulated entries or exits do not constitute verified real-world order fills.</p></details>
+  <details><summary>Can visitors access the trading dashboard? <span aria-hidden="true">+</span></summary><p>No. This public introduction is deliberately separate from the private research dashboard. It does not include a login, private endpoints or account access.</p></details>
+  <details><summary>Does the bot guarantee profitable predictions? <span aria-hidden="true">+</span></summary><p>No. The goal is to test whether an evidence-based process can find worthwhile opportunities over a large sample. Short-duration prediction markets are risky; favorable individual results do not establish a reliable edge.</p></details>
+  <details><summary>What happens when the data is unreliable? <span aria-hidden="true">+</span></summary><p>The private engine uses freshness and safety checks. If required entry evidence is invalid, new paper entries are blocked rather than made using invented data. Individual feed interruptions are evaluated during research reviews.</p></details>
+  <details><summary>What is the longer-term objective? <span aria-hidden="true">+</span></summary><p>Build a more disciplined, explainable research process that can compare strategies, analyze decisions and learn from verified observations without confusing simulations with live performance.</p></details>
+ </div>
+</section>
+<section class="container final-section"><div class="final-content">
+ <div class="eyebrow">ONE EXPERIMENT · MANY OBSERVATIONS</div>
+ <h2>A better question<br>is where discovery starts.</h2>
+ <p>Follow the philosophy behind ETH-15 Scout: research the move, challenge the entry, and review what happened. The private bot keeps running independently.</p>
+ <div class="footer-signal" aria-hidden="true"><span></span><span></span><span></span><span></span><span></span></div>
+</div></section>
+</main>
+<footer class="site-footer"><div class="container footer-inner"><div class="footer-brand"><span class="footer-diamond" aria-hidden="true">◇</span><span>ETH-15 SCOUT <small>Independent market research</small></span></div><p>Educational overview · Paper-only simulation · Not financial advice · No public dashboard access</p><a href="#top">Back to top ↑</a></div></footer>
+</body>
+</html>
