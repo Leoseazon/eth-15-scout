@@ -69,8 +69,8 @@ test('fast-path missing official RTI cannot cast a confirmation or accidentally 
  const mid=settlementFirstPaperStep(s,{market,book:quote(T+70000),now:T+70000});
  assert.equal(mid.status,'HOLD');
  assert.equal(s.open.confirmedEarlyExitWatch.firstAt,T+60000);
- assert.equal(settlementFirstPaperStep(s,adverse(T+80000)).status,'HOLD',
-  'intermediate RTI-free fast path does not provide a second index observation');
+ assert.equal(settlementFirstPaperStep(s,adverse(T+80000)).status,'PAPER_SELL',
+  'only the second valid RTI/book observation confirms the early exit');
 });
 test('opposite official RTI, adverse 3m structure and adverse closed 1m momentum are ALL mandatory',()=>{
  const base=review(T+60000);
