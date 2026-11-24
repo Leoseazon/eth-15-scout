@@ -127,6 +127,9 @@ export class ScoutEngineV4 extends DurableObject {
     this.mainProfileName=mainProfileIsSupported(env.V4_MAIN_PROFILE)?
       env.V4_MAIN_PROFILE:'CONSERVATIVE';
     this.mainProfileConfigured=mainProfileIsSupported(env.V4_MAIN_PROFILE);
+    // CANDIDATE ONLY: disabled unless separately authorized in Worker config.
+    // The fast exit path never receives this flag or its required RTI evidence.
+    this.confirmedEarlyExitEnabled=env.V4_CONFIRMED_EARLY_EXIT_ENABLED==='true';
     this.researchStream=null;
     // Formal permission gate is separate from each capture switch. Rest/pass-through
     // and WebSocket entitlement alone do NOT permit bulk retention/model training.
@@ -457,6 +460,7 @@ export class ScoutEngineV4 extends DurableObject {
         report=settlementFirstPaperStep(s,{market,index,one,five:m5,context,
           book:decisionBook,now:decisionAt,
           profile:this.mainProfileName,
+          confirmedEarlyExitEnabled:this.confirmedEarlyExitEnabled,
           priorOfficialIndex:s.lastVerifiedOfficialForProfile||null,
           onPrediction:pos=>{s.pendingPredictionToCommit=pos}});
       }catch{
