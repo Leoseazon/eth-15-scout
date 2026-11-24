@@ -6,6 +6,7 @@ import {assessDailyRisk,entryBudget,PAPER_POLICY} from './v3-policy.js';
 import {evaluateSettlementFirst,SETTLEMENT_FIRST_VERSION,MAX_PAPER_ENTRY_ASK,NORMAL_PREMIUM_ASK,exceptionalPremiumEligible} from './settlement-first.js';
 import {scoreBuyConfidence} from './buy-confidence.js';
 import {priceAwareOpportunity} from './context-opportunity.js';
+import {evaluateConfirmedEarlyExit} from './confirmed-early-exit.js';
 const valid=n=>Number.isFinite(n);
 const cents=n=>Math.ceil(Math.max(0,n)*100-1e-8)/100;
 const dollar=n=>Number(n.toFixed(2));
@@ -59,7 +60,7 @@ function closeEarly(s,pos,book,bid,why,now){
 }
 export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
  now=Date.now(),onPrediction=null,profile='CONSERVATIVE',
- priorOfficialIndex=null}={}){
+ priorOfficialIndex=null,confirmedEarlyExitEnabled=false}={}){
  if(!s||typeof s!=='object')throw TypeError('Missing paper state');
  s.blocked??=[];s.pending??=[];s.trades??=[];s.decisions??=[];s.events??=[];
  const active=market&&/^KXETH15M-/.test(market.ticker||'')?market:null;
@@ -93,6 +94,17 @@ export function settlementFirstPaperStep(s,{market,index,one,five,context,book,
     if(remaining<=PAPER_POLICY.stopLossArmedMinutes&&decline>=.40)
      why='40% contract-price emergency stop (last 6 minutes)';
     else if(bid>=.96&&remaining>1)why='96c executable displayed bid exit';
+    else if(confirmedEarlyExitEnabled===true&&
+      remaining>PAPER_POLICY.stopLossArmedMinutes){
+     // Opt-in candidate only. FAST exit path deliberately lacks the official
+     // RTI/closed candles and MUST NOT count as a confirmation.
+     const early=evaluateConfirmedEarlyExit({position:pos,index,one,five,
+      context,book,bid,now,previous:pos.confirmedEarlyExitWatch||null,
+      stopLossArmedMinutes:PAPER_POLICY.stopLossArmedMinutes});
+     pos.confirmedEarlyExitWatch=early.next;
+     if(early.status==='CONFIRMED')
+      why='Early confirmed adverse-direction exit (40% loss, 2 fresh RTI/book observations)';
+    }
     if(why&&closeEarly(s,pos,book,bid,why,now)){
      risk(s,now);
      s.lastV4SettlementDecision={at:now,side:pos.side,status:'PAPER_SELL',
