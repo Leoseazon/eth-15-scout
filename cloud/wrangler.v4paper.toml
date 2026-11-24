@@ -23,9 +23,6 @@ V4_SETTLEMENT_FIRST_EXPERIMENT = "true"
 # Only MAIN may make paper BUY/SELL decisions. Conservative controls and all
 # original shadows run in separate research state; no real order API.
 V4_MAIN_PROFILE = "OPPORTUNISTIC"
-# CANDIDATE NOT DEPLOYED: two-observation adverse-evidence stop is OFF.
-# Requires a separate reviewed release to activate.
-V4_CONFIRMED_EARLY_EXIT_ENABLED = "false"
 # Dashboard-approved V4-only read-only market-data collection.
 # This captures read-only market data and is distinct from the explicitly enabled PAPER simulator.
 V4_STREAM_CAPTURE_ENABLED = "true"
