@@ -132,7 +132,7 @@ test('candidate config defaults OFF; original Worker2 cannot be changed by candi
  const config=fs.readFileSync(new URL('../../wrangler.v4paper.toml',import.meta.url),'utf8');
  const research=fs.readFileSync(new URL('../../wrangler.v4controls.toml',import.meta.url),'utf8');
  const main=fs.readFileSync(new URL('../src/main-only-worker.js',import.meta.url),'utf8');
- assert.match(config,/V4_CONFIRMED_EARLY_EXIT_ENABLED = "false"/);
+ assert.doesNotMatch(config,/V4_CONFIRMED_EARLY_EXIT_ENABLED/,\n  "original MAIN config stays unchanged; missing flag means OFF");
  assert.match(config,/V4_MAIN_PROFILE = "OPPORTUNISTIC"/);
  assert.match(research,/name = "eth-15-scout-v4-controls"/);
  assert.doesNotMatch(research,/V4_CONFIRMED_EARLY_EXIT_ENABLED/);
