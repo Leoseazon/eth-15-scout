@@ -127,7 +127,12 @@
    <div class="live-heading-right"><span id="live-freshness" class="badge neutral">Awaiting bot data</span><span id="live-asof" class="micro">—</span><span id="live-proxy-age" class="micro">Kalshi quote age unavailable</span></div>
   </div>
   <div class="contract-box live-contract-board" aria-label="Current Kalshi contract and latest publicly available prices">
-   <div class="board-market"><p class="mini-label">CURRENT KALSHI CONTRACT · PUBLIC PRICE REFERENCE</p><strong id="contract-id">—</strong><span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
+   <div class="board-market"><p class="mini-label">CURRENT KALSHI CONTRACT · PUBLIC PRICE REFERENCE</p><strong id="contract-id">—</strong>
+    <div class="board-market-clock" data-clock-state="stale" aria-label="Time remaining in current contract">
+     <span class="board-clock-label">LIVE COUNTDOWN</span>
+     <strong id="live-countdown" role="timer" aria-live="off">—</strong>
+    </div>
+    <span id="contract-time" class="contract-small">Close time unavailable</span><span class="quote-time" id="quote-freshness">Prices not connected</span><span class="quote-time" id="settlement-phase">CF RTI final-minute status unavailable</span></div>
    <div class="board-target"><span class="mini-label">ETH TARGET / STRIKE</span><strong id="contract-strike">Target unavailable</strong><small>Official contract reference, not Kraken settlement</small>
     <small id="v4-official-rti-gap">Official index / target gap not verified</small></div>
    <div class="board-spot" aria-label="Kraken spot price reference, not official Kalshi settlement index"><span class="mini-label">CURRENT ETH · KRAKEN SPOT</span><strong id="live-spot-price">—</strong><small id="live-spot-gap">Kraken price vs opening target unavailable</small><small id="live-spot-freshness">Reference only · not official settlement</small></div>
@@ -165,8 +170,7 @@
     </div>
    </div>
    <div class="live-timing">
-    <div class="live-position-title">CONTRACT WINDOW</div>
-    <strong id="live-countdown">—</strong>
+    <div class="live-position-title">ROUND DETAILS</div>
     <div id="live-close-label" class="live-position-detail">End time not available</div>
     <div class="last-execution"><span>LAST RECORDED PAPER TRADE</span><strong id="live-last-trade">None recorded</strong><small id="live-last-trade-at">—</small></div>
    </div>
@@ -183,7 +187,7 @@
     <div class="account-row"><span>Open estimated P&amp;L</span><strong id="unrealized-value">—</strong></div>
     <div class="account-row"><span>Unsettled positions</span><strong id="pending-value">—</strong></div>
     <div class="account-row"><span>Stake awaiting settlement <small title="Unresolved paper contract cost, not realized profit or loss. The bot checks finalized Kalshi results before releasing it.">· not yet P/L</small></span><strong id="pending-stake-value">—</strong></div>
-    <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div><span>Winning trades</span><strong id="wins-count">—</strong></div><div><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
+    <div class="stat-tiles"><div><span>Completed trades</span><strong id="trades-value">—</strong></div><div><span>Win rate</span><strong id="win-rate">—</strong></div><div class="trade-win-tile"><span>Winning trades</span><strong id="wins-count">—</strong></div><div class="trade-loss-tile"><span>Losing trades</span><strong id="losses-count">—</strong></div></div>
     <div class="round-pass-stat" title="Counted once per Kalshi ETH 15-minute contract recorded as a final PASS in the persistent V4 journal. Temporary WATCH and PASS / WATCH messages never count.">
      <div><span>FINAL ROUND PASSES</span><small>Completed rounds skipped · not temporary WATCH</small></div>
      <strong id="round-pass-count" aria-live="polite">—</strong>
