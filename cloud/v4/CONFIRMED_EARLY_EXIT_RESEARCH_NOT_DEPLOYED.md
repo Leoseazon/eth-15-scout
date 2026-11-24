@@ -43,9 +43,9 @@ control are **unchanged**. No additional HTTP/WebSocket calls or APIs are added.
 
 - Only the new MAIN source references this helper.
 - `confirmedEarlyExitEnabled` defaults to false in the paper step.
-- `V4_CONFIRMED_EARLY_EXIT_ENABLED = "false"` is explicit in
-  `cloud/wrangler.v4paper.toml`. This feature is **not enabled** by
-  the current or proposed script.
+- The audited `cloud/wrangler.v4paper.toml` remains **byte-for-byte unchanged**.
+  It does **not** contain `V4_CONFIRMED_EARLY_EXIT_ENABLED`; absent means OFF.
+  A future, independently approved release must explicitly enable the flag.
 - The fast held-position exit path does **not** authorize this candidate:
   it lacks the independent official RTI / completed Kraken evidence.
 - The seven-control Worker and private viewer source are not edited.
