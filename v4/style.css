@@ -838,3 +838,52 @@ body.unauthenticated #opportunity-review{display:none}
 @media(max-width:410px){
  #opportunity-review .opportunity-grid{grid-template-columns:1fr}
 }
+
+/* Website-only V4 UX: place the countdown in the SAME card as the Kalshi
+   contract. Timer is locally interpolated from the existing dashboard response:
+   no additional network calls and never a substitute for official settlement. */
+#live-action .live-contract-board .board-market .board-market-clock{
+ display:flex;align-items:baseline;flex-wrap:wrap;column-gap:12px;row-gap:3px;
+ margin:7px 0;padding:8px 10px;
+ border:1px solid #35675f;border-radius:9px;background:#173331;
+ font-variant-numeric:tabular-nums
+}
+#live-action .live-contract-board .board-market .board-clock-label{
+ font-size:10px;font-weight:800;color:#a9d9ca;letter-spacing:.08em
+}
+#live-action .live-contract-board .board-market .board-market-clock #live-countdown{
+ display:block;margin:0;line-height:1.2;letter-spacing:-.4px;
+ font-size:23px;font-weight:850;color:#aff1d9;white-space:nowrap
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="near"]{
+ border-color:#927342;background:#393226
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="near"] #live-countdown{
+ color:#f2d38c
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="final"]{
+ border-color:#99606b;background:#432c36
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="final"] #live-countdown{
+ color:#ffc1c7
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="stale"],
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="expired"]{
+ border-color:#475869;background:#243144
+}
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="stale"] #live-countdown,
+#live-action .live-contract-board .board-market .board-market-clock[data-clock-state="expired"] #live-countdown{
+ color:#c0cddb
+}
+/* Paper ledger counts are facts from the API. Colors don't reinterpret a
+   WIN or LOSS or affect any strategy/risk/exit logic. */
+#performance .account-summary-stats .stat-tiles>.trade-win-tile{
+ border-color:#397b67;background:#173a32
+}
+#performance .account-summary-stats .stat-tiles>.trade-loss-tile{
+ border-color:#875360;background:#3b2734
+}
+#performance .account-summary-stats .trade-win-tile span,
+#performance .account-summary-stats .trade-win-tile strong{color:#a9f0cf}
+#performance .account-summary-stats .trade-loss-tile span,
+#performance .account-summary-stats .trade-loss-tile strong{color:#ffc0c7}

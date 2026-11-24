@@ -203,6 +203,33 @@ function renderObservationCohort(data){
   'Not all required live entry sources verified');
 }
 
+// Website-only clock: uses the existing authenticated dashboard snapshot.
+// Never requests market data or infers a settlement result from local time.
+function updateContractClock(data){
+ const s=data?.status||{},c=data?.market?.contract||{};
+ const displayedTicker=s.lastMarket||c.ticker||null;
+ const closeTime=displayedTicker&&c.ticker===displayedTicker?c.close_time:
+  s.open?.ticker===displayedTicker?s.open.closeTime:null;
+ const now=Date.now(),tickAt=Number(s.lastTick);
+ const fresh=s.monitoring===true&&Number.isFinite(tickAt)&&tickAt>0&&
+  now-tickAt>=-5000&&now-tickAt<=110000;
+ const deadline=closeTime?Date.parse(closeTime):NaN;
+ const seconds=Number.isFinite(deadline)?Math.ceil((deadline-now)/1000):NaN;
+ const clock=document.querySelector('.board-market-clock');
+ if(!clock)return;
+ let state='stale',label='—';
+ if(fresh&&Number.isFinite(seconds)){
+  if(seconds<=0){state='expired';label='ROUND CLOSED';}
+  else if(seconds<=60){state='final';label=Math.floor(seconds/60)+'m '+String(seconds%60).padStart(2,'0')+'s';}
+  else if(seconds<=180){state='near';label=Math.floor(seconds/60)+'m '+String(seconds%60).padStart(2,'0')+'s';}
+  else if(seconds<=960){state='normal';label=Math.floor(seconds/60)+'m '+String(seconds%60).padStart(2,'0')+'s';}
+ }
+ clock.dataset.clockState=state;
+ txt('live-countdown',label);
+ clock.title=state==='stale'?'No fresh matching contract clock available':
+  'Local countdown to scheduled Kalshi contract close; not official settlement time';
+}
+
 function renderLiveAction(data){
  const s=data?.status||{},m=data?.market||{},open=s.open||null;
  const tickAge=Date.now()-Number(s.lastTick);
@@ -278,7 +305,6 @@ function renderLiveAction(data){
   txt('live-mark-pnl','—');
   $('live-mark-pnl').style.color='var(--text)';
  }
- txt('live-countdown',closeTime?remaining(closeTime):'—');
  txt('live-close-label',closeTime?'Ends '+ct(closeTime)+' CT':'Close time unavailable');
  txt('live-last-trade',last?(last.type==='PAPER BUY'?'BUY':'SELL')+
   ' '+String(last.side||'').trim()+' · '+String(last.ticker||''):'No paper trade recorded');
@@ -327,7 +353,8 @@ function render(data){
  cls('market-feed-status',m?.freshness?.one&&m?.freshness?.five?'success':data.marketError?'warning':'neutral');
  const ticker=s.lastMarket||c.ticker||'Not available';
  txt('contract-id',ticker);
- txt('contract-time',c.close_time?'Closes '+ct(c.close_time)+' CT · '+remaining(c.close_time):'Latest engine contract');
+ txt('contract-time',c.close_time?'Closes '+ct(c.close_time)+' CT':'Latest engine contract');
+ updateContractClock(data);
  const strike=c.floor_strike!==null&&c.floor_strike!==undefined&&c.floor_strike!==''?
   n(Number(c.floor_strike)):null;
  txt('contract-strike',strike!==null?money(strike):'Target unavailable');
@@ -846,7 +873,9 @@ window.addEventListener('resize',()=>{if(lastPayload)drawChart()});
 setInterval(()=>{if(token&&!document.hidden)load()},15000);
 setInterval(()=>{if(lastPayload){renderLiveAction(lastPayload);txt('metric-age',ago(lastPayload.status?.lastTick));
  txt('contract-time',lastPayload.market?.contract?.close_time?
- 'Closes '+ct(lastPayload.market.contract.close_time)+' CT · '+remaining(lastPayload.market.contract.close_time):'Latest engine contract')}},15000);
+ 'Closes '+ct(lastPayload.market.contract.close_time)+' CT':'Latest engine contract')}},15000);
+// One-second LOCAL display update; the 15-second authenticated fetch cadence is unchanged.
+setInterval(()=>{if(lastPayload&&!document.hidden)updateContractClock(lastPayload)},1000);
 if(token&&expiresAt>Date.now()){connectionVisible(false);load()}
 else{connectionVisible(true)}
 
